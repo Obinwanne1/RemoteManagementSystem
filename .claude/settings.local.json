@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pip --version)",
+      "Bash(mkdir:*)",
+      "Bash(python -m venv api/venv)",
+      "Bash(api/venv/Scripts/pip install:*)",
+      "Bash(dashboard/venv/Scripts/pip install:*)",
+      "Bash(api/venv/Scripts/pip index:*)",
+      "Bash(dashboard/venv/Scripts/pip index:*)",
+      "Bash(dashboard/venv/Scripts/pip download:*)",
+      "Bash(python -m venv agent/venv)",
+      "Bash(agent/venv/Scripts/pip install:*)",
+      "Bash(psql --version)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":5432\")",
+      "Bash(findstr \":6379\")",
+      "Bash(dashboard/venv/Scripts/python -c \"import streamlit, plotly, pandas; print\\('dashboard deps OK'\\)\")",
+      "Bash(api/venv/Scripts/python -c \"import flask, sqlalchemy, celery, jwt, bcrypt; print\\('api deps OK'\\)\")",
+      "Bash(cp:*)",
+      "Bash(python:*)",
+      "Bash(../venv/Scripts/python -c ':*)",
+      "Bash(api/venv/Scripts/python -c ':*)"
+    ]
+  }
+}
