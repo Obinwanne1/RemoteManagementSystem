@@ -27,9 +27,10 @@ with filter_col:
 filter_cust_id = cust_map.get(filter_cust) if filter_cust != "All Customers" else None
 
 # ── Load invoices ─────────────────────────────────────────────────────────────
-inv_data, inv_err = client.list_invoices(customer_id=filter_cust_id)
+with st.spinner("Loading invoices..."):
+    inv_data, inv_err = client.list_invoices(customer_id=filter_cust_id)
 if inv_err:
-    st.error(f"Could not load invoices: {inv_err}")
+    st.warning(f"Could not load invoices — {inv_err}")
     st.stop()
 
 invoices = inv_data if isinstance(inv_data, list) else []

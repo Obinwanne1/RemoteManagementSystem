@@ -26,10 +26,11 @@ tab_alerts, tab_rules = st.tabs(["Active Alerts", "Alert Rules"])
 with tab_alerts:
 
     # Load all open alerts
-    data, err = client.list_alerts(status="open", per_page=100)
+    with st.spinner("Loading alerts..."):
+        data, err = client.list_alerts(status="open", per_page=100)
     if err:
-        st.error(f"API error loading alerts: {err}")
-        st.stop()
+        st.warning(f"Could not load alerts — {err}")
+        data = None
 
     all_alerts = data.get("items", []) if data else []
 

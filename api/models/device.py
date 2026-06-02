@@ -2,6 +2,9 @@ import uuid
 from datetime import datetime, timezone
 from extensions import db
 
+# Sentinel for "no value passed" — distinguishes None (no metrics) from not-yet-fetched
+_MISSING = object()
+
 
 class Device(db.Model):
     __tablename__ = "devices"
@@ -38,7 +41,7 @@ class Device(db.Model):
     agent_tokens = db.relationship("AgentToken", backref="device", lazy="dynamic",
                                    cascade="all, delete-orphan")
 
-    def to_dict(self, include_latest_metrics=False):
+    def to_dict(self, include_latest_metrics=False, latest_metrics_data=_MISSING):
         d = {
             "id": self.id,
             "customer_id": self.customer_id,
@@ -63,8 +66,13 @@ class Device(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
         if include_latest_metrics:
-            latest = self.metrics.order_by(DeviceMetrics.collected_at.desc()).first()
-            d["latest_metrics"] = latest.to_dict() if latest else None
+            if latest_metrics_data is not _MISSING:
+                # Pre-fetched by caller (batch load) — no extra query
+                d["latest_metrics"] = latest_metrics_data
+            else:
+                # Single-device fallback (GET /devices/<id>)
+                latest = self.metrics.order_by(DeviceMetrics.collected_at.desc()).first()
+                d["latest_metrics"] = latest.to_dict() if latest else None
         return d
 
 
@@ -133,6 +141,3 @@ class InstalledSoftware(db.Model):
             "source": self.source,
             "last_seen": self.last_seen.isoformat() if self.last_seen else None,
         }
-
-
-import uuid  # noqa: E402 (needed at bottom due to default= lambda)
