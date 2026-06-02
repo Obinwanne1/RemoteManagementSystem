@@ -186,8 +186,15 @@ def get_tasks(device_id):
     pending_scripts = ScriptRun.query.filter_by(
         device_id=device_id, status="queued"
     ).all()
+    # Batch-fetch all needed scripts in one query (eliminates N+1)
+    script_ids = {run.script_id for run in pending_scripts}
+    scripts_by_id = {}
+    if script_ids:
+        scripts_by_id = {
+            s.id: s for s in Script.query.filter(Script.id.in_(script_ids)).all()
+        }
     for run in pending_scripts:
-        script = Script.query.get(run.script_id)
+        script = scripts_by_id.get(run.script_id)
         if script:
             tasks.append({
                 "task_id": run.id,

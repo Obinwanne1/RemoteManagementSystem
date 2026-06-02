@@ -1,16 +1,24 @@
 """
 Centralized HTTP client for all dashboard → API calls.
 All methods return (data, error) tuples.
+Includes: session reuse, retry with backoff, 401 auto-refresh.
 """
 import os
+import time
+import streamlit as st
 import requests
 from typing import Optional, Tuple, Any
 
 API_BASE = os.getenv("API_BASE_URL", "http://localhost:5000")
 
+_RETRY_ON = (requests.ConnectionError, requests.Timeout)
+_BACKOFF = [0.5, 1.0, 2.0]  # seconds between retries
+
 
 class RMMClient:
-    def __init__(self, access_token: str):
+    def __init__(self, access_token: str, refresh_token: str = ""):
+        self._token = access_token
+        self._refresh_token = refresh_token
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bearer {access_token}",
@@ -18,45 +26,68 @@ class RMMClient:
         })
         self.base = API_BASE
 
-    def _get(self, path: str, params: dict = None) -> Tuple[Any, Optional[str]]:
+    def _try_refresh(self) -> bool:
+        """Attempt silent token refresh using stored refresh_token. Returns True on success."""
+        if not self._refresh_token:
+            return False
         try:
-            resp = self.session.get(f"{self.base}{path}", params=params, timeout=15)
-            resp.raise_for_status()
-            return resp.json(), None
-        except requests.HTTPError as e:
-            return None, f"HTTP {e.response.status_code}: {e.response.text[:200]}"
-        except requests.RequestException as e:
-            return None, str(e)
+            resp = requests.post(
+                f"{self.base}/api/auth/refresh",
+                headers={"Authorization": f"Bearer {self._refresh_token}"},
+                timeout=10,
+            )
+            if resp.ok:
+                new_token = resp.json().get("access_token", "")
+                if new_token:
+                    self._token = new_token
+                    self.session.headers["Authorization"] = f"Bearer {new_token}"
+                    st.session_state["access_token"] = new_token
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _request(self, method: str, path: str, **kwargs) -> Tuple[Any, Optional[str]]:
+        """Single entry point: retry on transient errors, auto-refresh on 401."""
+        url = f"{self.base}{path}"
+        last_err = None
+
+        for attempt, wait in enumerate(_BACKOFF):
+            try:
+                resp = self.session.request(method, url, timeout=15, **kwargs)
+
+                if resp.status_code == 401:
+                    if self._try_refresh():
+                        # One retry with refreshed token
+                        retry = self.session.request(method, url, timeout=15, **kwargs)
+                        if retry.ok:
+                            return retry.json(), None
+                    return None, "SESSION_EXPIRED"
+
+                resp.raise_for_status()
+                return resp.json(), None
+
+            except requests.HTTPError as e:
+                # HTTP errors (4xx except 401, 5xx) are not retried
+                return None, f"HTTP {e.response.status_code}: {e.response.text}"
+            except _RETRY_ON as e:
+                last_err = e
+                if attempt < len(_BACKOFF) - 1:
+                    time.sleep(wait)
+
+        return None, f"Connection failed after {len(_BACKOFF)} attempts: {last_err}"
+
+    def _get(self, path: str, params: dict = None) -> Tuple[Any, Optional[str]]:
+        return self._request("GET", path, params=params)
 
     def _post(self, path: str, data: dict = None) -> Tuple[Any, Optional[str]]:
-        try:
-            resp = self.session.post(f"{self.base}{path}", json=data, timeout=15)
-            resp.raise_for_status()
-            return resp.json(), None
-        except requests.HTTPError as e:
-            return None, f"HTTP {e.response.status_code}: {e.response.text[:200]}"
-        except requests.RequestException as e:
-            return None, str(e)
+        return self._request("POST", path, json=data)
 
     def _put(self, path: str, data: dict = None) -> Tuple[Any, Optional[str]]:
-        try:
-            resp = self.session.put(f"{self.base}{path}", json=data, timeout=15)
-            resp.raise_for_status()
-            return resp.json(), None
-        except requests.HTTPError as e:
-            return None, f"HTTP {e.response.status_code}: {e.response.text[:200]}"
-        except requests.RequestException as e:
-            return None, str(e)
+        return self._request("PUT", path, json=data)
 
     def _delete(self, path: str) -> Tuple[Any, Optional[str]]:
-        try:
-            resp = self.session.delete(f"{self.base}{path}", timeout=15)
-            resp.raise_for_status()
-            return resp.json(), None
-        except requests.HTTPError as e:
-            return None, f"HTTP {e.response.status_code}: {e.response.text[:200]}"
-        except requests.RequestException as e:
-            return None, str(e)
+        return self._request("DELETE", path)
 
     # --- Auth ---
     @staticmethod
@@ -70,7 +101,7 @@ class RMMClient:
             resp.raise_for_status()
             return resp.json(), None
         except requests.HTTPError as e:
-            return None, f"Login failed: {e.response.text[:200]}"
+            return None, f"Login failed: {e.response.text}"
         except requests.RequestException as e:
             return None, str(e)
 

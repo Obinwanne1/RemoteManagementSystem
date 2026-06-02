@@ -48,9 +48,10 @@ if online_filter == "Online only":
 elif online_filter == "Offline only":
     params["is_online"] = "false"
 
-data, err = client.list_devices(per_page=200, **params)
+with st.spinner("Loading devices..."):
+    data, err = client.list_devices(per_page=200, **params)
 if err:
-    st.error(f"API error: {err}")
+    st.warning(f"Could not load devices — {err}")
     st.stop()
 
 devices = data.get("items", [])

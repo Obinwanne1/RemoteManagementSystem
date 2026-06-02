@@ -17,9 +17,13 @@ inject_css()
 client = require_auth()
 
 # ── Summary ───────────────────────────────────────────────────────────────────
-summary, err = client.get_summary()
+with st.spinner("Loading dashboard..."):
+    summary, err = client.get_summary()
 if err:
-    st.error(f"API error: {err}")
+    st.warning(f"Could not load dashboard summary — {err}")
+    if st.button("🔄 Retry"):
+        st.cache_data.clear()
+        st.rerun()
     st.stop()
 
 d = summary["devices"]

@@ -100,39 +100,16 @@ def run_profile_now(profile_id):
         return err
     profile = AutomationProfile.query.get_or_404(profile_id)
 
-    # Find target devices
-    from models.customer import DeviceGroup
-    if profile.device_group_id:
-        devices = Device.query.filter_by(
-            group_id=profile.device_group_id, is_online=True
-        ).all()
-    elif profile.customer_id:
-        devices = Device.query.filter_by(
-            customer_id=profile.customer_id, is_online=True
-        ).all()
-    else:
-        devices = Device.query.filter_by(is_online=True).all()
-
-    if not devices:
-        return jsonify({"error": "No online devices found for this profile"}), 400
-
-    runs = []
-    for device in devices:
-        run = ScheduledTaskRun(
-            profile_id=profile_id,
-            device_id=device.id,
-            status="queued",
-        )
-        db.session.add(run)
-        runs.append(run)
+    # Dispatch to Celery — avoids blocking request on large device sets
+    from tasks.automation_tasks import enqueue_profile_run
+    task = enqueue_profile_run.delay(profile_id)
 
     profile.last_run_at = datetime.now(timezone.utc)
     db.session.commit()
 
     return jsonify({
-        "message": "Profile run queued",
-        "device_count": len(runs),
-        "run_ids": [r.id for r in runs],
+        "message": "Profile run enqueued",
+        "celery_task_id": task.id,
     }), 202
 
 

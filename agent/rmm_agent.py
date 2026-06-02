@@ -4,7 +4,7 @@ RMM Agent — main entry point.
 Flow:
   1. Load config
   2. If no device_id/token: register with API
-  3. Loop: heartbeat → poll tasks → execute tasks → sleep
+  3. Loop: flush queue → heartbeat → poll tasks → execute tasks → sleep
 """
 import configparser
 import logging
@@ -12,34 +12,63 @@ import sys
 import time
 from pathlib import Path
 
+import psutil
+
 from collector import get_hardware_info, get_metrics, get_installed_software
 from heartbeat import APIClient
-from executor import execute_task
+from executor import execute_task, flush_pending_queue
 
 CONFIG_PATH = Path(__file__).parent / "config.ini"
 LOG_PATH = Path(__file__).parent / "rmm_agent.log"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
+
+# ── C-7: structured logging with device_id stamp ─────────────────────────────
+
+class DeviceFilter(logging.Filter):
+    """Stamps device_id on every log record so all lines are traceable."""
+    def __init__(self, device_id: str = "unregistered"):
+        super().__init__()
+        self.device_id = device_id
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.device_id = self.device_id
+        return True
+
+
+_device_filter = DeviceFilter()
+
+
+def _setup_logging() -> None:
+    fmt = "%(asctime)s %(levelname)-8s %(name)-20s [device=%(device_id)s] %(message)s"
+    formatter = logging.Formatter(fmt)
+    handlers = [
         logging.StreamHandler(sys.stdout),
         logging.FileHandler(str(LOG_PATH), encoding="utf-8"),
-    ],
-)
+    ]
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    for h in handlers:
+        h.setFormatter(formatter)
+        h.addFilter(_device_filter)
+        root.addHandler(h)
+
+
+_setup_logging()
 logger = logging.getLogger("rmm_agent")
 
+
+# ── Config helpers ────────────────────────────────────────────────────────────
 
 def load_config() -> configparser.ConfigParser:
     config = configparser.ConfigParser()
     if not CONFIG_PATH.exists():
-        logger.error(f"Config file not found: {CONFIG_PATH}")
+        logger.error("Config file not found: %s", CONFIG_PATH)
         sys.exit(1)
     config.read(str(CONFIG_PATH), encoding="utf-8")
     return config
 
 
-def save_config(config: configparser.ConfigParser):
+def save_config(config: configparser.ConfigParser) -> None:
     with open(str(CONFIG_PATH), "w", encoding="utf-8") as f:
         config.write(f)
 
@@ -60,14 +89,15 @@ def register(config: configparser.ConfigParser) -> APIClient:
     device_id = result["device_id"]
     agent_token = result["agent_token"]
 
-    # Persist to config (plain text for dev; use DPAPI encryption in production)
     config.set("agent", "device_id", device_id)
     config.set("agent", "agent_token", agent_token)
     save_config(config)
 
-    logger.info(f"Registered as device_id={device_id}")
+    logger.info("Registered as device_id=%s", device_id)
     return APIClient(api_url, device_id, agent_token)
 
+
+# ── Main loop ─────────────────────────────────────────────────────────────────
 
 def main():
     config = load_config()
@@ -77,33 +107,63 @@ def main():
     heartbeat_interval = config.getint("agent", "heartbeat_interval", fallback=60)
     software_interval = config.getint("agent", "software_interval", fallback=21600)
 
-    # Register if not already
     if not device_id or not agent_token:
         client = register(config)
         device_id = config.get("agent", "device_id")
-        agent_token = config.get("agent", "agent_token")
     else:
         client = APIClient(api_url, device_id, agent_token)
 
-    logger.info(f"Agent started. device_id={device_id} api={api_url}")
+    # C-7: stamp device_id on all log records after identity is known
+    _device_filter.device_id = device_id
+    logger.info("Agent started. device_id=%s api=%s", device_id, api_url)
 
-    last_software_sync = 0
-    iteration = 0
+    # C-1: prime CPU counter; first non-blocking sample is always 0.0 otherwise
+    psutil.cpu_percent(interval=None)
+
+    last_software_sync = 0.0
+    _consecutive_failures = 0  # C-4
 
     while True:
         try:
+            # C-6: flush any locally queued task results before new cycle
+            flushed = flush_pending_queue(client)
+            if flushed:
+                logger.info("Flushed %d pending task result(s)", flushed)
+
             # Collect and send metrics
             metrics = get_metrics()
-            result = client.send_heartbeat(metrics)
-            if result:
-                logger.debug(f"Heartbeat OK — server_time={result.get('server_time')}")
-            else:
-                logger.warning("Heartbeat failed, will retry next cycle")
+            data, status = client.send_heartbeat(metrics)  # C-5: returns (data, status_code)
+
+            # C-5: re-register on 401
+            if status == 401:
+                logger.warning("Heartbeat returned 401 — re-registering agent")
+                client = register(config)
+                device_id = config.get("agent", "device_id")
+                _device_filter.device_id = device_id
+                _consecutive_failures = 0
+                time.sleep(heartbeat_interval)
+                continue
+
+            # C-4: exponential backoff on consecutive failures
+            if data is None:
+                _consecutive_failures += 1
+                backoff = min(15 * (2 ** (_consecutive_failures - 1)), 300)
+                logger.warning(
+                    "Heartbeat failed (failure #%d) — backing off %ds",
+                    _consecutive_failures, backoff,
+                )
+                time.sleep(backoff)
+                continue
+
+            _consecutive_failures = 0
+            logger.debug("Heartbeat OK — server_time=%s", data.get("server_time"))
 
             # Poll and execute tasks
             tasks = client.get_tasks()
             for task in tasks:
-                logger.info(f"Executing task: {task.get('type')} id={task.get('task_id')}")
+                logger.info(
+                    "Executing task: %s id=%s", task.get("type"), task.get("task_id")
+                )
                 execute_task(task, client)
 
             # Sync software list periodically
@@ -113,15 +173,27 @@ def main():
                 sw = get_installed_software()
                 client.update_software(sw)
                 last_software_sync = now
-                logger.info(f"Software sync complete: {len(sw)} packages")
+                logger.info("Software sync complete: %d packages", len(sw))
 
         except KeyboardInterrupt:
             logger.info("Agent stopped by user")
             break
+        except ConnectionError as e:
+            # C-7: classified network errors
+            _consecutive_failures += 1
+            backoff = min(15 * (2 ** (_consecutive_failures - 1)), 300)
+            logger.warning("NETWORK_FAILURE: %s — backing off %ds", e, backoff)
+            time.sleep(backoff)
+            continue
+        except TimeoutError as e:
+            _consecutive_failures += 1
+            backoff = min(15 * (2 ** (_consecutive_failures - 1)), 300)
+            logger.warning("NETWORK_TIMEOUT: %s — backing off %ds", e, backoff)
+            time.sleep(backoff)
+            continue
         except Exception as e:
-            logger.error(f"Unexpected error in main loop: {e}", exc_info=True)
+            logger.error("UNEXPECTED_ERROR: %s", e, exc_info=True)
 
-        iteration += 1
         time.sleep(heartbeat_interval)
 
 

@@ -19,15 +19,22 @@ class APIClient:
         self.session = requests.Session()
         self.session.headers.update(self.headers)
 
-    def send_heartbeat(self, metrics: dict) -> Optional[dict]:
+    def send_heartbeat(self, metrics: dict) -> tuple:
+        """Returns (data_or_None, http_status_code). Status 0 = connection error."""
         url = f"{self.base_url}/api/agents/{self.device_id}/heartbeat"
         try:
             resp = self.session.post(url, json=metrics, timeout=30)
+            if resp.status_code == 401:
+                return None, 401
             resp.raise_for_status()
-            return resp.json()
+            return resp.json(), resp.status_code
+        except requests.exceptions.HTTPError as e:
+            logger.warning("Heartbeat HTTP error: %s", e)
+            status = e.response.status_code if e.response is not None else 0
+            return None, status
         except requests.RequestException as e:
-            logger.warning(f"Heartbeat failed: {e}")
-            return None
+            logger.warning("Heartbeat failed: %s", e)
+            return None, 0
 
     def get_tasks(self) -> list:
         url = f"{self.base_url}/api/agents/{self.device_id}/tasks"

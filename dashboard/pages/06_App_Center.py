@@ -13,9 +13,10 @@ client = require_auth()
 st.markdown('<h1 style="margin:0">App Center</h1><p style="color:#6B7B6B;margin:2px 0 1rem;font-size:0.88rem">Installed software across all devices</p>', unsafe_allow_html=True)
 
 # ── Load devices ──────────────────────────────────────────────────────────────
-data, err = client.list_devices(per_page=200)
+with st.spinner("Loading devices..."):
+    data, err = client.list_devices(per_page=200)
 if err:
-    st.error(f"API error: {err}")
+    st.warning(f"Could not load devices — {err}")
     st.stop()
 
 devices = data.get("items", [])

@@ -4,6 +4,7 @@ Uses psutil for cross-platform metrics; WMI for Windows-specific hardware data.
 """
 import platform
 import socket
+import time
 import uuid as uuid_lib
 import logging
 from pathlib import Path
@@ -53,7 +54,7 @@ def get_hardware_info() -> dict:
 
 def get_metrics() -> dict:
     """Collect current system metrics for heartbeat payload."""
-    cpu_pct = psutil.cpu_percent(interval=1)
+    cpu_pct = psutil.cpu_percent(interval=None)
     mem = psutil.virtual_memory()
     boot_time = psutil.boot_time()
     uptime = psutil.time.time() - boot_time
@@ -189,7 +190,13 @@ def _get_battery() -> dict:
 def _get_top_processes(n=5) -> list:
     try:
         procs = []
+        deadline = time.monotonic() + 3.0
+        max_scan = 200
+        scanned = 0
         for proc in psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent"]):
+            if time.monotonic() > deadline or scanned >= max_scan:
+                break
+            scanned += 1
             try:
                 info = proc.info
                 procs.append({
@@ -208,15 +215,22 @@ def _get_top_processes(n=5) -> list:
 def _get_registry_software() -> list:
     import winreg
     software = []
+    deadline = time.monotonic() + 20.0
     keys = [
         (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
         (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
         (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
     ]
     for hive, key_path in keys:
+        if time.monotonic() > deadline:
+            logger.warning("Registry enumeration deadline reached — results may be partial")
+            break
         try:
             with winreg.OpenKey(hive, key_path) as key:
                 for i in range(winreg.QueryInfoKey(key)[0]):
+                    if time.monotonic() > deadline:
+                        logger.warning("Registry enumeration deadline reached — results may be partial")
+                        break
                     try:
                         subkey_name = winreg.EnumKey(key, i)
                         with winreg.OpenKey(key, subkey_name) as subkey:

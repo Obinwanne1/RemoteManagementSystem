@@ -16,6 +16,7 @@ def make_celery(app=None):
             "tasks.script_tasks",
             "tasks.maintenance_tasks",
             "tasks.report_tasks",
+            "tasks.automation_tasks",
         ],
     )
 
@@ -26,6 +27,11 @@ def make_celery(app=None):
         timezone="UTC",
         enable_utc=True,
         worker_pool="solo",  # Required on Windows
+        task_acks_late=True,
+        task_reject_on_worker_lost=True,
+        task_default_retry_delay=60,
+        task_max_retries=3,
+        worker_prefetch_multiplier=1,
         beat_schedule={
             "evaluate-alert-rules-every-minute": {
                 "task": "tasks.alert_tasks.evaluate_all_rules",

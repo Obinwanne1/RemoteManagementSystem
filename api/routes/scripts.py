@@ -116,10 +116,13 @@ def run_script(script_id):
     if not device_ids:
         return jsonify({"error": "device_ids required"}), 400
 
+    # Batch-fetch all target devices in one query (eliminates N+1)
+    valid_devices = {
+        d.id for d in Device.query.filter(Device.id.in_(device_ids)).all()
+    }
     runs = []
     for device_id in device_ids:
-        device = Device.query.get(device_id)
-        if not device:
+        if device_id not in valid_devices:
             continue
         run = ScriptRun(
             script_id=script_id,

@@ -1,10 +1,27 @@
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
+from sqlalchemy import func
 from extensions import db
 from models.device import Device, DeviceMetrics
 
 devices_bp = Blueprint("devices", __name__)
+
+
+def _batch_latest_metrics(device_ids: list) -> dict:
+    """Return {device_id: metrics_dict} for a list of device IDs. 1 query."""
+    if not device_ids:
+        return {}
+    subq = (
+        db.select(func.max(DeviceMetrics.id).label("max_id"))
+        .where(DeviceMetrics.device_id.in_(device_ids))
+        .group_by(DeviceMetrics.device_id)
+        .subquery()
+    )
+    rows = db.session.execute(
+        db.select(DeviceMetrics).join(subq, DeviceMetrics.id == subq.c.max_id)
+    ).scalars().all()
+    return {m.device_id: m.to_dict() for m in rows}
 
 
 def _require_role(*roles):
@@ -38,8 +55,12 @@ def list_devices():
         query = query.filter(Device.hostname.ilike(f"%{q}%"))
 
     paginated = query.order_by(Device.hostname).paginate(page=page, per_page=per_page)
+    metrics_by_device = _batch_latest_metrics([d.id for d in paginated.items])
     return jsonify({
-        "items": [d.to_dict(include_latest_metrics=True) for d in paginated.items],
+        "items": [
+            d.to_dict(include_latest_metrics=True, latest_metrics_data=metrics_by_device.get(d.id))
+            for d in paginated.items
+        ],
         "total": paginated.total,
         "page": page,
         "pages": paginated.pages,

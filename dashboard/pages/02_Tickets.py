@@ -92,10 +92,10 @@ if status_f != "All":
 if priority_f != "All":
     api_filters["priority"] = priority_f
 
-data, err = client.list_tickets(**api_filters)
-
+with st.spinner("Loading tickets..."):
+    data, err = client.list_tickets(**api_filters)
 if err:
-    st.error(f"API error: {err}")
+    st.warning(f"Could not load tickets — {err}")
     st.stop()
 
 tickets = data.get("items", []) if data else []

@@ -32,9 +32,10 @@ with sc2:
 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
 # ── Fetch customers ────────────────────────────────────────────────────────────
-data, err = client.list_customers(page=1, per_page=50, q=search_q or "")
+with st.spinner("Loading customers..."):
+    data, err = client.list_customers(page=1, per_page=50, q=search_q or "")
 if err:
-    st.error(f"API error: {err}")
+    st.warning(f"Could not load customers — {err}")
     st.stop()
 
 customers = data.get("items", []) if data else []

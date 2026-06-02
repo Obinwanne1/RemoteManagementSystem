@@ -113,9 +113,26 @@ def delete_customer(customer_id):
 @jwt_required()
 def customer_devices(customer_id):
     Customer.query.get_or_404(customer_id)
-    from models.device import Device
+    from models.device import Device, DeviceMetrics
+    from sqlalchemy import func
     devices = Device.query.filter_by(customer_id=customer_id).all()
-    return jsonify([d.to_dict(include_latest_metrics=True) for d in devices]), 200
+    device_ids = [d.id for d in devices]
+    metrics_by_device = {}
+    if device_ids:
+        subq = (
+            db.select(func.max(DeviceMetrics.id).label("max_id"))
+            .where(DeviceMetrics.device_id.in_(device_ids))
+            .group_by(DeviceMetrics.device_id)
+            .subquery()
+        )
+        rows = db.session.execute(
+            db.select(DeviceMetrics).join(subq, DeviceMetrics.id == subq.c.max_id)
+        ).scalars().all()
+        metrics_by_device = {m.device_id: m.to_dict() for m in rows}
+    return jsonify([
+        d.to_dict(include_latest_metrics=True, latest_metrics_data=metrics_by_device.get(d.id))
+        for d in devices
+    ]), 200
 
 
 # Device Groups
