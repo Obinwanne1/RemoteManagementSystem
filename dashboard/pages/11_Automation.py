@@ -6,11 +6,16 @@ Plus: schedule config, scripts, email notifications.
 import streamlit as st
 from utils.auth import require_auth
 from utils.formatters import fmt_datetime
+from utils.styles import inject_css, badge, BRAND, stat_card
 
 st.set_page_config(page_title="Automation — RMM", layout="wide")
-st.title("⚙️ Automation Profiles")
+inject_css()
+
+st.markdown('<h1 style="margin:0">Automation Profiles</h1><p style="color:#6B7B6B;margin:2px 0 1rem;font-size:0.88rem">Schedule and manage automated maintenance tasks across devices</p>', unsafe_allow_html=True)
 
 client = require_auth()
+
+CARD = "background:#FFFFFF;border-radius:12px;padding:1.2rem 1.5rem;border:1px solid #DDE8DD;box-shadow:0 2px 8px rgba(0,0,0,0.05);margin-bottom:1rem"
 
 tab1, tab2 = st.tabs(["Profile List", "Create / Edit Profile"])
 
@@ -22,20 +27,37 @@ with tab1:
         if not data:
             st.info("No automation profiles. Create one to get started.")
         for profile in data:
-            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
-            with col1:
-                st.markdown(f"**{profile['name']}** {'✅' if profile['is_active'] else '❌'}")
-            with col2:
-                st.caption(f"Schedule: {profile['schedule_type']}")
-            with col3:
-                st.caption(f"Last run: {fmt_datetime(profile.get('last_run_at'))}")
-            with col4:
+            is_active = profile.get("is_active", False)
+            status_dot = f'<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:{"#22C55E" if is_active else "#8492A6"};margin-right:6px;vertical-align:middle"></span>'
+            status_label = "Active" if is_active else "Inactive"
+            status_color = "#22C55E" if is_active else "#8492A6"
+            sched = profile.get("schedule_type", "—").capitalize()
+            last_run = fmt_datetime(profile.get("last_run_at"))
+            name_html = (
+                f'<div style="{CARD}">'
+                f'<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">'
+                f'<div style="display:flex;align-items:center;gap:0.6rem">'
+                f'{status_dot}'
+                f'<span style="font-weight:700;font-size:1rem;color:#1A1A1A">{profile["name"]}</span>'
+                f'<span style="background:{status_color}1A;color:{status_color};padding:2px 9px;border-radius:20px;font-size:0.72rem;font-weight:700;border:1px solid {status_color}33">{status_label.upper()}</span>'
+                f'</div>'
+                f'<div style="display:flex;align-items:center;gap:1.5rem">'
+                f'<span style="font-size:0.82rem;color:#6B7B6B">Schedule: <b style="color:#1A1A1A">{sched}</b></span>'
+                f'<span style="font-size:0.82rem;color:#6B7B6B">Last run: <b style="color:#1A1A1A">{last_run}</b></span>'
+                f'</div>'
+                f'</div></div>'
+            )
+            col_card, col_btn = st.columns([6, 1])
+            with col_card:
+                st.markdown(name_html, unsafe_allow_html=True)
+            with col_btn:
+                st.markdown('<div style="margin-top:0.6rem"></div>', unsafe_allow_html=True)
                 if st.button("▶ Run Now", key=f"run_{profile['id']}"):
-                    result, err = client.run_profile_now(profile["id"])
-                    if err:
-                        st.error(err)
+                    result, run_err = client.run_profile_now(profile["id"])
+                    if run_err:
+                        st.error(run_err)
                     else:
-                        st.success(f"Queued on {result.get('device_count',0)} devices")
+                        st.success(f"Queued on {result.get('device_count', 0)} devices")
 
 
 with tab2:
@@ -85,7 +107,7 @@ with tab2:
         value=", ".join(existing.get("notification_emails", [])) if existing else ""
     )
 
-    # --- Task Configuration (4-column layout matching reference screenshot) ---
+    # --- Task Configuration (4-column layout) ---
     st.subheader("Task")
     st.divider()
 
@@ -96,22 +118,25 @@ with tab2:
 
     col_os, col_sw, col_disk, col_maint = st.columns(4)
 
+    # NinjaOne-style dark header per column
+    col_header_style = "background:#1A2B1A;color:#FFFFFF;border-radius:8px 8px 0 0;padding:0.55rem 0.9rem;font-size:0.82rem;font-weight:700;letter-spacing:0.04em;margin-bottom:0.75rem"
+
     with col_os:
-        st.markdown("**OS Patch Management**")
+        st.markdown(f'<div style="{col_header_style}">OS PATCH MANAGEMENT</div>', unsafe_allow_html=True)
         os_enabled = st.checkbox("Install all Windows patch updates",
                                  value=os_cfg.get("enabled", False), key="os_enabled")
         if os_enabled:
-            st.markdown("*Critical updates*")
+            st.markdown('<span style="font-size:0.78rem;color:#6B7B6B;font-weight:600">CRITICAL UPDATES</span>', unsafe_allow_html=True)
             os_critical = st.checkbox("Critical updates", value=os_cfg.get("critical", True), key="os_crit")
-            st.markdown("*Security updates*")
+            st.markdown('<span style="font-size:0.78rem;color:#6B7B6B;font-weight:600">SECURITY UPDATES</span>', unsafe_allow_html=True)
             os_security = st.checkbox("Security updates", value=os_cfg.get("security", True), key="os_sec")
             os_def = st.checkbox("Definition updates", value=os_cfg.get("definitions", True), key="os_def")
             os_roll = st.checkbox("Update rollups", value=os_cfg.get("rollups", False), key="os_roll")
-            st.markdown("*Service packs*")
+            st.markdown('<span style="font-size:0.78rem;color:#6B7B6B;font-weight:600">SERVICE PACKS</span>', unsafe_allow_html=True)
             os_sp = st.checkbox("Service pack updates", value=os_cfg.get("service_packs", False), key="os_sp")
             os_feat = st.checkbox("Feature packs", value=os_cfg.get("feature_packs", False), key="os_feat")
             os_upd = st.checkbox("Updates", value=os_cfg.get("updates", True), key="os_upd")
-            st.markdown("*Drivers and tools*")
+            st.markdown('<span style="font-size:0.78rem;color:#6B7B6B;font-weight:600">DRIVERS & TOOLS</span>', unsafe_allow_html=True)
             os_hw = st.checkbox("Hardware driver updates", value=os_cfg.get("drivers", False), key="os_hw")
             os_off = st.checkbox("Office updates", value=os_cfg.get("office", False), key="os_off")
             os_tool = st.checkbox("Tool updates", value=os_cfg.get("tools", False), key="os_tool")
@@ -120,30 +145,30 @@ with tab2:
             os_sp = os_feat = os_upd = os_hw = os_off = os_tool = False
 
     with col_sw:
-        st.markdown("**Software Patch Management**")
+        st.markdown(f'<div style="{col_header_style}">SOFTWARE PATCH MANAGEMENT</div>', unsafe_allow_html=True)
         sw_update_all = st.checkbox("Update All", value=sw_cfg.get("update_all", False), key="sw_all")
-        st.markdown("*Excluded Software Patches*")
+        st.markdown('<span style="font-size:0.78rem;color:#6B7B6B;font-weight:600">EXCLUDED SOFTWARE PATCHES</span>', unsafe_allow_html=True)
         excluded_raw = st.text_area(
             "One per line",
             value="\n".join(sw_cfg.get("excluded", [])),
             height=80, key="sw_excl",
             label_visibility="collapsed"
         )
-        st.markdown("*Software Bundle*")
+        st.markdown('<span style="font-size:0.78rem;color:#6B7B6B;font-weight:600">SOFTWARE BUNDLE</span>', unsafe_allow_html=True)
         bundle_raw = st.text_input("Bundle name", value=", ".join(sw_cfg.get("bundles", [])), key="sw_bundle")
-        st.markdown("*Upgrades*")
+        st.markdown('<span style="font-size:0.78rem;color:#6B7B6B;font-weight:600">UPGRADES</span>', unsafe_allow_html=True)
         sw_upgrade_os = st.checkbox("Upgrade Windows 10 (latest build)",
                                     value=sw_cfg.get("upgrade_os", False), key="sw_upgrade")
 
     with col_disk:
-        st.markdown("**Disk Management**")
+        st.markdown(f'<div style="{col_header_style}">DISK MANAGEMENT</div>', unsafe_allow_html=True)
         disk_defrag = st.checkbox("Defragment (All disks)",
                                   value=disk_cfg.get("defrag", False), key="disk_defrag")
         disk_check = st.checkbox("Run Checkdisk (All disks)",
                                  value=disk_cfg.get("checkdisk", False), key="disk_check")
 
     with col_maint:
-        st.markdown("**Maintenance**")
+        st.markdown(f'<div style="{col_header_style}">MAINTENANCE</div>', unsafe_allow_html=True)
         maint_restore = st.checkbox("Create System Restore Point",
                                     value=maint_cfg.get("restore_point", False), key="m_restore")
         maint_temp = st.checkbox("Delete Temp Files",
@@ -152,7 +177,7 @@ with tab2:
                                  value=maint_cfg.get("clear_history", False), key="m_hist")
         maint_reboot = st.checkbox("Reboot", value=maint_cfg.get("reboot", False), key="m_reboot")
         maint_shutdown = st.checkbox("Shutdown", value=maint_cfg.get("shutdown", False), key="m_shutdown")
-        st.markdown("**Scripts**")
+        st.markdown(f'<div style="{col_header_style};margin-top:0.75rem">SCRIPTS</div>', unsafe_allow_html=True)
         # Script selector (Phase 4+)
         scripts_data, _ = client.list_scripts()
         scripts = scripts_data or []
