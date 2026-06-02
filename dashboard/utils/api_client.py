@@ -242,6 +242,19 @@ class RMMClient:
     def get_patch_summary(self):
         return self._get("/api/patches/summary")
 
+    # --- Admin / Users ---
+    def list_users(self):
+        return self._get("/api/admin/users")
+
+    def create_user(self, data: dict):
+        return self._post("/api/admin/users", data)
+
+    def update_user(self, user_id: str, data: dict):
+        return self._put(f"/api/admin/users/{user_id}", data)
+
+    def delete_user(self, user_id: str):
+        return self._delete(f"/api/admin/users/{user_id}")
+
     # --- Reports ---
     def list_reports(self):
         return self._get("/api/reports/")

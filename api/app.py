@@ -41,6 +41,7 @@ def create_app(config_name=None):
     from routes.billing import billing_bp
     from routes.network import network_bp
     from routes.dashboard import dashboard_bp
+    from routes.admin import admin_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(agents_bp, url_prefix="/api/agents")
@@ -55,6 +56,7 @@ def create_app(config_name=None):
     app.register_blueprint(billing_bp, url_prefix="/api/billing")
     app.register_blueprint(network_bp, url_prefix="/api/network")
     app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
+    app.register_blueprint(admin_bp, url_prefix="/api/admin")
 
     @app.route("/api/health")
     def health():

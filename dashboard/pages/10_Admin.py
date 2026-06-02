@@ -195,56 +195,128 @@ with tab_audit:
 with tab_users:
     st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
 
-    users_data, users_err = client._get("/api/admin/users")
+    ROLE_COLORS = {
+        "admin": "#407E3C",
+        "technician": "#3B82F6",
+        "viewer": "#6B7B6B",
+    }
 
+    # ── Create user form ──────────────────────────────────────────────────────
+    with st.expander("+ Create New User", expanded=False):
+        with st.form("create_user_form", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                new_name  = st.text_input("Full Name")
+                new_email = st.text_input("Email")
+            with c2:
+                new_role  = st.selectbox("Role", ["technician", "viewer", "admin"])
+                new_pass  = st.text_input("Password", type="password", help="Min 8 characters")
+            submitted = st.form_submit_button("Create User", use_container_width=True)
+            if submitted:
+                if not new_name or not new_email or not new_pass:
+                    st.error("Name, email, and password are required.")
+                else:
+                    _, cerr = client.create_user({
+                        "full_name": new_name,
+                        "email": new_email,
+                        "role": new_role,
+                        "password": new_pass,
+                    })
+                    if cerr:
+                        st.error(f"Failed: {cerr}")
+                    else:
+                        st.success(f"User {new_email} created.")
+                        st.rerun()
+
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+
+    # ── User list ─────────────────────────────────────────────────────────────
+    users_data, users_err = client.list_users()
     if users_err:
+        st.warning(f"Could not load users — {users_err}")
+    else:
+        user_list = users_data.get("users", []) if isinstance(users_data, dict) else users_data
+
         st.markdown(
-            f'<div style="{CARD};border-left:3px solid #F59E0B">'
-            f'<div style="font-size:0.85rem;font-weight:600;color:#1A1A1A;margin-bottom:0.25rem">No user management API yet</div>'
-            f'<div style="font-size:0.8rem;color:#6B7B6B">The <code style="background:#F4F6F4;padding:1px 5px;border-radius:3px">/api/admin/users</code> endpoint is not available. Implement it in the Flask API to enable user management here.</div>'
-            f'</div>',
+            f'<div style="font-size:0.8rem;color:#6B7B6B;margin-bottom:0.6rem"><b>{len(user_list)}</b> user(s)</div>',
             unsafe_allow_html=True,
         )
-    else:
-        user_list = users_data if isinstance(users_data, list) else users_data.get("items", users_data.get("users", []))
 
-        if not user_list:
-            st.markdown(
-                f'<div style="{CARD};text-align:center;padding:2rem">'
-                f'<div style="font-size:0.95rem;color:#6B7B6B">No users returned by API.</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f'<div style="font-size:0.8rem;color:#6B7B6B;margin-bottom:0.6rem"><b>{len(user_list)}</b> users</div>',
-                unsafe_allow_html=True,
-            )
+        current_uid = user.get("id", "")
 
-            rows_html = ""
-            for u in user_list:
-                role = (u.get("role") or "user").lower()
-                role_color = "#407E3C" if role == "admin" else "#3B82F6" if role == "manager" else "#6B7B6B"
-                created = fmt_datetime(u.get("created_at", ""))
-                rows_html = (rows_html
-                    + f'<tr style="border-bottom:1px solid #EEF2EE">'
-                    + f'<td style="padding:0.55rem 0.75rem;font-size:0.82rem;color:#1A1A1A;font-weight:500">{u.get("full_name") or "—"}</td>'
-                    + f'<td style="padding:0.55rem 0.75rem;font-size:0.82rem;color:#1A1A1A">{u.get("email","—")}</td>'
-                    + f'<td style="padding:0.55rem 0.75rem"><span style="background:{role_color}1A;color:{role_color};padding:2px 9px;border-radius:5px;font-size:0.7rem;font-weight:700;border:1px solid {role_color}33">{role.upper()}</span></td>'
-                    + f'<td style="padding:0.55rem 0.75rem;font-size:0.78rem;color:#6B7B6B;white-space:nowrap">{created}</td>'
-                    + f'</tr>'
-                )
+        for u in user_list:
+            uid   = u.get("id", "")
+            uname = u.get("full_name") or "—"
+            uemail = u.get("email", "—")
+            urole = (u.get("role") or "viewer").lower()
+            uactive = u.get("is_active", True)
+            rc = ROLE_COLORS.get(urole, "#6B7B6B")
+            created = fmt_datetime(u.get("created_at", ""))
+            is_self = uid == current_uid
 
-            table_html = (
-                f'<div style="{CARD};padding:0;overflow:hidden">'
-                f'<table style="width:100%;border-collapse:collapse">'
-                f'<thead><tr style="border-bottom:1px solid #DDE8DD;background:#FAFCFA">'
-                f'<th style="padding:0.6rem 0.75rem;text-align:left;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B">Name</th>'
-                f'<th style="padding:0.6rem 0.75rem;text-align:left;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B">Email</th>'
-                f'<th style="padding:0.6rem 0.75rem;text-align:left;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B">Role</th>'
-                f'<th style="padding:0.6rem 0.75rem;text-align:left;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B;white-space:nowrap">Created</th>'
-                f'</tr></thead>'
-                f'<tbody>' + rows_html + f'</tbody></table></div>'
-            )
+            with st.container():
+                col_info, col_actions = st.columns([4, 2])
+                with col_info:
+                    st.markdown(
+                        f'<div style="background:#FFFFFF;border:1px solid #DDE8DD;border-radius:10px;'
+                        f'padding:0.75rem 1rem;margin-bottom:0.5rem">'
+                        f'<div style="display:flex;align-items:center;gap:10px">'
+                        f'<div style="font-weight:600;color:#1A1A1A;font-size:0.88rem">{uname}</div>'
+                        f'<span style="background:{rc}1A;color:{rc};padding:2px 8px;border-radius:5px;font-size:0.68rem;font-weight:700;border:1px solid {rc}33">{urole.upper()}</span>'
+                        + ('' if uactive else '<span style="background:#EF444415;color:#EF4444;padding:2px 8px;border-radius:5px;font-size:0.68rem;font-weight:700;border:1px solid #EF444433;margin-left:4px">INACTIVE</span>')
+                        + f'</div>'
+                        f'<div style="font-size:0.78rem;color:#6B7B6B;margin-top:2px">{uemail} · Created {created}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                with col_actions:
+                    ea, da = st.columns(2)
+                    with ea:
+                        if st.button("Edit", key=f"edit_btn_{uid}", use_container_width=True):
+                            st.session_state[f"edit_open_{uid}"] = not st.session_state.get(f"edit_open_{uid}", False)
+                    with da:
+                        if not is_self:
+                            if st.button("Delete", key=f"del_btn_{uid}", use_container_width=True, type="primary"):
+                                st.session_state[f"del_confirm_{uid}"] = True
 
-            st.markdown(table_html, unsafe_allow_html=True)
+                # Delete confirmation
+                if st.session_state.get(f"del_confirm_{uid}"):
+                    st.warning(f"Delete **{uname}** ({uemail})? This cannot be undone.")
+                    cy, cn = st.columns(2)
+                    with cy:
+                        if st.button("Yes, delete", key=f"del_yes_{uid}", use_container_width=True):
+                            _, derr = client.delete_user(uid)
+                            if derr:
+                                st.error(f"Failed: {derr}")
+                            else:
+                                st.success("User deleted.")
+                                st.session_state.pop(f"del_confirm_{uid}", None)
+                                st.rerun()
+                    with cn:
+                        if st.button("Cancel", key=f"del_no_{uid}", use_container_width=True):
+                            st.session_state.pop(f"del_confirm_{uid}", None)
+                            st.rerun()
+
+                # Edit form
+                if st.session_state.get(f"edit_open_{uid}"):
+                    with st.form(f"edit_user_{uid}"):
+                        ec1, ec2 = st.columns(2)
+                        with ec1:
+                            e_name = st.text_input("Full Name", value=uname)
+                            e_role = st.selectbox("Role", ["technician", "viewer", "admin"],
+                                                  index=["technician","viewer","admin"].index(urole) if urole in ["technician","viewer","admin"] else 0)
+                        with ec2:
+                            e_active = st.checkbox("Active", value=uactive)
+                            e_pass   = st.text_input("New Password (leave blank to keep)", type="password")
+                        save = st.form_submit_button("Save Changes", use_container_width=True)
+                        if save:
+                            payload = {"full_name": e_name, "role": e_role, "is_active": e_active}
+                            if e_pass:
+                                payload["password"] = e_pass
+                            _, uerr = client.update_user(uid, payload)
+                            if uerr:
+                                st.error(f"Failed: {uerr}")
+                            else:
+                                st.success("User updated.")
+                                st.session_state.pop(f"edit_open_{uid}", None)
+                                st.rerun()

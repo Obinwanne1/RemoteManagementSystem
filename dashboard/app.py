@@ -270,10 +270,6 @@ def show_dashboard_home():
 
 
 # ── Route ─────────────────────────────────────────────────────────────────────
-# Try restoring session from URL token before deciding which page to show
-from utils.auth import _restore_from_query_params
-_restore_from_query_params()
-
 if "access_token" not in st.session_state:
     show_login()
 else:
