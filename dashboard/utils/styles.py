@@ -88,6 +88,9 @@ header[data-testid="stHeader"] {
     color: #C8DCC8 !important;
 }
 
+/* Hide default Streamlit auto-generated page nav — we use custom HTML nav */
+[data-testid="stSidebarNav"] { display: none !important; }
+
 /* Nav link container */
 [data-testid="stSidebarNavLink"] {
     border-radius: 6px;

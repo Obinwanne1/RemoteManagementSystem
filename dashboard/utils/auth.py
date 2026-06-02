@@ -20,12 +20,20 @@ def get_client() -> RMMClient | None:
     return client
 
 
+def _restore_from_query_params() -> None:
+    """Restore access token from ?tok= URL param then immediately clear it."""
+    tok = st.query_params.get("tok", "")
+    if tok and "access_token" not in st.session_state:
+        st.session_state["access_token"] = tok
+        st.query_params.clear()
+
+
 def require_auth() -> RMMClient:
-    """Halt page if not authenticated. Returns client."""
+    """Halt page if not authenticated. Redirects to login. Returns client."""
+    _restore_from_query_params()
     client = get_client()
     if not client:
-        st.error("Not logged in. Please return to the main page.")
-        st.stop()
+        st.switch_page("app.py")
     return client
 
 
