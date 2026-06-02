@@ -3,25 +3,25 @@ from datetime import datetime
 
 
 STATUS_COLORS = {
-    "healthy": "#407E3C",
-    "warning": "#E6A817",
-    "critical": "#D9534F",
-    "offline": "#6C757D",
-    "unknown": "#ADB5BD",
-    "online": "#407E3C",
+    "healthy": "#22C55E",
+    "warning": "#F59E0B",
+    "critical": "#EF4444",
+    "offline": "#8492A6",
+    "unknown": "#8492A6",
+    "online":  "#22C55E",
 }
 
 SEVERITY_COLORS = {
-    "info": "#0D6EFD",
-    "warning": "#FFC107",
-    "critical": "#DC3545",
+    "info":     "#3B82F6",
+    "warning":  "#F59E0B",
+    "critical": "#EF4444",
 }
 
 PRIORITY_COLORS = {
-    "low": "#6C757D",
-    "medium": "#0D6EFD",
-    "high": "#FD7E14",
-    "critical": "#DC3545",
+    "low":      "#8492A6",
+    "medium":   "#3B82F6",
+    "high":     "#F59E0B",
+    "critical": "#EF4444",
 }
 
 
@@ -68,9 +68,9 @@ def status_badge(status: str) -> str:
 
 def pct_color(pct: float) -> str:
     if pct is None:
-        return "#ADB5BD"
+        return "#8492A6"
     if pct >= 90:
-        return "#DC3545"
+        return "#EF4444"
     if pct >= 75:
-        return "#FD7E14"
-    return "#407E3C"
+        return "#F59E0B"
+    return "#22C55E"

@@ -1,16 +1,22 @@
+"""Dashboard Overview — live metrics, charts, alerts, activity feed."""
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
+
 from utils.auth import require_auth
-from utils.formatters import fmt_datetime, STATUS_COLORS, SEVERITY_COLORS
+from utils.styles import (
+    inject_css, stat_card, alert_row, activity_row,
+    device_mini_card, plotly_layout, section_header, BRAND, STATUS_COLORS,
+)
+from utils.formatters import fmt_datetime
 
 st.set_page_config(page_title="Overview — RMM", layout="wide")
-st.title("📊 Dashboard Overview")
+inject_css()
 
 client = require_auth()
 
-# --- Summary Tiles ---
+# ── Summary ───────────────────────────────────────────────────────────────────
 summary, err = client.get_summary()
 if err:
     st.error(f"API error: {err}")
@@ -20,97 +26,168 @@ d = summary["devices"]
 a = summary["alerts"]
 t = summary["tickets"]
 
-col1, col2, col3, col4, col5 = st.columns(5)
-col1.metric("Total Devices", d["total"])
-col2.metric("🟢 Online", d["online"])
-col3.metric("🔴 Offline", d["offline"])
-col4.metric("🔔 Open Alerts", a["open"], delta=f"{a['critical']} critical" if a['critical'] else None)
-col5.metric("🎫 Open Tickets", t["open"])
+st.markdown("""
+<div style="margin-bottom:0.25rem">
+    <h1 style="margin:0">Dashboard Overview</h1>
+    <p style="color:#6B7B6B;margin:2px 0 0;font-size:0.88rem">
+        Live system health · auto-refresh manually with ⟳
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 st.divider()
 
-# --- Device Status Donut + Health Grid ---
-left, right = st.columns([1, 2])
+# ── Stat cards ────────────────────────────────────────────────────────────────
+c1, c2, c3, c4, c5 = st.columns(5)
+crit_d = d.get("critical", 0)
+warn_d = d.get("warning", 0)
+
+with c1:
+    st.markdown(stat_card("Total Devices", d["total"], icon="💻"), unsafe_allow_html=True)
+with c2:
+    st.markdown(stat_card("Online", d["online"],
+                           f"{d.get('offline',0)} offline",
+                           BRAND["success"], "🟢"), unsafe_allow_html=True)
+with c3:
+    st.markdown(stat_card("Warning", warn_d,
+                           "degraded performance" if warn_d else "none",
+                           BRAND["warning"] if warn_d else BRAND["success"],
+                           "⚠️" if warn_d else "✅"), unsafe_allow_html=True)
+with c4:
+    st.markdown(stat_card("Critical", crit_d,
+                           "needs attention" if crit_d else "all clear",
+                           BRAND["danger"] if crit_d else BRAND["success"],
+                           "🔴" if crit_d else "✅"), unsafe_allow_html=True)
+with c5:
+    st.markdown(stat_card("Open Tickets", t["open"],
+                           f"{a.get('critical',0)} critical alerts",
+                           BRAND["info"], "🎫"), unsafe_allow_html=True)
+
+st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
+
+# ── Row 2: Donut + Device Health Map ─────────────────────────────────────────
+left, right = st.columns([1, 2.2])
 
 with left:
-    st.subheader("Device Status")
-    status_counts = {
-        "Healthy": d["total"] - d["offline"] - d["critical"] - d["warning"],
-        "Warning": d["warning"],
-        "Critical": d["critical"],
-        "Offline": d["offline"],
-    }
-    fig = go.Figure(go.Pie(
-        labels=list(status_counts.keys()),
-        values=list(status_counts.values()),
-        hole=0.5,
-        marker_colors=["#407E3C", "#FFC107", "#DC3545", "#6C757D"],
-    ))
-    fig.update_layout(height=280, margin=dict(t=10, b=10, l=10, r=10),
-                      showlegend=True, legend=dict(orientation="h"))
-    st.plotly_chart(fig, use_container_width=True)
+    st.markdown("""
+    <div style="background:#FFF;border-radius:12px;padding:1.25rem 1.25rem 0.75rem;
+                border:1px solid #DDE8DD;box-shadow:0 2px 8px rgba(0,0,0,0.05)">
+        <div style="font-size:0.85rem;font-weight:700;color:#1A2B1A;margin-bottom:0.25rem">
+            Device Status
+        </div>
+    """, unsafe_allow_html=True)
+
+    healthy = max(0, d["total"] - d.get("offline", 0) - crit_d - warn_d)
+    labels  = ["Healthy", "Warning", "Critical", "Offline"]
+    values  = [healthy, warn_d, crit_d, d.get("offline", 0)]
+    colors  = ["#22C55E", "#F59E0B", "#EF4444", "#8492A6"]
+
+    # Remove zero-value slices
+    pairs   = [(l, v, c) for l, v, c in zip(labels, values, colors) if v > 0]
+    if pairs:
+        l2, v2, c2 = zip(*pairs)
+        fig = go.Figure(go.Pie(
+            labels=list(l2), values=list(v2),
+            hole=0.62,
+            marker=dict(colors=list(c2), line=dict(color="#FFF", width=2)),
+            textfont=dict(size=11),
+            hovertemplate="%{label}: %{value}<extra></extra>",
+        ))
+        fig.add_annotation(
+            text=f"<b>{d['total']}</b><br><span style='font-size:9px'>devices</span>",
+            x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="#1A1A1A"),
+        )
+        plotly_layout(fig, height=260)
+        fig.update_layout(
+            showlegend=True,
+            legend=dict(orientation="h", yanchor="top", y=-0.05, xanchor="center", x=0.5, font=dict(size=10)),
+            margin=dict(t=8, b=30, l=8, r=8),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No devices yet.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 with right:
-    st.subheader("Device Health Map")
+    st.markdown("""
+    <div style="background:#FFF;border-radius:12px;padding:1.25rem;
+                border:1px solid #DDE8DD;box-shadow:0 2px 8px rgba(0,0,0,0.05)">
+        <div style="font-size:0.85rem;font-weight:700;color:#1A2B1A;margin-bottom:0.75rem">
+            Device Health Map
+        </div>
+    """, unsafe_allow_html=True)
+
     health, herr = client.get_health_map()
     if herr:
-        st.warning(f"Could not load health map: {herr}")
-    elif health:
-        # Display as colored grid
-        cols_per_row = 6
-        for i in range(0, len(health), cols_per_row):
-            row_devices = health[i:i+cols_per_row]
-            cols = st.columns(cols_per_row)
-            for j, device in enumerate(row_devices):
-                color = STATUS_COLORS.get(device["status"], "#ADB5BD")
-                icon = "🟢" if device["is_online"] else "🔴"
-                cols[j].markdown(
-                    f'<div style="background:{color};color:white;padding:6px;border-radius:4px;'
-                    f'text-align:center;font-size:0.75em;margin:2px" title="{device["hostname"]}">'
-                    f'{icon} {device["hostname"][:12]}</div>',
-                    unsafe_allow_html=True,
-                )
+        st.warning(f"Health map unavailable: {herr}")
+    elif not health:
+        st.markdown("""
+        <div style="text-align:center;padding:2rem;color:#6B7B6B;font-size:0.88rem">
+            No devices registered yet.<br>
+            <span style="font-size:0.8rem">Deploy the agent to see devices here.</span>
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        st.info("No devices found. Deploy the agent to register devices.")
+        COLS = 4
+        for i in range(0, len(health), COLS):
+            row_devs = health[i:i + COLS]
+            cols = st.columns(COLS)
+            for j, dev in enumerate(row_devs):
+                with cols[j]:
+                    st.markdown(device_mini_card(dev), unsafe_allow_html=True)
 
-st.divider()
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# --- Recent Alerts + Activity Feed ---
+st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
+
+# ── Row 3: Alerts + Activity ──────────────────────────────────────────────────
 col_a, col_b = st.columns(2)
 
 with col_a:
-    st.subheader("Recent Alerts")
+    st.markdown("""
+    <div style="background:#FFF;border-radius:12px;padding:1.25rem 1.25rem 0.75rem;
+                border:1px solid #DDE8DD;box-shadow:0 2px 8px rgba(0,0,0,0.05)">
+        <div style="font-size:0.85rem;font-weight:700;color:#1A2B1A;margin-bottom:0.75rem">
+            Recent Alerts
+        </div>
+    """, unsafe_allow_html=True)
+
     alerts, aerr = client.get_recent_alerts()
     if aerr:
         st.warning(f"Could not load alerts: {aerr}")
-    elif alerts:
-        for alert in alerts[:10]:
-            severity = alert["severity"]
-            color = SEVERITY_COLORS.get(severity, "#6C757D")
-            st.markdown(
-                f'<div style="border-left:3px solid {color};padding:6px 12px;margin:4px 0;background:#f8f9fa">'
-                f'<b style="color:{color}">[{severity.upper()}]</b> {alert["message"]}'
-                f'<br><small style="color:#666">{fmt_datetime(alert["triggered_at"])} • {alert["status"]}</small>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+    elif not alerts:
+        st.markdown("""
+        <div style="text-align:center;padding:1.5rem;color:#22C55E;font-size:0.9rem">
+            ✅ No recent alerts — all systems healthy
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        st.success("No recent alerts.")
+        html = "".join(alert_row(a) for a in alerts[:10])
+        st.markdown(html, unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 with col_b:
-    st.subheader("Activity Feed")
+    st.markdown("""
+    <div style="background:#FFF;border-radius:12px;padding:1.25rem 1.25rem 0.75rem;
+                border:1px solid #DDE8DD;box-shadow:0 2px 8px rgba(0,0,0,0.05)">
+        <div style="font-size:0.85rem;font-weight:700;color:#1A2B1A;margin-bottom:0.75rem">
+            Activity Feed
+        </div>
+    """, unsafe_allow_html=True)
+
     feed, ferr = client.get_activity_feed()
     if ferr:
-        st.warning(f"Could not load feed: {ferr}")
-    elif feed:
-        for item in feed[:10]:
-            st.markdown(
-                f'<div style="padding:4px 0;border-bottom:1px solid #eee">'
-                f'<b>{item["action"]}</b> {item.get("resource_type","")}'
-                f'<br><small style="color:#666">{fmt_datetime(item["created_at"])}'
-                f' • {item.get("ip_address","")}</small>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+        st.warning(f"Could not load activity: {ferr}")
+    elif not feed:
+        st.markdown("""
+        <div style="text-align:center;padding:1.5rem;color:#6B7B6B;font-size:0.88rem">
+            No recent activity logged.
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        st.info("No recent activity.")
+        html = "".join(activity_row(item) for item in feed[:12])
+        st.markdown(html, unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)

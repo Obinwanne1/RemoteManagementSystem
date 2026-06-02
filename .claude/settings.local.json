@@ -20,7 +20,27 @@
       "Bash(cp:*)",
       "Bash(python:*)",
       "Bash(../venv/Scripts/python -c ':*)",
-      "Bash(api/venv/Scripts/python -c ':*)"
+      "Bash(api/venv/Scripts/python -c ':*)",
+      "Bash(winget --version)",
+      "Bash(choco --version)",
+      "Bash(choco install:*)",
+      "Bash(winget install:*)",
+      "Bash(winget search:*)",
+      "Bash(where psql:*)",
+      "Read(//c/Program Files/PostgreSQL/**)",
+      "Bash(C:/Program Files/PostgreSQL/15/bin/psql.exe:*)",
+      "Bash(powershell:*)",
+      "Bash(PGPASSWORD=postgres C:/Program Files/PostgreSQL/15/bin/psql.exe:*)",
+      "Bash(Start-Process:*)",
+      "Bash(\"C:/Users/rigwe/Desktop/RemoteManagementSystem/redis/redis-cli.exe\" ping:*)",
+      "Bash(curl -s http://localhost:5000/api/health)",
+      "Bash(curl:*)",
+      "Bash(taskkill /F /PID 30760)",
+      "Bash(taskkill /F /PID 19120)",
+      "Bash(venv/Scripts/python rmm_agent.py)",
+      "Bash(pandoc --version)",
+      "Bash(pip install:*)",
+      "Bash(start:*)"
     ]
   }
 }
