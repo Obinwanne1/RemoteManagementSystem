@@ -324,9 +324,7 @@ def md_to_flowables(md_text: str) -> list:
 
             # PART headings get special treatment
             if level == 1 and text.upper().startswith("PART"):
-                # CondPageBreak: only breaks if remaining space < 240mm
-                # (skips the break when already at top of page, preventing blank pages)
-                flowables.append(CondPageBreak(240 * mm))
+                flowables.append(PageBreak())
                 flowables.append(Spacer(1, 8 * mm))
                 flowables.append(Paragraph(text, styles["part"]))
                 flowables.append(HRFlowable(width="100%", thickness=2,
