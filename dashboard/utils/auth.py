@@ -4,28 +4,30 @@ from utils.api_client import RMMClient
 
 
 def get_client() -> RMMClient | None:
-    """Return a cached RMMClient if logged in, else None."""
+    """Return a fresh RMMClient if logged in, else None."""
     token = st.session_state.get("access_token")
     if not token:
         return None
-    # Reuse existing client if token unchanged (preserves TCP connection pool)
-    existing: RMMClient | None = st.session_state.get("_rmm_client")
-    if existing and existing._token == token:
-        return existing
-    client = RMMClient(
+    return RMMClient(
         access_token=token,
         refresh_token=st.session_state.get("refresh_token", ""),
     )
-    st.session_state["_rmm_client"] = client
-    return client
 
 
 def _restore_from_query_params() -> None:
-    """Restore access token from ?tok= URL param then immediately clear it."""
+    """Restore access token from ?tok= URL param. Keeps param for refresh persistence."""
     tok = st.query_params.get("tok", "")
-    if tok and "access_token" not in st.session_state:
+    if tok:
         st.session_state["access_token"] = tok
-        st.query_params.clear()
+
+
+def _redirect_to_login() -> None:
+    """Force browser redirect to login page and stop execution."""
+    st.markdown(
+        '<meta http-equiv="refresh" content="0; url=/">',
+        unsafe_allow_html=True,
+    )
+    st.stop()
 
 
 def require_auth() -> RMMClient:
@@ -33,12 +35,26 @@ def require_auth() -> RMMClient:
     _restore_from_query_params()
     client = get_client()
     if not client:
-        st.switch_page("app.py")
+        _redirect_to_login()
+    # Re-stamp token into URL on every authenticated page load so F5 reload
+    # always has ?tok= available regardless of which page the user is on.
+    token = st.session_state.get("access_token", "")
+    if token and st.query_params.get("tok", "") != token:
+        st.query_params["tok"] = token
+    # Restore user profile if missing (e.g. after page refresh)
+    if not st.session_state.get("user"):
+        data, err = client.get_me()
+        if err or not data:
+            # Token is invalid/expired — clear and redirect
+            st.session_state.pop("access_token", None)
+            st.query_params.clear()
+            _redirect_to_login()
+        st.session_state["user"] = data.get("user", data)
     return client
 
 
 def login(email: str, password: str) -> bool:
-    """Attempt login, store tokens in session state only. Returns success."""
+    """Attempt login, store tokens in session state and URL param. Returns success."""
     data, err = RMMClient.login(email, password)
     if err:
         st.error(f"Login failed: {err}")
@@ -46,14 +62,15 @@ def login(email: str, password: str) -> bool:
     st.session_state["access_token"] = data["access_token"]
     st.session_state["refresh_token"] = data.get("refresh_token", "")
     st.session_state["user"] = data["user"]
-    # Invalidate any cached client so it's rebuilt with the new token
-    st.session_state.pop("_rmm_client", None)
+    # Persist token in URL so page refresh restores session
+    st.query_params["tok"] = data["access_token"]
     return True
 
 
 def logout():
-    for key in ["access_token", "refresh_token", "user", "_rmm_client"]:
+    for key in ["access_token", "refresh_token", "user"]:
         st.session_state.pop(key, None)
+    st.query_params.clear()
     st.rerun()
 
 

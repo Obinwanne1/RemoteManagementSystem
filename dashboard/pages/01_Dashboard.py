@@ -5,6 +5,7 @@ import plotly.express as px
 import pandas as pd
 
 from utils.auth import require_auth
+from utils.nav import render_sidebar
 from utils.styles import (
     inject_css, stat_card, alert_row, activity_row,
     device_mini_card, plotly_layout, section_header, BRAND, STATUS_COLORS,
@@ -15,6 +16,7 @@ st.set_page_config(page_title="Overview — RMM", layout="wide")
 inject_css()
 
 client = require_auth()
+render_sidebar()
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 with st.spinner("Loading dashboard..."):
@@ -30,14 +32,20 @@ d = summary["devices"]
 a = summary["alerts"]
 t = summary["tickets"]
 
-st.markdown("""
-<div style="margin-bottom:0.25rem">
-    <h1 style="margin:0">Dashboard Overview</h1>
-    <p style="color:#6B7B6B;margin:2px 0 0;font-size:0.88rem">
-        Live system health · auto-refresh manually with ⟳
-    </p>
-</div>
-""", unsafe_allow_html=True)
+_title_col, _refresh_col = st.columns([8, 1])
+with _title_col:
+    st.markdown("""
+    <div style="margin-bottom:0.25rem">
+        <h1 style="margin:0">Dashboard Overview</h1>
+        <p style="color:#6B7B6B;margin:2px 0 0;font-size:0.88rem">
+            Live system health · click ⟳ to refresh
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+with _refresh_col:
+    st.markdown("<div style='padding-top:0.6rem'></div>", unsafe_allow_html=True)
+    if st.button("⟳ Refresh", key="dash_refresh", use_container_width=True):
+        st.rerun()
 
 st.divider()
 
