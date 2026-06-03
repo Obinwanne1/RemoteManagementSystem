@@ -108,6 +108,44 @@ with tab_sysinfo:
             unsafe_allow_html=True,
         )
 
+    # ── Agent Enrollment Token ────────────────────────────────────────────────
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+
+    org_data, org_err = client.get_org_token()
+    org_token_val = org_data.get("org_token", "") if org_data else ""
+
+    masked = org_token_val[:6] + "•" * (len(org_token_val) - 6) if len(org_token_val) > 6 else "••••••••"
+    show_key = "admin_show_org_token"
+    if show_key not in st.session_state:
+        st.session_state[show_key] = False
+
+    st.markdown(
+        f'<div style="{CARD}">'
+        f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.08em;color:#6B7B6B;margin-bottom:0.75rem">Agent Enrollment Token</div>'
+        f'<div style="font-size:0.8rem;color:#4B5B4B;margin-bottom:0.75rem">'
+        f'Paste this token into <code>config.ini → org_token</code> on any machine you want to enroll. '
+        f'Keep it secret — anyone with this token can register devices to your org.</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    if org_err:
+        st.warning(f"Could not load org token: {org_err}")
+    elif org_token_val:
+        tok_col, btn_col, copy_col = st.columns([6, 1, 1])
+        with tok_col:
+            display_val = org_token_val if st.session_state[show_key] else masked
+            st.code(display_val, language=None)
+        with btn_col:
+            label = "Hide" if st.session_state[show_key] else "Reveal"
+            if st.button(label, key="toggle_org_token", use_container_width=True):
+                st.session_state[show_key] = not st.session_state[show_key]
+                st.rerun()
+        with copy_col:
+            st.button("Copy", key="copy_org_token", use_container_width=True,
+                      help="Click Reveal first, then copy from the code block above.")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 2 — Audit Log
 # ═══════════════════════════════════════════════════════════════════════════════

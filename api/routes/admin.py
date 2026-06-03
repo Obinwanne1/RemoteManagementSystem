@@ -1,7 +1,7 @@
 """
-Admin routes — user management (admin-only).
+Admin routes — user management and system config (admin-only).
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
 from models.user import User
@@ -121,3 +121,14 @@ def delete_user(user_id):
     db.session.delete(user)
     db.session.commit()
     return jsonify({"message": "User deleted"})
+
+
+@admin_bp.route("/org-token", methods=["GET"])
+@jwt_required()
+def get_org_token():
+    """Return the org registration token. Admin-only."""
+    _, err, code = _require_admin()
+    if err:
+        return err, code
+    token = current_app.config.get("ORG_REGISTRATION_TOKEN", "")
+    return jsonify({"org_token": token})
