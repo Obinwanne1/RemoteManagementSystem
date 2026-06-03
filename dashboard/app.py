@@ -162,59 +162,53 @@ def show_dashboard_home():
         </div>
         """, unsafe_allow_html=True)
 
-        _LINK = (
-            "display:flex;align-items:center;gap:9px;"
-            "padding:0.42rem 0.75rem;border-radius:6px;margin:1px 4px;"
-            "color:#C8DCC8 !important;text-decoration:none;"
-            "font-size:0.875rem;font-weight:500;"
-            "transition:background 0.15s;"
-        )
-        _LINK_HOVER = "background:rgba(64,126,60,0.22)"
-
-        def nav_section(label: str):
+        def nav_section(label: str, first: bool = False):
+            divider = (
+                "" if first else
+                '<div style="border-top:1px solid #1E3320;margin:0.35rem 0.5rem 0"></div>'
+            )
             st.markdown(
-                f'<div style="color:#3A5C3A;font-size:0.63rem;font-weight:700;'
-                f'letter-spacing:0.1em;padding:0.7rem 0.75rem 0.2rem">{label}</div>',
+                f'{divider}'
+                f'<div style="display:flex;align-items:center;gap:7px;padding:0.75rem 0.75rem 0.2rem">'
+                f'<div style="width:3px;height:13px;background:#407E3C;border-radius:2px;flex-shrink:0"></div>'
+                f'<span style="color:#7EC87E;font-size:0.68rem;font-weight:700;letter-spacing:0.1em">{label}</span>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
 
-        def nav_link(href: str, icon: str, label: str):
-            tok = st.session_state.get("access_token", "")
-            full_href = f"{href}?tok={tok}" if tok else href
-            st.markdown(
-                f'<a href="{full_href}" target="_self" style="{_LINK}"'
-                f' onmouseover="this.style.background=\'rgba(64,126,60,0.22)\';this.style.color=\'#fff\'"'
-                f' onmouseout="this.style.background=\'transparent\';this.style.color=\'#C8DCC8\'">'
-                f'{icon}&nbsp;{label}</a>',
-                unsafe_allow_html=True,
-            )
+        role = user.get("role", "")
 
-        nav_section("MONITORING")
-        nav_link("/Dashboard",  "📊", "Overview")
-        nav_link("/Devices",    "💻", "Devices")
-        nav_link("/Alerts",     "🔔", "Alerts")
+        if role == "admin":
+            if st.button("🔧  Admin Panel", use_container_width=True, key="nav_admin"):
+                st.switch_page("pages/10_Admin.py")
+            st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
+
+        nav_section("MONITORING", first=True)
+        st.page_link("pages/01_Dashboard.py",         label="Overview",          icon="📊")
+        st.page_link("pages/04_Devices.py",           label="Devices",           icon="💻")
+        st.page_link("pages/05_Alerts.py",            label="Alerts",            icon="🔔")
 
         nav_section("MANAGEMENT")
-        nav_link("/Tickets",    "🎫", "Tickets")
-        nav_link("/Customers",  "🏢", "Customers")
-        nav_link("/Automation", "⚙️", "Automation")
+        st.page_link("pages/02_Tickets.py",           label="Tickets",           icon="🎫")
+        st.page_link("pages/03_Customers.py",         label="Customers",         icon="🏢")
+        st.page_link("pages/11_Automation.py",        label="Automation",        icon="⚙️")
 
         nav_section("PATCHING")
-        nav_link("/OS_Patches",       "🔧", "OS Patches")
-        nav_link("/Software_Patches", "📦", "Software Patches")
+        st.page_link("pages/12_OS_Patches.py",        label="OS Patches",        icon="🔧")
+        st.page_link("pages/13_Software_Patches.py",  label="Software Patches",  icon="📦")
 
         nav_section("TOOLS")
-        nav_link("/Scripts",           "📝", "Scripts")
-        nav_link("/Disk_Management",   "💾", "Disk Management")
-        nav_link("/Maintenance",       "🔨", "Maintenance")
-        nav_link("/Network_Discovery", "🌐", "Network Discovery")
+        st.page_link("pages/16_Scripts.py",           label="Scripts",           icon="📝")
+        st.page_link("pages/14_Disk_Management.py",   label="Disk Management",   icon="💾")
+        st.page_link("pages/15_Maintenance.py",       label="Maintenance",       icon="🔨")
+        st.page_link("pages/07_Network_Discovery.py", label="Network Discovery", icon="🌐")
 
-        nav_section("BUSINESS")
-        nav_link("/Reports", "📈", "Reports")
-        nav_link("/Billing", "💰", "Billing")
-        nav_link("/Admin",   "👤", "Admin")
+        if role in ("admin", "technician"):
+            nav_section("BUSINESS")
+            st.page_link("pages/08_Reports.py",       label="Reports",           icon="📈")
+            st.page_link("pages/09_Billing.py",       label="Billing",           icon="💰")
 
-        st.markdown("<div style='height:3rem'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
         if st.button("⎋  Sign Out", use_container_width=True, key="home_signout"):
             logout()
 

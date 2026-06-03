@@ -14,7 +14,7 @@ from pathlib import Path
 
 import psutil
 
-from collector import get_hardware_info, get_metrics, get_installed_software
+from collector import get_hardware_info, get_metrics, get_installed_software, get_pending_patches
 from heartbeat import APIClient
 from executor import execute_task, flush_pending_queue
 
@@ -121,6 +121,8 @@ def main():
     psutil.cpu_percent(interval=None)
 
     last_software_sync = 0.0
+    last_patch_sync = 0.0
+    patch_interval = config.getint("agent", "patch_interval", fallback=3600)
     _consecutive_failures = 0  # C-4
 
     while True:
@@ -174,6 +176,17 @@ def main():
                 client.update_software(sw)
                 last_software_sync = now
                 logger.info("Software sync complete: %d packages", len(sw))
+
+            # Sync pending patches periodically
+            if now - last_patch_sync >= patch_interval:
+                logger.info("Scanning for pending patches...")
+                patches = get_pending_patches()
+                if patches:
+                    client.report_patches(patches)
+                    logger.info("Patch scan complete: %d pending patches", len(patches))
+                else:
+                    logger.info("Patch scan complete: no pending patches found")
+                last_patch_sync = now
 
         except KeyboardInterrupt:
             logger.info("Agent stopped by user")

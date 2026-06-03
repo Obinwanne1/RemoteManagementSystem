@@ -138,8 +138,8 @@ def reboot_device(device_id):
     device = Device.query.get_or_404(device_id)
     if not device.is_online:
         return jsonify({"error": "Device is offline"}), 400
-    # Task queuing handled in Phase 4/5
-    return jsonify({"message": "Reboot queued", "device_id": device_id}), 202
+    run_id = _queue_builtin_task(device_id, "reboot")
+    return jsonify({"message": "Reboot queued", "device_id": device_id, "run_id": run_id}), 202
 
 
 @devices_bp.route("/<device_id>/shutdown", methods=["POST"])
@@ -151,4 +151,71 @@ def shutdown_device(device_id):
     device = Device.query.get_or_404(device_id)
     if not device.is_online:
         return jsonify({"error": "Device is offline"}), 400
-    return jsonify({"message": "Shutdown queued", "device_id": device_id}), 202
+    run_id = _queue_builtin_task(device_id, "shutdown")
+    return jsonify({"message": "Shutdown queued", "device_id": device_id, "run_id": run_id}), 202
+
+
+@devices_bp.route("/<device_id>/queue_task", methods=["POST"])
+@jwt_required()
+def queue_device_task(device_id):
+    """Queue a built-in maintenance task for a device. Agent picks it up on next poll."""
+    err = _require_role("admin", "technician")
+    if err:
+        return err
+    Device.query.get_or_404(device_id)
+    data = request.get_json(silent=True) or {}
+    task_type = (data.get("task_type") or "").strip()
+    if not task_type:
+        return jsonify({"error": "task_type required"}), 400
+
+    from utils.builtin_scripts import get_builtin_script_id, TASK_TYPE_TO_TAG
+    if task_type not in TASK_TYPE_TO_TAG:
+        return jsonify({"error": f"Unknown task_type '{task_type}'. Valid: {list(TASK_TYPE_TO_TAG)}"}), 400
+
+    run_id = _queue_builtin_task(device_id, task_type, timeout=data.get("timeout_seconds", 300))
+    if not run_id:
+        return jsonify({"error": "Built-in script not found. Restart API to re-sync."}), 500
+
+    return jsonify({"run_id": run_id, "task_type": task_type, "status": "queued"}), 202
+
+
+@devices_bp.route("/<device_id>/deploy_patches", methods=["POST"])
+@jwt_required()
+def deploy_patches_route(device_id):
+    """Trigger Celery task to deploy approved patches to a device."""
+    err = _require_role("admin", "technician")
+    if err:
+        return err
+    Device.query.get_or_404(device_id)
+    data = request.get_json(silent=True) or {}
+    patch_ids = data.get("patch_ids", [])
+    if not patch_ids:
+        return jsonify({"error": "patch_ids required"}), 400
+    from tasks.patch_tasks import deploy_patches
+    deploy_patches.delay(device_id, patch_ids)
+    return jsonify({"message": "Patch deployment queued", "count": len(patch_ids)}), 202
+
+
+def _queue_builtin_task(device_id: str, task_type: str, timeout: int = 300):
+    """Create a ScriptRun for a built-in task. Returns run_id or None."""
+    from models.script import ScriptRun
+    from utils.builtin_scripts import get_builtin_script_id
+    from flask_jwt_extended import get_jwt_identity
+
+    script_id = get_builtin_script_id(task_type)
+    if not script_id:
+        return None
+    try:
+        uid = get_jwt_identity()
+    except Exception:
+        uid = None
+
+    run = ScriptRun(
+        script_id=script_id,
+        device_id=device_id,
+        triggered_by=uid,
+        timeout_seconds=timeout,
+    )
+    db.session.add(run)
+    db.session.commit()
+    return run.id

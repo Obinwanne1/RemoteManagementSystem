@@ -90,6 +90,45 @@ def get_metrics() -> dict:
     }
 
 
+def get_pending_patches() -> list:
+    """Query Windows Update for pending patches via PowerShell. Returns list of dicts."""
+    import subprocess
+    import json
+
+    script = (
+        "$ErrorActionPreference='SilentlyContinue'\n"
+        "try {\n"
+        "    $sess = New-Object -ComObject Microsoft.Update.Session\n"
+        "    $srch = $sess.CreateUpdateSearcher()\n"
+        "    $res = $srch.Search(\"IsInstalled=0 and Type='Software'\")\n"
+        "    $out = @()\n"
+        "    foreach ($u in $res.Updates) {\n"
+        "        $kb = if ($u.KBArticleIDs.Count -gt 0) { \"KB\" + $u.KBArticleIDs[0] } else { $null }\n"
+        "        $sev = $u.MsrcSeverity\n"
+        "        $type = if ($sev -eq 'Critical') { 'critical' } elseif ($sev -eq 'Important') { 'security' } else { 'feature' }\n"
+        "        $out += @{ name=$u.Title; kb_id=$kb; patch_type=$type }\n"
+        "    }\n"
+        "    $out | ConvertTo-Json -Compress\n"
+        "} catch { '[]' }\n"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NonInteractive", "-NoProfile", "-Command", script],
+            capture_output=True, text=True, encoding="utf-8",
+            timeout=60, creationflags=0x08000000,
+        )
+        raw = (result.stdout or "").strip()
+        if not raw:
+            return []
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            data = [data]
+        return data[:500]
+    except Exception as e:
+        logger.warning("get_pending_patches failed: %s", e)
+        return []
+
+
 def get_installed_software() -> list:
     """Get list of installed software from Windows registry and winget."""
     software = []

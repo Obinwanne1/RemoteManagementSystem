@@ -35,4 +35,5 @@ class Report(db.Model):
             "parameters": self.parameters,
             "is_scheduled": self.is_scheduled,
             "has_file": bool(self.file_path),
+            "file_path": self.file_path,
         }

@@ -238,6 +238,44 @@ def task_result(device_id):
     return jsonify({"status": "ok"}), 200
 
 
+@agents_bp.route("/<device_id>/patches", methods=["PUT"])
+def update_patches(device_id):
+    """Agent reports pending Windows Update patches."""
+    device = _get_device_by_token(device_id)
+    if not device:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    patch_list = data.get("patches", [])
+
+    from models.patch import PatchRecord
+
+    # Build set of existing pending patch names to avoid duplicates
+    existing_names = {
+        p.patch_name
+        for p in PatchRecord.query.filter_by(device_id=device_id, status="pending").all()
+    }
+
+    added = 0
+    for item in patch_list[:500]:
+        name = (item.get("name") or "")[:500]
+        if not name or name in existing_names:
+            continue
+        patch = PatchRecord(
+            device_id=device_id,
+            patch_name=name,
+            kb_id=item.get("kb_id"),
+            patch_type=item.get("patch_type", "feature"),
+            source="wu",
+        )
+        db.session.add(patch)
+        existing_names.add(name)
+        added += 1
+
+    db.session.commit()
+    return jsonify({"status": "ok", "added": added}), 200
+
+
 @agents_bp.route("/<device_id>/software", methods=["PUT"])
 def update_software(device_id):
     """Agent posts full installed software list (replaces previous)."""

@@ -2,6 +2,7 @@
 import streamlit as st
 
 from utils.auth import require_auth
+from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes
 
@@ -9,6 +10,7 @@ st.set_page_config(page_title="Maintenance — RMM", layout="wide")
 inject_css()
 
 client = require_auth()
+render_sidebar()
 
 st.markdown('<h1 style="margin:0">Maintenance</h1><p style="color:#6B7B6B;margin:2px 0 1rem;font-size:0.88rem">Device maintenance and remote actions</p>', unsafe_allow_html=True)
 
@@ -142,17 +144,29 @@ if shutdown_btn:
             st.success(f"Shutdown command sent to {selected['hostname']}.")
             st.session_state[confirm_key] = False
 
+def _queue(task_type: str, label: str):
+    if not confirm_checked:
+        st.warning("Check the confirmation box above before running this action.")
+        return
+    with st.spinner(f"Queuing {label}..."):
+        _, err = client.queue_device_task(selected["id"], task_type)
+    if err:
+        st.error(f"Failed to queue {label}: {err}")
+    else:
+        st.success(f"{label} queued. Agent will execute on next poll.")
+        st.session_state[confirm_key] = False
+
 if restore_btn:
-    st.info("Create Restore Point — queued via agent. Will be available in Phase 5.")
+    _queue("restore_point", "Create Restore Point")
 
 if temp_btn:
-    st.info("Delete Temp Files — queued via agent. Will be available in Phase 5.")
+    _queue("clean_temp", "Delete Temp Files")
 
 if browser_btn:
-    st.info("Clear Browser History — queued via agent. Will be available in Phase 5.")
+    _queue("clear_browser", "Clear Browser History")
 
 if chkdsk_btn:
-    st.info("Check Disk (chkdsk) — queued via agent. Will be available in Phase 5.")
+    _queue("check_disk", "Check Disk")
 
 # ── Maintenance log ───────────────────────────────────────────────────────────
 st.markdown("<div style='height:1.25rem'></div>", unsafe_allow_html=True)

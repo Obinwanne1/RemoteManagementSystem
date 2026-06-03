@@ -42,7 +42,8 @@ def generate_report():
     )
     db.session.add(report)
     db.session.commit()
-    # Phase 9: actual generation via Celery task
+    from tasks.report_tasks import generate_report as gen_task
+    gen_task.delay(report.id)
     return jsonify({"message": "Report queued", "report_id": report.id}), 202
 
 
