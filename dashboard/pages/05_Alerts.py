@@ -2,6 +2,7 @@
 import streamlit as st
 
 from utils.auth import require_auth
+from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, BRAND, STATUS_COLORS, section_header
 from utils.formatters import fmt_datetime, PRIORITY_COLORS, SEVERITY_COLORS
 
@@ -9,6 +10,7 @@ st.set_page_config(page_title="Alerts — RMM", layout="wide")
 inject_css()
 
 client = require_auth()
+render_sidebar()
 
 # ── Page header ───────────────────────────────────────────────────────────────
 st.markdown(

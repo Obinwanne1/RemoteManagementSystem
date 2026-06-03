@@ -2,11 +2,13 @@ import streamlit as st
 from utils.styles import inject_css, badge, BRAND, STATUS_COLORS
 from utils.formatters import fmt_datetime
 from utils.auth import require_auth, current_user
+from utils.nav import render_sidebar
 
 st.set_page_config(page_title="Customers — RMM", layout="wide")
 inject_css()
 
 client = require_auth()
+render_sidebar()
 
 TIER_COLORS = {
     "standard":   "#3B82F6",
