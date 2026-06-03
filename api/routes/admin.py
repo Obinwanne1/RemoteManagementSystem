@@ -64,7 +64,8 @@ def create_user():
     if User.query.filter_by(email=email).first():
         return jsonify({"error": "Email already in use"}), 409
 
-    user = User(email=email, full_name=full_name, role=role)
+    must_change = bool(data.get("must_change_password", False))
+    user = User(email=email, full_name=full_name, role=role, must_change_password=must_change)
     user.set_password(password)
     db.session.add(user)
     _audit("CREATE", admin.id, payload={"email": email, "role": role})
@@ -97,6 +98,8 @@ def update_user(user_id):
         if len(data["password"]) < 8:
             return jsonify({"error": "password must be at least 8 characters"}), 400
         user.set_password(data["password"])
+    if "must_change_password" in data:
+        user.must_change_password = bool(data["must_change_password"])
 
     _audit("UPDATE", admin.id, resource_id=user_id, payload={"email": user.email})
     db.session.commit()
