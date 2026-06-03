@@ -5,6 +5,7 @@ import plotly.express as px
 import pandas as pd
 
 from utils.auth import require_auth
+from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, plotly_layout, BRAND, STATUS_COLORS
 from utils.formatters import fmt_datetime, fmt_uptime, pct_color
 
@@ -12,6 +13,7 @@ st.set_page_config(page_title="Devices — RMM", layout="wide")
 inject_css()
 
 client = require_auth()
+render_sidebar()
 
 st.markdown("""
 <h1 style="margin:0">Devices</h1>

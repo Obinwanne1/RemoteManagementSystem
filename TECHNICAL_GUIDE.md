@@ -485,6 +485,7 @@ Dashboard stores:
   st.session_state["access_token"]   = access_token
   st.session_state["refresh_token"]  = refresh_token
   st.session_state["user"]           = user dict
+  st.query_params["tok"]             = access_token  ← persists in URL
 
 API call:
   Authorization: Bearer <access_token>
@@ -493,7 +494,21 @@ On 401:
   POST /api/auth/refresh  (Authorization: Bearer <refresh_token>)
   → {access_token}
   Update session_state, retry original request once
+
+On page reload (F5) or navigation:
+  Streamlit session state is wiped on browser reload.
+  app.py reads st.query_params["tok"] before session state check.
+  require_auth() in every page also re-reads and re-stamps tok.
+  require_auth() re-stamps st.query_params["tok"] = token on every
+  authenticated page load — ensures current page URL always carries
+  the token so F5 on any page restores the session.
 ```
+
+> **NOTE:** The access token is stored in the URL `?tok=` parameter. This is a pragmatic
+> trade-off for Streamlit's stateless page reload model. Mitigated by short token TTL
+> (900s default). In production with HTTPS, the token in URL is not visible in transit
+> but will appear in server access logs — rotate `JWT_ACCESS_TOKEN_EXPIRES` to 300s
+> for higher-security environments.
 
 ### Agent Token Flow
 

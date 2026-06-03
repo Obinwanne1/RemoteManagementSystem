@@ -2,6 +2,7 @@
 import streamlit as st
 
 from utils.auth import require_auth
+from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes
 
@@ -9,6 +10,7 @@ st.set_page_config(page_title="App Center — RMM", layout="wide")
 inject_css()
 
 client = require_auth()
+render_sidebar()
 
 st.markdown('<h1 style="margin:0">App Center</h1><p style="color:#6B7B6B;margin:2px 0 1rem;font-size:0.88rem">Installed software across all devices</p>', unsafe_allow_html=True)
 

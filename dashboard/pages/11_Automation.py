@@ -5,6 +5,7 @@ Plus: schedule config, scripts, email notifications.
 """
 import streamlit as st
 from utils.auth import require_auth
+from utils.nav import render_sidebar
 from utils.formatters import fmt_datetime
 from utils.styles import inject_css, badge, BRAND, stat_card
 
@@ -14,6 +15,7 @@ inject_css()
 st.markdown('<h1 style="margin:0">Automation Profiles</h1><p style="color:#6B7B6B;margin:2px 0 1rem;font-size:0.88rem">Schedule and manage automated maintenance tasks across devices</p>', unsafe_allow_html=True)
 
 client = require_auth()
+render_sidebar()
 
 CARD = "background:#FFFFFF;border-radius:12px;padding:1.2rem 1.5rem;border:1px solid #DDE8DD;box-shadow:0 2px 8px rgba(0,0,0,0.05);margin-bottom:1rem"
 
