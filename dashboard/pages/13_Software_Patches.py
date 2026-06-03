@@ -1,6 +1,17 @@
 """Software Patches — Installed software and update management."""
-import html
+import html as html_mod
 import streamlit as st
+
+
+def _clean(text: str) -> str:
+    """Strip non-printable and block/box-drawing Unicode before rendering."""
+    if not text:
+        return "—"
+    cleaned = "".join(
+        c for c in text
+        if c.isprintable() and not (0x2500 <= ord(c) <= 0x259F)
+    ).strip()
+    return cleaned or "—"
 
 from utils.auth import require_auth
 from utils.nav import render_sidebar
@@ -102,29 +113,25 @@ with right_col:
                 unsafe_allow_html=True
             )
         else:
-            st.markdown(
-                '<div style="display:grid;grid-template-columns:2.5fr 1.3fr 2fr;gap:8px;'
-                'padding:0.4rem 1rem;background:#F4F6F4;border-radius:8px 8px 0 0;'
-                'border:1px solid #DDE8DD;border-bottom:none;'
-                'font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B">'
-                '<div>Name</div><div>Version</div><div>Publisher</div></div>',
-                unsafe_allow_html=True
-            )
-
-            rows_html = '<div style="border:1px solid #DDE8DD;border-radius:0 0 8px 8px;overflow:hidden;max-height:520px;overflow-y:auto">'
+            rows = ""
             for i, sw in enumerate(sw_list):
                 bg = "#FFFFFF" if i % 2 == 0 else "#FAFCFA"
-                name = html.escape(sw.get("name") or "—")
-                version = html.escape(sw.get("version") or "—")
-                publisher = html.escape(sw.get("publisher") or "—")
-                rows_html += (
-                    f'<div style="display:grid;grid-template-columns:2.5fr 1.3fr 2fr;gap:8px;'
-                    f'padding:0.45rem 1rem;background:{bg};border-bottom:1px solid #EEF2EE;'
-                    f'font-size:0.83rem;align-items:center">'
-                    f'<div style="font-weight:500;color:#1A1A1A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{name}</div>'
-                    f'<div style="color:#6B7B6B;font-family:monospace;font-size:0.79rem">{version}</div>'
-                    f'<div style="color:#4A5A4A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{publisher}</div>'
-                    f'</div>'
+                name      = html_mod.escape(_clean(sw.get("name")      or ""))
+                version   = html_mod.escape(_clean(sw.get("version")   or ""))
+                publisher = html_mod.escape(_clean(sw.get("publisher") or ""))
+                rows += (
+                    f'<tr style="background:{bg}">'
+                    f'<td style="padding:6px 12px;font-size:13px;color:#1A1A1A;border-bottom:1px solid #EEF2EE">{name}</td>'
+                    f'<td style="padding:6px 12px;font-size:12px;color:#6B7B6B;font-family:monospace;border-bottom:1px solid #EEF2EE">{version}</td>'
+                    f'<td style="padding:6px 12px;font-size:13px;color:#4A5A4A;border-bottom:1px solid #EEF2EE">{publisher}</td>'
+                    f'</tr>'
                 )
-            rows_html += '</div>'
-            st.markdown(rows_html, unsafe_allow_html=True)
+            table_html = (
+                '<table style="width:100%;border-collapse:collapse">'
+                '<thead><tr style="background:#F4F6F4">'
+                '<th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B;border-bottom:2px solid #DDE8DD">Name</th>'
+                '<th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B;border-bottom:2px solid #DDE8DD">Version</th>'
+                '<th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B;border-bottom:2px solid #DDE8DD">Publisher</th>'
+                f'</tr></thead><tbody>{rows}</tbody></table>'
+            )
+            st.markdown(table_html, unsafe_allow_html=True)
