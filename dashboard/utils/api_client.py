@@ -108,6 +108,9 @@ class RMMClient:
     def get_me(self):
         return self._get("/api/auth/me")
 
+    def force_change_password(self, new_password: str):
+        return self._post("/api/auth/me/force-change-password", {"new_password": new_password})
+
     # --- Dashboard ---
     def get_summary(self):
         return self._get("/api/dashboard/summary")

@@ -96,6 +96,28 @@ def change_password():
         return jsonify({"error": "Password must be at least 8 characters"}), 400
 
     user.set_password(new_pw)
+    user.must_change_password = False
     _audit("password_changed", user_id=user.id)
+    db.session.commit()
+    return jsonify({"message": "Password updated"}), 200
+
+
+@auth_bp.route("/me/force-change-password", methods=["POST"])
+@jwt_required()
+def force_change_password():
+    """Used on forced first-login password change — no current password required."""
+    identity = get_jwt_identity()
+    user = User.query.get(identity)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    new_pw = data.get("new_password", "")
+    if len(new_pw) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    user.set_password(new_pw)
+    user.must_change_password = False
+    _audit("force_password_changed", user_id=user.id)
     db.session.commit()
     return jsonify({"message": "Password updated"}), 200

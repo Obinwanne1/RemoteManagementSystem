@@ -127,8 +127,11 @@ def show_login():
         else:
             from utils.auth import login
             with st.spinner("Authenticating…"):
-                if not login(email, password):
-                    st.error("Invalid credentials.")
+                ok = login(email, password)
+            if not ok:
+                st.error("Invalid credentials.")
+            else:
+                st.rerun()
 
 
 # ── Home (post-login) ─────────────────────────────────────────────────────────
@@ -269,6 +272,60 @@ def show_dashboard_home():
     """, unsafe_allow_html=True)
 
 
+def show_force_change_password():
+    """Full-screen form shown when must_change_password is True."""
+    st.markdown(_LOGIN_CSS, unsafe_allow_html=True)
+
+    _, col, _ = st.columns([1, 1, 1])
+    with col:
+        st.markdown("<div style='height:10vh'></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="text-align:center;margin-bottom:2rem">
+            <div style="display:inline-flex;align-items:center;justify-content:center;
+                        width:68px;height:68px;margin-bottom:1rem;
+                        background:linear-gradient(135deg,#1A3C18,#2D5C29);
+                        border-radius:18px;font-size:2rem;
+                        box-shadow:0 8px 24px rgba(64,126,60,0.4)">
+                🔑
+            </div>
+            <h1 class="brand-title">Set New Password</h1>
+            <p style="color:#8EC88E;font-size:0.88rem;margin:6px 0 0;font-weight:500">
+                You must change your password before continuing.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+        with st.form("force_pw_form"):
+            new_pw  = st.text_input("New Password", type="password", placeholder="Min 8 characters")
+            conf_pw = st.text_input("Confirm Password", type="password", placeholder="Repeat password")
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            submitted = st.form_submit_button("Set Password →", use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if submitted:
+        if len(new_pw) < 8:
+            st.error("Password must be at least 8 characters.")
+        elif new_pw != conf_pw:
+            st.error("Passwords do not match.")
+        else:
+            from utils.api_client import RMMClient
+            client = RMMClient(
+                access_token=st.session_state.get("access_token", ""),
+                refresh_token=st.session_state.get("refresh_token", ""),
+            )
+            _, err = client.force_change_password(new_pw)
+            if err:
+                st.error(f"Failed: {err}")
+            else:
+                st.session_state.pop("force_pw_change", None)
+                # Refresh user object so must_change_password is cleared
+                user_data, _ = client.get_me()
+                if user_data:
+                    st.session_state["user"] = user_data
+                st.rerun()
+
+
 # ── Route ─────────────────────────────────────────────────────────────────────
 # Restore token from ?tok= URL param before checking session state.
 # Without this, browser reload always wipes the session and shows login.
@@ -281,5 +338,7 @@ if rtok and "refresh_token" not in st.session_state:
 
 if "access_token" not in st.session_state:
     show_login()
+elif st.session_state.get("user", {}).get("must_change_password"):
+    show_force_change_password()
 else:
     show_dashboard_home()

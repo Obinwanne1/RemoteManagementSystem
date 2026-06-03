@@ -265,6 +265,11 @@ with tab_users:
             with c2:
                 new_role  = st.selectbox("Role", ["technician", "viewer", "admin"])
                 new_pass  = st.text_input("Password", type="password", help="Min 8 characters")
+            new_must_change = st.checkbox(
+                "Require password change on first login",
+                value=True,
+                help="User will be prompted to set a new password immediately after signing in.",
+            )
             submitted = st.form_submit_button("Create User", use_container_width=True)
             if submitted:
                 if not new_name or not new_email or not new_pass:
@@ -275,6 +280,7 @@ with tab_users:
                         "email": new_email,
                         "role": new_role,
                         "password": new_pass,
+                        "must_change_password": new_must_change,
                     })
                     if cerr:
                         st.error(f"Failed: {cerr}")
@@ -362,9 +368,15 @@ with tab_users:
                         with ec2:
                             e_active = st.checkbox("Active", value=uactive)
                             e_pass   = st.text_input("New Password (leave blank to keep)", type="password")
+                        e_must_change = st.checkbox(
+                            "Require password change on next login",
+                            value=u.get("must_change_password", False),
+                            help="Force user to set a new password on their next sign-in.",
+                        )
                         save = st.form_submit_button("Save Changes", use_container_width=True)
                         if save:
-                            payload = {"full_name": e_name, "role": e_role, "is_active": e_active}
+                            payload = {"full_name": e_name, "role": e_role, "is_active": e_active,
+                                       "must_change_password": e_must_change}
                             if e_pass:
                                 payload["password"] = e_pass
                             _, uerr = client.update_user(uid, payload)
