@@ -64,8 +64,17 @@ _LOGIN_CSS = """
     margin-top: 0.25rem;
 }
 .login-card .stButton > button:hover {
-    background: linear-gradient(135deg, #356630, #4E9848) !important;
-    box-shadow: 0 6px 20px rgba(64,126,60,0.5) !important;
+    background: linear-gradient(135deg, #3D7538, #5AAD54) !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 6px 24px rgba(64,126,60,0.65) !important;
+    transform: translateY(-1px);
+}
+.brand-title {
+    color: #FFFFFF !important;
+    font-size: 1.95rem !important;
+    font-weight: 800 !important;
+    margin: 0 !important;
+    letter-spacing: -0.02em !important;
 }
 </style>
 """
@@ -88,11 +97,8 @@ def show_login():
                         box-shadow:0 8px 24px rgba(64,126,60,0.4)">
                 🖥️
             </div>
-            <h1 style="font-size:1.85rem;font-weight:800;color:#FFFFFF;margin:0;
-                       letter-spacing:-0.02em;text-shadow:0 2px 8px rgba(0,0,0,0.4)">
-                RMM System
-            </h1>
-            <p style="color:#3A6A3A;font-size:0.88rem;margin:6px 0 0">
+            <h1 class="brand-title">RMM System</h1>
+            <p style="color:#8EC88E;font-size:0.88rem;margin:6px 0 0;font-weight:500">
                 Remote Monitoring &amp; Management
             </p>
         </div>
