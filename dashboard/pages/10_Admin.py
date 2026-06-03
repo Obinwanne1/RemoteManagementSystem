@@ -3,16 +3,21 @@ import streamlit as st
 from utils.styles import inject_css, badge, BRAND, STATUS_COLORS
 from utils.formatters import fmt_datetime
 from utils.auth import require_auth, current_user
+from utils.nav import render_sidebar
 
 st.set_page_config(page_title="Admin — RMM", layout="wide")
 inject_css()
 
 client = require_auth()
+render_sidebar()
 user = current_user() or {}
 
 # ── Role guard ─────────────────────────────────────────────────────────────────
 if user.get("role") != "admin":
     st.error("Admin access required. This page is restricted to admin users.")
+    from utils.auth import logout
+    if st.button("Sign Out / Switch Account", type="primary"):
+        logout()
     st.stop()
 
 # ── Page header ────────────────────────────────────────────────────────────────
@@ -159,7 +164,18 @@ with tab_audit:
             resource_id = item.get("resource_id") or ""
             ts = fmt_datetime(item.get("created_at", ""))
             ip = item.get("ip_address") or "—"
-            email = item.get("user_email") or "—"
+            user_email     = item.get("user_email") or ""
+            user_full_name = item.get("user_full_name") or ""
+            # Build user cell: "Full Name\nemail" or just email/dash
+            if user_full_name and user_full_name != "—":
+                user_cell = (
+                    f'<span style="font-weight:600;color:#1A1A1A">{user_full_name}</span>'
+                    f'<br><span style="color:#6B7B6B;font-size:0.73rem">{user_email}</span>'
+                )
+            elif user_email and user_email != "—":
+                user_cell = f'<span style="color:#1A1A1A">{user_email}</span>'
+            else:
+                user_cell = '<span style="color:#6B7B6B">—</span>'
             color = ACTION_COLORS.get(action, "#6B7B6B")
             resource_display = f"{resource_type}:{resource_id}" if resource_id else resource_type
             rows_html = (rows_html
@@ -168,7 +184,7 @@ with tab_audit:
                 + f'<td style="padding:0.5rem 0.75rem;font-size:0.82rem;color:#1A1A1A;font-weight:500">{resource_display}</td>'
                 + f'<td style="padding:0.5rem 0.75rem;font-size:0.78rem;color:#6B7B6B;white-space:nowrap">{ts}</td>'
                 + f'<td style="padding:0.5rem 0.75rem;font-size:0.78rem;color:#6B7B6B;font-family:monospace">{ip}</td>'
-                + f'<td style="padding:0.5rem 0.75rem;font-size:0.78rem;color:#6B7B6B">{email}</td>'
+                + f'<td style="padding:0.5rem 0.75rem;font-size:0.82rem;line-height:1.4">{user_cell}</td>'
                 + f'</tr>'
             )
 

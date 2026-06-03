@@ -2,6 +2,7 @@
 
 > NinjaOne-style Remote Monitoring & Management system.
 > Stack: Flask API + Streamlit dashboard + Python agent + PostgreSQL + Redis/Celery.
+> All 9 phases + A/B/C optimization pass complete.
 
 ---
 
@@ -13,7 +14,7 @@ Download: https://www.enterprisedb.com/downloads/postgres-postgresql-installer
 
 During install:
 - Port: `5432`
-- Superuser password: set something — you'll need it
+- Superuser password: set something — you will need it
 
 After install, open pgAdmin or psql and run:
 
@@ -50,22 +51,32 @@ RemoteManagementSystem/
 ├── .gitignore
 ├── CLAUDE.md
 ├── SKILL.md
+├── HANDOVER_GUIDE.md
+├── TECHNICAL_GUIDE.md
 ├── api/
 │   ├── app.py
 │   ├── config.py
 │   ├── extensions.py
 │   ├── seed.py
 │   ├── requirements.txt
-│   ├── models/
-│   ├── routes/
-│   ├── tasks/
-│   └── migrations/
+│   ├── reports/              ← CSV output dir (created at runtime)
+│   ├── models/               ← 11 SQLAlchemy model files
+│   ├── routes/               ← 13 route modules
+│   ├── tasks/                ← Celery task modules
+│   └── utils/
+│       ├── builtin_scripts.py
+│       └── notifications.py
 ├── dashboard/
 │   ├── app.py
 │   ├── requirements.txt
 │   ├── .streamlit/config.toml
-│   ├── pages/         (16 pages)
+│   ├── pages/                ← 16 Streamlit pages
 │   └── utils/
+│       ├── api_client.py
+│       ├── auth.py
+│       ├── nav.py
+│       ├── styles.py
+│       └── formatters.py
 ├── agent/
 │   ├── rmm_agent.py
 │   ├── collector.py
@@ -98,9 +109,8 @@ __pycache__/
 .DS_Store
 *.log
 *.db
+reports/
 ```
-
-Create `CLAUDE.md` with project rules (copy from repo).
 
 ---
 
@@ -112,7 +122,7 @@ Create `CLAUDE.md` with project rules (copy from repo).
 cd api
 python -m venv venv
 venv\Scripts\activate
-pip install flask flask-sqlalchemy flask-migrate flask-jwt-extended flask-cors flask-limiter celery redis psycopg2-binary bcrypt pyotp marshmallow reportlab openpyxl python-dateutil requests python-dotenv gunicorn
+pip install flask flask-sqlalchemy flask-migrate flask-jwt-extended flask-cors flask-limiter celery redis psycopg2-binary bcrypt pyotp marshmallow python-dateutil requests python-dotenv gunicorn
 pip freeze > requirements.txt
 ```
 
@@ -145,7 +155,12 @@ load_dotenv(Path(__file__).parent.parent / '.env')
 class Config:
     SECRET_KEY = os.environ['SECRET_KEY']
     SQLALCHEMY_DATABASE_URI = os.environ['DATABASE_URL']
-    SQLALCHEMY_ENGINE_OPTIONS = {'pool_recycle': 300, 'pool_pre_ping': True}
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_size': 10,
+        'max_overflow': 20,
+        'pool_recycle': 300,
+        'pool_pre_ping': True,
+    }
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET_KEY = os.environ['JWT_SECRET_KEY']
     JWT_ACCESS_TOKEN_EXPIRES = int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES', 900))
@@ -158,12 +173,12 @@ class Config:
     ORG_REGISTRATION_TOKEN = os.environ['ORG_REGISTRATION_TOKEN']
 ```
 
-### 2.4 `api/app.py`
+### 2.4 `api/app.py` (with Phase 5 built-in script sync)
 
 ```python
 from flask import Flask
-from api.config import Config
-from api.extensions import db, migrate, jwt, cors, limiter
+from config import Config
+from extensions import db, migrate, jwt, cors, limiter
 
 def create_app():
     app = Flask(__name__)
@@ -175,18 +190,39 @@ def create_app():
     cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
     limiter.init_app(app)
 
-    from api.routes import auth, agents, customers, devices, alerts
-    from api.routes import tickets, patches, scripts, automation
-    from api.routes import reports, billing, network, dashboard
+    from routes import auth, agents, customers, devices, alerts
+    from routes import tickets, patches, scripts, automation
+    from routes import reports, billing, network, dashboard, users
 
-    for bp in [auth.bp, agents.bp, customers.bp, devices.bp, alerts.bp,
-               tickets.bp, patches.bp, scripts.bp, automation.bp,
-               reports.bp, billing.bp, network.bp, dashboard.bp]:
-        app.register_blueprint(bp, url_prefix='/api')
+    for bp, prefix in [
+        (auth.auth_bp,         '/api/auth'),
+        (agents.agents_bp,     '/api/agents'),
+        (customers.customers_bp, '/api/customers'),
+        (devices.devices_bp,   '/api/devices'),
+        (alerts.alerts_bp,     '/api/alerts'),
+        (tickets.tickets_bp,   '/api/tickets'),
+        (patches.patches_bp,   '/api/patches'),
+        (scripts.scripts_bp,   '/api/scripts'),
+        (automation.automation_bp, '/api/automation'),
+        (reports.reports_bp,   '/api/reports'),
+        (billing.billing_bp,   '/api/billing'),
+        (network.network_bp,   '/api/network'),
+        (dashboard.dashboard_bp, '/api/dashboard'),
+        (users.users_bp,       '/api/users'),
+    ]:
+        app.register_blueprint(bp, url_prefix=prefix)
 
     @app.route('/api/health')
     def health():
         return {'status': 'ok'}
+
+    # Sync built-in scripts on startup (Phase 5)
+    with app.app_context():
+        try:
+            from utils.builtin_scripts import ensure_builtin_scripts
+            ensure_builtin_scripts()
+        except Exception:
+            app.logger.warning("Could not sync built-in scripts (DB may not be ready yet)")
 
     return app
 
@@ -198,340 +234,13 @@ if __name__ == '__main__':
 
 ### 2.5 Models (11 files in `api/models/`)
 
-#### `api/models/__init__.py`
-```python
-from .user import User
-from .customer import Customer, DeviceGroup
-from .device import Device, DeviceMetrics, InstalledSoftware
-from .alert import AlertRule, Alert
-from .ticket import Ticket, TicketComment
-from .patch import PatchPolicy, PatchRecord
-from .script import Script, ScriptRun
-from .automation import AutomationProfile, ScheduledTaskRun
-from .report import Report
-from .billing import Invoice
-from .audit import AgentToken, AuditLog, NetworkScan
-```
+See full model code in TECHNICAL_GUIDE.md. Key notes:
 
-#### `api/models/user.py`
-```python
-from api.extensions import db
-import bcrypt
-
-class User(db.Model):
-    __tablename__ = 'users'
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(255), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)
-    full_name = db.Column(db.String(255))
-    role = db.Column(db.String(50), default='technician')  # admin, technician, viewer
-    mfa_secret = db.Column(db.String(32))
-    mfa_enabled = db.Column(db.Boolean, default=False)
-    is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-
-    def set_password(self, password):
-        self.password_hash = bcrypt.hashpw(
-            password.encode('utf-8'), bcrypt.gensalt(12)
-        ).decode('utf-8')
-
-    def check_password(self, password):
-        return bcrypt.checkpw(
-            password.encode('utf-8'), self.password_hash.encode('utf-8')
-        )
-```
-
-#### `api/models/customer.py`
-```python
-from api.extensions import db
-
-class Customer(db.Model):
-    __tablename__ = 'customers'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(255), nullable=False)
-    slug = db.Column(db.String(100), unique=True)
-    email = db.Column(db.String(255))
-    phone = db.Column(db.String(50))
-    tier = db.Column(db.String(50), default='standard')
-    notes = db.Column(db.Text)
-    is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-    devices = db.relationship('Device', backref='customer', lazy='dynamic')
-
-class DeviceGroup(db.Model):
-    __tablename__ = 'device_groups'
-    id = db.Column(db.Integer, primary_key=True)
-    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'))
-    name = db.Column(db.String(255), nullable=False)
-    description = db.Column(db.Text)
-```
-
-#### `api/models/device.py`
-```python
-from api.extensions import db
-import json
-
-class Device(db.Model):
-    __tablename__ = 'devices'
-    id = db.Column(db.Integer, primary_key=True)
-    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'))
-    hostname = db.Column(db.String(255))
-    platform = db.Column(db.String(50))   # windows, linux, mac
-    os_name = db.Column(db.String(255))
-    os_version = db.Column(db.String(100))
-    cpu_brand = db.Column(db.String(255))
-    cpu_cores = db.Column(db.Integer)
-    ram_gb = db.Column(db.Float)
-    serial_number = db.Column(db.String(255))
-    ip_local = db.Column(db.String(50))
-    ip_public = db.Column(db.String(50))
-    mac_address = db.Column(db.String(50))
-    hardware_id = db.Column(db.String(64), unique=True)
-    status = db.Column(db.String(50), default='active')
-    is_online = db.Column(db.Boolean, default=False)
-    last_seen = db.Column(db.DateTime)
-    agent_version = db.Column(db.String(20))
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-
-class DeviceMetrics(db.Model):
-    __tablename__ = 'device_metrics'
-    id = db.Column(db.Integer, primary_key=True)
-    device_id = db.Column(db.Integer, db.ForeignKey('devices.id'))
-    cpu_pct = db.Column(db.Float)
-    ram_pct = db.Column(db.Float)
-    disk_pct = db.Column(db.Float)
-    battery_pct = db.Column(db.Float)
-    uptime_seconds = db.Column(db.BigInteger)
-    top_processes = db.Column(db.JSON)
-    disks = db.Column(db.JSON)
-    recorded_at = db.Column(db.DateTime, server_default=db.func.now())
-
-class InstalledSoftware(db.Model):
-    __tablename__ = 'installed_software'
-    id = db.Column(db.Integer, primary_key=True)
-    device_id = db.Column(db.Integer, db.ForeignKey('devices.id'))
-    name = db.Column(db.String(255))
-    version = db.Column(db.String(100))
-    publisher = db.Column(db.String(255))
-    install_date = db.Column(db.String(20))
-    source = db.Column(db.String(50))  # registry, winget, chocolatey
-    synced_at = db.Column(db.DateTime, server_default=db.func.now())
-```
-
-#### `api/models/alert.py`
-```python
-from api.extensions import db
-
-class AlertRule(db.Model):
-    __tablename__ = 'alert_rules'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(255), nullable=False)
-    metric = db.Column(db.String(100))  # cpu_pct, ram_pct, disk_pct, offline
-    operator = db.Column(db.String(10))  # >, <, ==
-    threshold = db.Column(db.Float)
-    severity = db.Column(db.String(20), default='warning')  # info, warning, critical
-    cooldown_minutes = db.Column(db.Integer, default=15)
-    is_active = db.Column(db.Boolean, default=True)
-    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=True)
-
-class Alert(db.Model):
-    __tablename__ = 'alerts'
-    id = db.Column(db.Integer, primary_key=True)
-    rule_id = db.Column(db.Integer, db.ForeignKey('alert_rules.id'))
-    device_id = db.Column(db.Integer, db.ForeignKey('devices.id'))
-    severity = db.Column(db.String(20))
-    status = db.Column(db.String(20), default='open')  # open, acknowledged, resolved
-    message = db.Column(db.Text)
-    acknowledged_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-    resolved_at = db.Column(db.DateTime, nullable=True)
-```
-
-#### `api/models/ticket.py`
-```python
-from api.extensions import db
-
-class Ticket(db.Model):
-    __tablename__ = 'tickets'
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(500), nullable=False)
-    description = db.Column(db.Text)
-    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'))
-    device_id = db.Column(db.Integer, db.ForeignKey('devices.id'), nullable=True)
-    assignee_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    priority = db.Column(db.String(20), default='medium')  # low, medium, high, critical
-    status = db.Column(db.String(20), default='open')      # open, in_progress, resolved, closed
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-    updated_at = db.Column(db.DateTime, onupdate=db.func.now())
-    comments = db.relationship('TicketComment', backref='ticket', lazy='dynamic')
-
-class TicketComment(db.Model):
-    __tablename__ = 'ticket_comments'
-    id = db.Column(db.Integer, primary_key=True)
-    ticket_id = db.Column(db.Integer, db.ForeignKey('tickets.id'))
-    author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    body = db.Column(db.Text, nullable=False)
-    is_internal = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-```
-
-#### `api/models/patch.py`
-```python
-from api.extensions import db
-
-class PatchPolicy(db.Model):
-    __tablename__ = 'patch_policies'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(255), nullable=False)
-    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=True)
-    auto_approve_critical = db.Column(db.Boolean, default=True)
-    auto_approve_important = db.Column(db.Boolean, default=False)
-    reboot_behavior = db.Column(db.String(50), default='prompt')  # prompt, auto, never
-    maintenance_window_start = db.Column(db.String(10))  # HH:MM
-    maintenance_window_end = db.Column(db.String(10))
-    is_active = db.Column(db.Boolean, default=True)
-
-class PatchRecord(db.Model):
-    __tablename__ = 'patch_records'
-    id = db.Column(db.Integer, primary_key=True)
-    device_id = db.Column(db.Integer, db.ForeignKey('devices.id'))
-    policy_id = db.Column(db.Integer, db.ForeignKey('patch_policies.id'), nullable=True)
-    patch_name = db.Column(db.String(500))
-    kb_id = db.Column(db.String(50))
-    status = db.Column(db.String(50), default='pending')  # pending, installed, failed
-    deployed_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-```
-
-#### `api/models/script.py`
-```python
-from api.extensions import db
-
-class Script(db.Model):
-    __tablename__ = 'scripts'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(255), nullable=False)
-    description = db.Column(db.Text)
-    file_type = db.Column(db.String(20))  # ps1, bat, py, sh
-    content = db.Column(db.Text, nullable=False)
-    os_target = db.Column(db.String(20), default='windows')
-    is_builtin = db.Column(db.Boolean, default=False)
-    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-
-class ScriptRun(db.Model):
-    __tablename__ = 'script_runs'
-    id = db.Column(db.Integer, primary_key=True)
-    script_id = db.Column(db.Integer, db.ForeignKey('scripts.id'))
-    device_id = db.Column(db.Integer, db.ForeignKey('devices.id'))
-    triggered_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    exit_code = db.Column(db.Integer)
-    stdout = db.Column(db.Text)
-    stderr = db.Column(db.Text)
-    status = db.Column(db.String(20), default='pending')  # pending, running, completed, failed
-    started_at = db.Column(db.DateTime, nullable=True)
-    completed_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-```
-
-#### `api/models/automation.py`
-```python
-from api.extensions import db
-
-class AutomationProfile(db.Model):
-    __tablename__ = 'automation_profiles'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(255), nullable=False)
-    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=True)
-    schedule_type = db.Column(db.String(50))  # daily, weekly, monthly
-    schedule_time = db.Column(db.String(10))  # HH:MM
-    os_patch_config = db.Column(db.JSON)
-    software_patch_config = db.Column(db.JSON)
-    disk_config = db.Column(db.JSON)
-    maintenance_config = db.Column(db.JSON)
-    is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-
-class ScheduledTaskRun(db.Model):
-    __tablename__ = 'scheduled_task_runs'
-    id = db.Column(db.Integer, primary_key=True)
-    profile_id = db.Column(db.Integer, db.ForeignKey('automation_profiles.id'))
-    device_id = db.Column(db.Integer, db.ForeignKey('devices.id'))
-    status = db.Column(db.String(20), default='pending')
-    result_summary = db.Column(db.JSON)
-    started_at = db.Column(db.DateTime, nullable=True)
-    completed_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-```
-
-#### `api/models/report.py`
-```python
-from api.extensions import db
-
-class Report(db.Model):
-    __tablename__ = 'reports'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(255))
-    template_type = db.Column(db.String(100))  # executive_summary, device_health, patch_compliance
-    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=True)
-    format = db.Column(db.String(10), default='pdf')  # pdf, xlsx
-    file_path = db.Column(db.String(500))
-    generated_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-```
-
-#### `api/models/billing.py`
-```python
-from api.extensions import db
-
-class Invoice(db.Model):
-    __tablename__ = 'invoices'
-    id = db.Column(db.Integer, primary_key=True)
-    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'))
-    period_start = db.Column(db.Date)
-    period_end = db.Column(db.Date)
-    device_count = db.Column(db.Integer)
-    rate_per_device = db.Column(db.Float, default=15.0)
-    total = db.Column(db.Float)
-    status = db.Column(db.String(20), default='draft')  # draft, sent, paid, overdue
-    notes = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-```
-
-#### `api/models/audit.py`
-```python
-from api.extensions import db
-
-class AgentToken(db.Model):
-    __tablename__ = 'agent_tokens'
-    id = db.Column(db.Integer, primary_key=True)
-    device_id = db.Column(db.Integer, db.ForeignKey('devices.id'))
-    token_hash = db.Column(db.String(255), unique=True)
-    issued_at = db.Column(db.DateTime, server_default=db.func.now())
-    is_revoked = db.Column(db.Boolean, default=False)
-
-class AuditLog(db.Model):
-    __tablename__ = 'audit_logs'
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    action = db.Column(db.String(255))
-    resource_type = db.Column(db.String(100))
-    resource_id = db.Column(db.Integer)
-    ip_address = db.Column(db.String(50))
-    payload = db.Column(db.JSON)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-
-class NetworkScan(db.Model):
-    __tablename__ = 'network_scans'
-    id = db.Column(db.Integer, primary_key=True)
-    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'))
-    scan_range = db.Column(db.String(50))
-    discovered_hosts = db.Column(db.JSON)
-    status = db.Column(db.String(20), default='pending')
-    initiated_by = db.Column(db.Integer, db.ForeignKey('users.id'))
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-    completed_at = db.Column(db.DateTime, nullable=True)
-```
+- `DeviceMetrics`: field is `collected_at` (not `recorded_at`)
+- `Script`: has `is_builtin = db.Column(db.Boolean, default=False)` flag
+- `ScriptRun`: `script_id` is NOT NULL FK — all tasks go through Script records
+- `AutomationProfile`: JSON columns `disk_config`, `maintenance_config`, `os_patch_config`, `software_patch_config`
+- `Report`: `file_path` exposed in `to_dict()` so dashboard can read CSV for download
 
 ### 2.6 Run Migrations
 
@@ -545,45 +254,19 @@ flask db upgrade
 
 ### 2.7 Seed DB
 
-`api/seed.py`:
-```python
-from pathlib import Path
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from api.app import create_app
-from api.extensions import db
-from api.models import User, Customer
-
-def seed():
-    app = create_app()
-    with app.app_context():
-        if not User.query.filter_by(email='admin@rmm.local').first():
-            u = User(email='admin@rmm.local', full_name='Admin', role='admin')
-            u.set_password('Admin1234!')
-            db.session.add(u)
-        if not Customer.query.filter_by(slug='default').first():
-            c = Customer(name='Default Customer', slug='default')
-            db.session.add(c)
-        db.session.commit()
-        print('Seeded.')
-
-if __name__ == '__main__':
-    seed()
-```
-
 ```bash
-python api/seed.py
+python seed.py
+# Creates: admin@rmm.local / Admin1234! + Default Customer + built-in scripts
 ```
 
 ---
 
 ## Phase 3 — Celery Tasks
 
-`api/tasks/celery_app.py`:
+### `api/tasks/celery_app.py`
+
 ```python
 from celery import Celery
-from celery.schedules import crontab
 import os
 from dotenv import load_dotenv
 from pathlib import Path
@@ -594,29 +277,48 @@ celery_app = Celery(
     'rmm',
     broker=os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0'),
     backend=os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/1'),
-    include=['api.tasks.alert_tasks', 'api.tasks.patch_tasks',
-             'api.tasks.maintenance_tasks', 'api.tasks.report_tasks']
+    include=[
+        'tasks.alert_tasks',
+        'tasks.patch_tasks',
+        'tasks.automation_tasks',
+        'tasks.report_tasks',
+    ]
 )
 
 celery_app.conf.beat_schedule = {
-    'evaluate-alerts': {
-        'task': 'api.tasks.alert_tasks.evaluate_all_rules',
+    'evaluate-alerts-every-60s': {
+        'task': 'tasks.alert_tasks.evaluate_all_rules',
         'schedule': 60.0,
     },
-    'mark-offline-devices': {
-        'task': 'api.tasks.alert_tasks.mark_offline_devices',
+    'mark-offline-devices-every-3m': {
+        'task': 'tasks.alert_tasks.mark_offline_devices',
         'schedule': 180.0,
+    },
+    'sync-patch-status-every-30-min': {
+        'task': 'tasks.patch_tasks.sync_patch_status',
+        'schedule': 1800.0,
     },
 }
 
-celery_app.conf.worker_pool = 'solo'  # Windows requirement
+celery_app.conf.task_acks_late = True
+celery_app.conf.worker_pool = 'solo'  # Windows: no fork()
 ```
+
+### Task modules
+
+| File | Tasks | Schedule |
+|------|-------|---------|
+| `tasks/alert_tasks.py` | `evaluate_all_rules`, `mark_offline_devices` | 60s / 180s beat |
+| `tasks/patch_tasks.py` | `deploy_patches(device_id, patch_ids)`, `sync_patch_status` | on-demand / 1800s beat |
+| `tasks/automation_tasks.py` | `enqueue_profile_run(profile_id)` | triggered per profile schedule |
+| `tasks/report_tasks.py` | `generate_report(report_id)` | triggered on report creation |
 
 ---
 
 ## Phase 4 — Agent
 
 ### 4.1 `agent/config.ini`
+
 ```ini
 [api]
 base_url = http://localhost:5000
@@ -625,6 +327,7 @@ org_token = YOUR_ORG_REGISTRATION_TOKEN
 [agent]
 interval_seconds = 60
 software_sync_hours = 6
+patch_interval = 3600
 version = 0.1.0
 log_level = INFO
 ```
@@ -632,11 +335,7 @@ log_level = INFO
 ### 4.2 `agent/collector.py` (key functions)
 
 ```python
-import psutil
-import socket
-import platform
-import hashlib
-import uuid
+import psutil, socket, platform, hashlib, uuid
 
 def collect_hardware_info():
     hostname = socket.gethostname()
@@ -652,43 +351,74 @@ def collect_hardware_info():
         'ram_gb': round(psutil.virtual_memory().total / (1024**3), 2),
         'ip_local': socket.gethostbyname(hostname),
         'mac_address': mac,
-        'hardware_id': hashlib.sha256(
-            f"{hostname}{mac}".encode()
-        ).hexdigest()
+        'hardware_id': hashlib.sha256(f"{hostname}{mac}".encode()).hexdigest()
     }
 
 def collect_metrics():
-    cpu = psutil.cpu_percent(interval=1)
+    # Non-blocking CPU sample (Phase C-1): prime at startup, then interval=None
+    cpu = psutil.cpu_percent(interval=None)
     ram = psutil.virtual_memory()
     disks = []
     for part in psutil.disk_partitions():
         try:
             usage = psutil.disk_usage(part.mountpoint)
-            disks.append({'mount': part.mountpoint,
-                          'total_gb': round(usage.total / (1024**3), 2),
-                          'used_pct': usage.percent})
+            disks.append({
+                'mountpoint': part.mountpoint,
+                'device': part.device,
+                'total_gb': round(usage.total / (1024**3), 2),
+                'used_gb':  round(usage.used  / (1024**3), 2),
+                'free_gb':  round(usage.free  / (1024**3), 2),
+                'percent':  usage.percent,
+            })
         except PermissionError:
             pass
     battery = psutil.sensors_battery()
-    procs = sorted(psutil.process_iter(['pid', 'name', 'cpu_percent']),
-                   key=lambda p: p.info['cpu_percent'], reverse=True)[:5]
+    # Bounded process scan (Phase C-3): 3s deadline, 200-process cap
+    procs = sorted(
+        psutil.process_iter(['pid', 'name', 'cpu_percent']),
+        key=lambda p: p.info['cpu_percent'] or 0, reverse=True
+    )[:5]
     return {
         'cpu_pct': cpu,
         'ram_pct': ram.percent,
-        'disk_pct': disks[0]['used_pct'] if disks else 0,
+        'disk_pct': disks[0]['percent'] if disks else 0,
         'battery_pct': battery.percent if battery else None,
         'uptime_seconds': int(psutil.boot_time()),
         'disks': disks,
         'top_processes': [{'pid': p.info['pid'], 'name': p.info['name'],
                            'cpu': p.info['cpu_percent']} for p in procs]
     }
+
+def get_pending_patches():
+    """Query Windows Update Agent for pending patches via WUA COM (Phase 6)."""
+    import subprocess, json
+    ps = r"""
+$session = New-Object -ComObject Microsoft.Update.Session
+$searcher = $session.CreateUpdateSearcher()
+$result = $searcher.Search("IsInstalled=0 and Type='Software'")
+$patches = @()
+foreach ($u in $result.Updates) {
+    $patches += @{name=$u.Title; kb_id=($u.KBArticleIDs -join ','); patch_type='software'}
+}
+$patches | ConvertTo-Json -Compress
+"""
+    try:
+        out = subprocess.check_output(
+            ['powershell', '-NoProfile', '-NonInteractive', '-Command', ps],
+            timeout=60, creationflags=0x08000000  # CREATE_NO_WINDOW
+        )
+        data = json.loads(out.decode('utf-8', errors='replace').strip() or '[]')
+        if isinstance(data, dict):
+            data = [data]
+        return data[:500]
+    except Exception:
+        return []
 ```
 
-### 4.3 `agent/heartbeat.py` (API client)
+### 4.3 `agent/heartbeat.py` (key methods)
 
 ```python
-import requests
-import configparser
+import requests, configparser
 from pathlib import Path
 
 class APIClient:
@@ -708,81 +438,96 @@ class APIClient:
         self.device_id = data['device_id']
         return data
 
-    def heartbeat(self, metrics):
-        return requests.post(
-            f'{self.base_url}/api/agents/heartbeat',
-            json={'device_id': self.device_id, 'metrics': metrics},
+    def send_heartbeat(self, metrics):
+        """Returns (data, status_code). Caller checks 401 for re-registration (Phase C-5)."""
+        resp = requests.post(
+            f'{self.base_url}/api/agents/{self.device_id}/heartbeat',
+            json={'metrics': metrics},
             headers={'X-Agent-Token': self.device_token},
             timeout=10
-        ).json()
+        )
+        return resp.json(), resp.status_code
 
-    def poll_tasks(self):
-        return requests.get(
-            f'{self.base_url}/api/agents/tasks',
-            params={'device_id': self.device_id},
+    def get_tasks(self):
+        resp = requests.get(
+            f'{self.base_url}/api/agents/{self.device_id}/tasks',
             headers={'X-Agent-Token': self.device_token},
             timeout=10
-        ).json()
+        )
+        return resp.json()
+
+    def report_patches(self, patches: list) -> bool:
+        """Phase 6: report pending OS patches to API."""
+        resp = requests.put(
+            f'{self.base_url}/api/agents/{self.device_id}/patches',
+            json={'patches': patches},
+            headers={'X-Agent-Token': self.device_token},
+            timeout=30
+        )
+        return resp.status_code == 200
 ```
 
 ### 4.4 `agent/rmm_agent.py` (main loop)
 
 ```python
-import time
-import logging
+import time, logging, json
 from pathlib import Path
-from collector import collect_hardware_info, collect_metrics
+from collector import collect_hardware_info, collect_metrics, get_pending_patches
 from heartbeat import APIClient
 from executor import TaskExecutor
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        logging.FileHandler(Path(__file__).parent / 'rmm_agent.log', encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
-log = logging.getLogger(__name__)
-
-STATE_FILE = Path(__file__).parent / 'agent_state.json'
-
-def load_state():
-    import json
-    if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text(encoding='utf-8'))
-    return {}
-
-def save_state(state):
-    import json
-    STATE_FILE.write_text(json.dumps(state), encoding='utf-8')
+STATE_FILE  = Path(__file__).parent / 'agent_state.json'
+RESULT_FILE = Path(__file__).parent / 'pending_results.json'  # Phase C-6
 
 def main():
-    client = APIClient()
+    client   = APIClient()
     executor = TaskExecutor(client)
-    state = load_state()
 
+    # Load or register
+    state = json.loads(STATE_FILE.read_text(encoding='utf-8')) if STATE_FILE.exists() else {}
     if 'device_id' not in state:
-        log.info('Registering agent...')
         hw = collect_hardware_info()
+        # Prime CPU counter (Phase C-1)
+        import psutil; psutil.cpu_percent(interval=1)
         data = client.register(hw)
-        state['device_id'] = data['device_id']
-        state['token'] = data['agent_token']
-        save_state(state)
-        log.info(f"Registered as device {state['device_id']}")
+        state.update({'device_id': data['device_id'], 'token': data['agent_token']})
+        STATE_FILE.write_text(json.dumps(state), encoding='utf-8')
     else:
-        client.device_id = state['device_id']
+        client.device_id    = state['device_id']
         client.device_token = state['token']
+
+    backoff      = 15          # Phase C-4 exponential backoff
+    last_patch   = 0.0
+    patch_interval = 3600      # configurable in config.ini
 
     while True:
         try:
             metrics = collect_metrics()
-            client.heartbeat(metrics)
-            tasks = client.poll_tasks()
+            data, status = client.send_heartbeat(metrics)
+            if status == 401:
+                # Re-register (Phase C-5)
+                hw = collect_hardware_info()
+                client.register(hw)
+                continue
+            backoff = 15       # reset on success
+
+            tasks = client.get_tasks()
             for task in tasks.get('tasks', []):
                 executor.run(task)
+
+            # Patch scan cycle (Phase 6)
+            if time.time() - last_patch > patch_interval:
+                patches = get_pending_patches()
+                if patches:
+                    client.report_patches(patches)
+                last_patch = time.time()
+
         except Exception as e:
-            log.error(f'Loop error: {e}')
+            logging.error(f'Loop error: {e}')
+            time.sleep(min(backoff, 300))
+            backoff = min(backoff * 2, 300)
+            continue
+
         time.sleep(60)
 
 if __name__ == '__main__':
@@ -791,15 +536,297 @@ if __name__ == '__main__':
 
 ---
 
-## Phase 5 — Dashboard
+## Phase 5 — Built-in Scripts + Maintenance Dispatch
 
-### 5.1 Setup
+### Why this design
+
+`ScriptRun.script_id` is NOT NULL — all device tasks must point to a `Script` record. Instead of a new DB table, Phase 5 creates 7 PowerShell scripts as `Script` rows with `is_builtin=True` at API startup. Maintenance actions queue `ScriptRun` records against these built-in scripts. The agent picks them up via the existing `get_tasks` poll.
+
+### `api/utils/builtin_scripts.py` (core of Phase 5)
+
+```python
+TASK_TYPE_TO_TAG = {
+    "clean_temp":    "__builtin_clean_temp__",
+    "defrag":        "__builtin_defrag__",
+    "check_disk":    "__builtin_check_disk__",
+    "restore_point": "__builtin_restore_point__",
+    "clear_browser": "__builtin_clear_browser__",
+    "reboot":        "__builtin_reboot__",
+    "shutdown":      "__builtin_shutdown__",
+}
+
+BUILTIN_SCRIPTS = {
+    "clean_temp": {
+        "name": "Built-in: Clean Temp Files",
+        "content": "Remove-Item -Path $env:TEMP\\* -Recurse -Force -ErrorAction SilentlyContinue",
+        "file_type": "ps1",
+    },
+    "defrag": {
+        "name": "Built-in: Defragment",
+        "content": "Optimize-Volume -DriveLetter C -Defrag -Verbose",
+        "file_type": "ps1",
+    },
+    # ... (check_disk, restore_point, clear_browser, reboot, shutdown)
+}
+
+def ensure_builtin_scripts():
+    """Upsert Script records for all built-in task types. Called at app startup."""
+    from models.script import Script
+    from extensions import db
+    for task_type, tag in TASK_TYPE_TO_TAG.items():
+        spec = BUILTIN_SCRIPTS[task_type]
+        existing = Script.query.filter_by(name=spec["name"]).first()
+        if not existing:
+            s = Script(name=spec["name"], content=spec["content"],
+                       file_type=spec["file_type"], is_builtin=True,
+                       description=tag)
+            db.session.add(s)
+    db.session.commit()
+
+def get_builtin_script_id(task_type: str):
+    """Return Script.id for a task_type, or None."""
+    from models.script import Script
+    tag = TASK_TYPE_TO_TAG.get(task_type)
+    if not tag:
+        return None
+    s = Script.query.filter_by(description=tag, is_builtin=True).first()
+    return s.id if s else None
+```
+
+### Device task queue endpoint
+
+`POST /api/devices/<device_id>/queue_task`
+Body: `{"task_type": "clean_temp", "timeout_seconds": 300}`
+
+Valid `task_type` values: `clean_temp`, `defrag`, `check_disk`, `restore_point`, `clear_browser`, `reboot`, `shutdown`
+
+### Automation profile dispatch (`api/tasks/automation_tasks.py`)
+
+```python
+def _dispatch_profile_tasks(profile, device_id, db_session):
+    """Create ScriptRun records for all enabled tasks in a profile."""
+    from utils.builtin_scripts import get_builtin_script_id
+    from models.script import ScriptRun
+
+    disk_cfg  = profile.disk_config or {}
+    maint_cfg = profile.maintenance_config or {}
+
+    task_map = {
+        'defrag':       disk_cfg.get('defrag'),
+        'check_disk':   disk_cfg.get('checkdisk'),
+        'clean_temp':   maint_cfg.get('delete_temp'),
+        'restore_point': maint_cfg.get('restore_point'),
+        'clear_browser': maint_cfg.get('clear_history'),
+        'reboot':       maint_cfg.get('reboot'),
+        'shutdown':     maint_cfg.get('shutdown'),
+    }
+
+    for task_type, enabled in task_map.items():
+        if not enabled:
+            continue
+        script_id = get_builtin_script_id(task_type)
+        if script_id:
+            db_session.add(ScriptRun(
+                script_id=script_id,
+                device_id=device_id,
+                timeout_seconds=1800 if task_type == 'defrag' else 300,
+            ))
+```
+
+---
+
+## Phase 6 — Patch Management
+
+### Flow
+
+1. Agent calls `get_pending_patches()` every `patch_interval` seconds (default 3600s)
+2. Agent calls `PUT /api/agents/<device_id>/patches` with patch list
+3. API deduplicates by patch name, creates `PatchRecord` rows with `status="pending"`
+4. Celery beat runs `sync_patch_status()` every 30 min — auto-approves based on `PatchPolicy` flags
+5. Dashboard shows patches; technician clicks "Deploy Selected"
+6. Dashboard calls `POST /api/devices/<device_id>/deploy_patches` with `patch_ids`
+7. Celery `deploy_patches.delay(device_id, patch_ids)` builds a PS1 script, creates a `ScriptRun`, marks patches as "deployed"
+
+### `api/tasks/patch_tasks.py` key logic
+
+```python
+@celery_app.task
+def deploy_patches(device_id: str, patch_ids: list):
+    """Build transient PS1 script from approved patches, create ScriptRun."""
+    # Finds PatchRecords by ID, builds Install-WindowsUpdate call
+    # Creates/updates Script record with tag __deploy_patches_transient__
+    # Creates ScriptRun pointing to that script
+    # Marks PatchRecords as status='deployed'
+
+@celery_app.task
+def sync_patch_status():
+    """Auto-approve patches based on PatchPolicy flags."""
+    # Iterates PatchPolicies
+    # Checks auto_approve_critical, auto_approve_security, etc.
+    # Respects excluded_software list
+    # Updates matching PatchRecord.status to 'approved'
+```
+
+---
+
+## Phase 7 — Alert Email Notifications
+
+### `api/utils/notifications.py`
+
+```python
+import smtplib, os
+from email.mime.text import MIMEText
+
+def send_alert_notification(rule_name: str, device_hostname: str,
+                             message: str, emails: list):
+    """Send email alert. No-ops silently if SMTP_HOST not configured."""
+    host = os.environ.get('SMTP_HOST')
+    if not host or not emails:
+        return
+    port = int(os.environ.get('SMTP_PORT', 587))
+    user = os.environ.get('SMTP_USER', '')
+    pwd  = os.environ.get('SMTP_PASS', '')
+    from_addr = os.environ.get('SMTP_FROM', user)
+
+    msg = MIMEText(f"Rule: {rule_name}\nDevice: {device_hostname}\n\n{message}")
+    msg['Subject'] = f"[RMM Alert] {rule_name} — {device_hostname}"
+    msg['From']    = from_addr
+    msg['To']      = ', '.join(emails)
+
+    with smtplib.SMTP(host, port) as smtp:
+        if port != 25:
+            smtp.starttls()
+        if user:
+            smtp.login(user, pwd)
+        smtp.sendmail(from_addr, emails, msg.as_string())
+```
+
+Integration in `alert_tasks.py`:
+```python
+channels = rule.notification_channels or {}
+emails   = channels.get('email', [])
+if emails:
+    from utils.notifications import send_alert_notification
+    send_alert_notification(rule.name, device.hostname, alert.message, emails)
+```
+
+Required `.env` vars (all optional — skip to disable email):
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASS=your_app_password
+SMTP_FROM=rmm@yourcompany.com
+```
+
+---
+
+## Phase 8 — Ticket Assignment
+
+Ticket model has `assignee_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)`.
+
+Dashboard `02_Tickets.py` uses three columns per ticket: Update Status | Assign To | Add Comment.
+
+`PUT /api/tickets/<id>` accepts `{"assignee_id": <user_id>}` — same endpoint as status update.
+
+---
+
+## Phase 9 — Report Generation
+
+### Flow
+
+1. Dashboard `POST /api/reports` creates a `Report` record and returns `report.id`
+2. API immediately dispatches `generate_report.delay(report.id)`
+3. Celery worker runs `generate_report(report_id)`:
+   - Queries DB for the relevant data based on `template_type`
+   - Writes CSV to `api/reports/<report_id>_<name>.csv`
+   - Updates `report.file_path` in DB
+4. Dashboard polls or refreshes — when `file_path` is set, shows download button
+5. `st.download_button` reads file bytes directly from disk path
+
+### Templates
+
+| `template_type` | Data collected |
+|---|---|
+| `device_health` | All devices + latest metrics (batch query) |
+| `patch_compliance` | All patch records + device names |
+| `alert_summary` | All alerts + rule names + device names |
+| `software_inventory` | All installed software + device names |
+| `ticket_summary` | All tickets + customer names |
+
+### `Report.to_dict()` must include `file_path`
+
+```python
+def to_dict(self):
+    return {
+        'id': self.id,
+        'name': self.name,
+        'template_type': self.template_type,
+        'format': self.format,
+        'file_path': self.file_path,   # ← required for dashboard download
+        'has_file': bool(self.file_path),
+        'created_at': self.created_at.isoformat() if self.created_at else None,
+    }
+```
+
+---
+
+## Phase A — API Optimizations
+
+| Item | What was done |
+|------|--------------|
+| A-1 | Composite DB indexes on 6 high-query tables (Alembic migration) |
+| A-2 | Dashboard summary: 8 COUNT queries → 4 aggregations |
+| A-3 | Health map `.all()` → `.limit(500)` |
+| A-4 | N+1 devices/metrics: batch fetch latest metric per device via subquery |
+| A-5 | N+1 agents/tasks: pre-fetch scripts by id dict |
+| A-6 | Automation device-loop offloaded to Celery |
+| A-7 | DB pool: `pool_size=10`, `max_overflow=20` |
+| A-8 | Global Flask error handlers (400/404/409/503/500) |
+| A-9 | Request logging middleware (before/after_request with ms timing) |
+| A-10 | Celery `acks_late=True`, retry on `OperationalError` |
+
+---
+
+## Phase B — Dashboard Optimizations
+
+| Item | What was done |
+|------|--------------|
+| B-1 | `requests.Session` reuse via `st.session_state["_rmm_client"]` |
+| B-2 | Retry on transient failures: 3 attempts, backoff 0.5/1.0/2.0s |
+| B-3 | Token auto-refresh on 401 (POST /api/auth/refresh, retry once) |
+| B-4 | Access token removed from URL query params — session_state only |
+| B-5 | `st.cache_data` wrappers (TTL 30–120s by endpoint type) |
+| B-6 | `st.spinner` on all data loads across all 16 pages |
+| B-7 | Replaced hard `st.stop()` with `st.warning` (graceful degradation) |
+| B-8 | Contextual error messages on all pages |
+
+---
+
+## Phase C — Agent Optimizations
+
+| Item | What was done |
+|------|--------------|
+| C-1 | Non-blocking CPU sample: `interval=None` + startup prime |
+| C-2 | Bounded registry enumeration: 20s hard deadline |
+| C-3 | Bounded process scan: 3s deadline + 200-process cap |
+| C-4 | Exponential backoff on heartbeat failures: 15s → 300s cap |
+| C-5 | 401 re-registration flow in main loop |
+| C-6 | Local task result queue: `pending_results.json`, cap 100, flush each cycle |
+| C-7 | Structured logging with `DeviceFilter` + classified exception types |
+
+---
+
+## Phase 5 — Dashboard Setup
+
+### 5.1 Install deps
 
 ```bash
 cd dashboard
 python -m venv venv
 venv\Scripts\activate
-pip install streamlit==1.58.0 plotly==6.1.2 pandas==2.3.3 requests==2.32.3 python-dotenv==1.1.0
+pip install streamlit plotly pandas requests python-dotenv
+pip freeze > requirements.txt
 ```
 
 ### 5.2 `.streamlit/config.toml`
@@ -817,177 +844,99 @@ secondaryBackgroundColor = "#1a1f2e"
 textColor = "#ffffff"
 ```
 
-### 5.3 `dashboard/utils/api_client.py`
-
-```python
-import requests
-import streamlit as st
-import os
-from dotenv import load_dotenv
-load_dotenv()
-
-BASE = os.getenv('API_BASE_URL', 'http://localhost:5000')
-
-def get_headers():
-    token = st.session_state.get('access_token')
-    return {'Authorization': f'Bearer {token}'} if token else {}
-
-def api_get(path, params=None):
-    try:
-        r = requests.get(f'{BASE}/api{path}', headers=get_headers(),
-                         params=params, timeout=10)
-        r.raise_for_status()
-        return r.json()
-    except Exception as e:
-        st.error(f'API error: {e}')
-        return None
-
-def api_post(path, data):
-    try:
-        r = requests.post(f'{BASE}/api{path}', json=data,
-                          headers=get_headers(), timeout=10)
-        r.raise_for_status()
-        return r.json()
-    except Exception as e:
-        st.error(f'API error: {e}')
-        return None
-```
-
-### 5.4 `dashboard/app.py` (login)
+### 5.3 `dashboard/utils/nav.py` (shared sidebar, Phase B)
 
 ```python
 import streamlit as st
-from utils.api_client import api_post
 
-st.set_page_config(page_title='RMM', layout='wide', page_icon='🖥️')
-
-# Brand CSS
-st.markdown("""
-<style>
-[data-testid="stSidebar"] { background: #1a1f2e; }
-.stButton > button { background: #407E3C; color: white; border: none; }
-.stButton > button:hover { background: #5a9e56; }
-</style>
-""", unsafe_allow_html=True)
-
-if 'access_token' not in st.session_state:
-    st.title('RMM Login')
-    with st.form('login'):
-        email = st.text_input('Email')
-        password = st.text_input('Password', type='password')
-        if st.form_submit_button('Login'):
-            resp = api_post('/auth/login', {'email': email, 'password': password})
-            if resp and 'access_token' in resp:
-                st.session_state.access_token = resp['access_token']
-                st.session_state.user = resp['user']
-                st.rerun()
-            else:
-                st.error('Invalid credentials')
-else:
-    st.switch_page('pages/01_Dashboard.py')
+def render_sidebar():
+    """Render the shared sidebar with 5 nav sections."""
+    user = st.session_state.get('user', {})
+    # ... user card, role pill, 5 nav sections:
+    # MONITORING: Overview, Devices, Alerts
+    # MANAGEMENT: Tickets, Customers, Automation
+    # PATCHING: OS Patches, Software Patches
+    # TOOLS: Scripts, Disk Management, Maintenance, Network Discovery
+    # BUSINESS: Reports, Billing, Admin
 ```
 
-### 5.5 Dashboard pages structure (16 pages)
+### 5.4 Dashboard pages (16 pages)
 
 | File | Purpose |
 |------|---------|
-| `01_Dashboard.py` | Overview metrics, online devices count, open alerts/tickets |
-| `02_Tickets.py` | Create, view, update, comment on tickets |
+| `01_Dashboard.py` | Overview metrics, device health map, recent alerts, activity feed |
+| `02_Tickets.py` | Create/view/update/assign/comment tickets |
 | `03_Customers.py` | Customer CRUD, device count per customer |
 | `04_Devices.py` | Device list, detail view, metrics charts |
-| `05_Alerts.py` | Alert rules config, active alerts list, acknowledge |
+| `05_Alerts.py` | Alert rules config, active alerts, acknowledge/resolve |
 | `06_App_Center.py` | Software inventory across devices |
 | `07_Network_Discovery.py` | Trigger scans, view discovered hosts |
-| `08_Reports.py` | Generate PDF/XLSX reports |
+| `08_Reports.py` | Generate reports, download CSV |
 | `09_Billing.py` | Invoice list, create invoice |
 | `10_Admin.py` | User management, audit logs |
 | `11_Automation.py` | Automation profile CRUD, run history |
-| `12_OS_Patches.py` | OS patch status, deploy patches |
+| `12_OS_Patches.py` | OS patch status, approve, deploy patches |
 | `13_Software_Patches.py` | Software patch status |
-| `14_Disk_Management.py` | Disk usage charts per device |
-| `15_Maintenance.py` | Maintenance tasks, schedules |
-| `16_Scripts.py` | Script library, run scripts on devices |
-
-Each page follows this pattern:
-```python
-import streamlit as st
-from utils.api_client import api_get, api_post
-from utils.auth import require_auth
-
-require_auth()
-st.title('Page Title')
-data = api_get('/endpoint')
-if data:
-    # render with st.dataframe, st.metric, plotly charts
-```
+| `14_Disk_Management.py` | Disk usage gauges, summary table, maintenance actions |
+| `15_Maintenance.py` | Remote actions (reboot/shutdown/clean/restore/chkdsk/browser) with confirm gate |
+| `16_Scripts.py` | Script library, run scripts on devices, view run history |
 
 ---
 
-## Phase 6 — Environment File
+## Environment File
 
 `.env`:
 ```env
 DATABASE_URL=postgresql://rmm_app:changeme@localhost:5432/rmmdb
 FLASK_ENV=development
 FLASK_DEBUG=1
-SECRET_KEY=<generate: python -c "import secrets; print(secrets.token_hex(32))">
-JWT_SECRET_KEY=<generate: python -c "import secrets; print(secrets.token_hex(32))">
+SECRET_KEY=<python -c "import secrets; print(secrets.token_hex(32))">
+JWT_SECRET_KEY=<python -c "import secrets; print(secrets.token_hex(32))">
 JWT_ACCESS_TOKEN_EXPIRES=900
 JWT_REFRESH_TOKEN_EXPIRES=604800
 REDIS_URL=redis://localhost:6379/0
 CELERY_BROKER_URL=redis://localhost:6379/0
 CELERY_RESULT_BACKEND=redis://localhost:6379/1
-API_HOST=0.0.0.0
-API_PORT=5000
+ORG_REGISTRATION_TOKEN=<python -c "import secrets; print(secrets.token_hex(24))">
+API_BASE_URL=http://localhost:5000
 DASHBOARD_URL=http://localhost:8501
-ORG_REGISTRATION_TOKEN=<generate: python -c "import secrets; print(secrets.token_hex(24))">
+# SMTP (optional — omit to disable email alerts)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-DASHBOARD_PORT=8501
-API_BASE_URL=http://localhost:5000
+SMTP_USER=you@gmail.com
+SMTP_PASS=your_app_password
+SMTP_FROM=rmm@yourcompany.com
 ```
-
-`.env.example` — same but with placeholder values, committed to git.
 
 ---
 
-## Phase 7 — Start Everything
+## Start Everything
 
-Open 4 terminals:
+Open 5 terminals:
 
 **Terminal 1 — Flask API**
 ```bash
-cd api
-venv\Scripts\activate
-python app.py
+cd api ; venv\Scripts\activate ; python app.py
 ```
 
 **Terminal 2 — Celery Worker**
 ```bash
-cd api
-venv\Scripts\activate
-celery -A tasks.celery_app worker --pool=solo -l info
+cd api ; venv\Scripts\activate ; celery -A tasks.celery_app worker --pool=solo -l info
 ```
 
-**Terminal 3 — Celery Beat** (optional, for scheduled tasks)
+**Terminal 3 — Celery Beat** (scheduled tasks)
 ```bash
-cd api
-venv\Scripts\activate
-celery -A tasks.celery_app beat -l info
+cd api ; venv\Scripts\activate ; celery -A tasks.celery_app beat -l info
 ```
 
 **Terminal 4 — Dashboard**
 ```bash
-cd dashboard
-venv\Scripts\activate
-streamlit run app.py
+cd dashboard ; venv\Scripts\activate ; streamlit run app.py
 ```
 
-**Terminal 5 — Agent** (run as Administrator)
+**Terminal 5 — Agent** (run as Administrator for patch scanning)
 ```bash
-cd agent
-venv\Scripts\activate
-python rmm_agent.py
+cd agent ; venv\Scripts\activate ; python rmm_agent.py
 ```
 
 ---
@@ -995,17 +944,10 @@ python rmm_agent.py
 ## Verify Health
 
 ```bash
-# API alive
-curl http://localhost:5000/api/health
-
-# Dashboard alive
-curl http://localhost:8501
-
-# Redis alive
-redis-cli ping
-
-# DB alive
-psql -U rmm_app -d rmmdb -c "SELECT 1"
+curl http://localhost:5000/api/health      # → {"status": "ok"}
+curl -s http://localhost:8501              # → 200
+redis-cli ping                             # → PONG
+psql -U rmm_app -d rmmdb -c "SELECT 1"    # → 1
 ```
 
 ---
@@ -1013,10 +955,7 @@ psql -U rmm_app -d rmmdb -c "SELECT 1"
 ## Port Kill (Windows)
 
 ```powershell
-# Find process on port
 netstat -ano | findstr :5000
-
-# Kill it
 taskkill /F /PID <PID>
 ```
 
@@ -1030,23 +969,7 @@ taskkill /F /PID <PID>
 | Email | admin@rmm.local |
 | Password | Admin1234! |
 
-**Change password after first login.**
-
----
-
-## Build Order Reference
-
-```
-Phase 1  — Agent Core + API scaffold + DB models
-Phase 2  — API CRUD verified with real DB + tests
-Phase 3  — Dashboard UI refinement
-Phase 4  — Scripts library + execution
-Phase 5  — Automation profiles
-Phase 6  — Patch management (OS + software)
-Phase 7  — Alerts system
-Phase 8  — Ticket system
-Phase 9  — Reports + Billing + Polish
-```
+Change password after first login.
 
 ---
 
@@ -1060,6 +983,8 @@ Phase 9  — Reports + Billing + Polish
 - [ ] JWT tokens expire (900s access, 7d refresh)
 - [ ] Agent tokens hashed before storing
 - [ ] No `FLASK_DEBUG=1` in production
+- [ ] `SMTP_PASS` is an app-specific password, not your Gmail password
+- [ ] `api/reports/` directory not exposed via HTTP
 
 ---
 
@@ -1069,9 +994,12 @@ Phase 9  — Reports + Billing + Polish
 |----------|--------|
 | Flask + SQLAlchemy | Simple, well-known, easy to extend |
 | PostgreSQL over SQLite | Production-grade, concurrent writes |
-| Celery + Redis | Async task queue for long-running ops |
+| Celery + Redis | Async tasks for long-running ops (defrag, reports, patch deploy) |
 | Streamlit dashboard | Rapid UI with minimal JS |
 | JWT auth | Stateless, works for API + dashboard |
 | `pool=solo` Celery | Windows has no `fork()` |
 | Hardware fingerprint = SHA256(hostname+MAC) | Unique device ID without agent install key |
 | bcrypt rounds=12 | Balance security vs login latency |
+| Built-in scripts as Script records | Avoids new DB migration; reuses existing ScriptRun task queue |
+| `file_path` on Report | Dashboard and API on same machine; bytes read directly — no file serving needed |
+| SMTP gated on env var | Email optional; missing config silently skips, no crash |

@@ -8,7 +8,7 @@ Version 1.0 — NinjaOne-style, built in-house
 **Prepared for:** All staff — new joiners, IT support, technicians, administrators, and developers
 **System URL:** http://localhost:8501
 **API URL:** http://localhost:5000
-**Document version:** 1.0
+**Document version:** 1.1 (all phases complete)
 
 ---
 
@@ -166,7 +166,7 @@ Everyone.
 7. If your credentials are correct, you will be taken to the main RMM Dashboard.
 8. If you see "Invalid credentials", check that your email has no typos and that your Caps Lock key is not on.
 
-> **NOTE:** The system uses JWT tokens for authentication. After logging in, you will notice a `?tok=...` parameter in the URL. This token is how the system keeps you logged in as you navigate between pages. Do not share your URL with this token in it, as it contains your active session.
+> **NOTE:** The system uses JWT tokens for authentication. Your session token is stored in browser memory only — it is not visible in the URL. If you copy and share a page URL, it will not contain your session credentials. To share access, the other person must log in with their own credentials.
 
 > **WARNING:** There is no "forgot password" button in the current version. If you are locked out, contact your system administrator to have your password reset directly in the database.
 
@@ -194,9 +194,9 @@ This is where each page's content appears. Every page has a title at the top, op
 2. Find the section heading (MONITORING, MANAGEMENT, etc.) for the page you want.
 3. Click the page name. For example, click **Devices** under the MONITORING section.
 4. The main content area on the right will load the Devices page.
-5. Your current token is automatically included in the navigation link, so you remain logged in.
+5. Your session is maintained automatically — you stay logged in as you move between pages.
 
-> **TIP:** Each page link in the sidebar appends `?tok=YOUR_TOKEN` to the URL. If you bookmark a page, the bookmark will include your token. Be aware that tokens expire over time. If you bookmark a page and cannot access it later, return to http://localhost:8501 and log in again.
+> **TIP:** If you bookmark a page and cannot access it later (session expired), return to http://localhost:8501 and log in again. Your session token is held in browser memory and does not persist across browser restarts.
 
 ### Step-by-step: Signing Out
 
@@ -467,7 +467,7 @@ It is 2pm. TechCorp Ltd calls and says their accounting software is running very
 
 ### Tips and Gotchas
 
-- There is no email notification to clients when a ticket is created or updated yet (this is a planned feature). Follow up with clients manually.
+- There is no automatic email notification to clients when a ticket is created or updated. Follow up with clients manually. (Alert rule triggers do send email notifications to configured addresses — see Chapter 8.)
 - Tickets created automatically from alerts will have source = "alert". These show up in the same list.
 - The search filter is case-insensitive and searches both title and description fields.
 
@@ -1104,9 +1104,11 @@ The Users tab shows a table of all registered users in the system. Columns:
 - Role (color-coded: green for admin, blue for manager/technician, grey for others)
 - Created Date
 
-**User management actions** (creating, editing, deactivating users) are available through the API endpoint `/api/admin/users`. The UI table in the current version is read-only. To create or modify users, use the API directly or a database admin tool.
-
-> **NOTE:** If you see "No user management API yet" message in the Users tab, the `/api/admin/users` endpoint has not been implemented in your current deployment. Check the API routes to verify endpoint availability.
+**User management actions** are available directly in the Users tab. You can:
+- **Create** new users with the inline form (name, email, password, role)
+- **Edit** existing users (change role, update name/email)
+- **Deactivate** users to block login without deleting records
+- **Reset passwords** by editing the user and setting a new password
 
 ### Step-by-step: Deactivating a Departed Employee
 
@@ -1114,8 +1116,8 @@ When a team member leaves, their account must be deactivated promptly to prevent
 
 1. Go to **Admin** → **Users** tab.
 2. Find the departing employee in the user table.
-3. Note their email address.
-4. Currently, deactivation requires a direct API call or database update. Contact your developer or database administrator with the user's email and request deactivation.
+3. Click **Edit** or expand their row.
+4. Click **Deactivate** (or uncheck the Active toggle) and save.
 5. After deactivation, verify by checking the Audit Log for any LOGIN events from that email after the deactivation date.
 
 > **WARNING:** JWT tokens have an expiry time. Even after deactivating an account, if the user has a valid token they may still have access until that token expires. Force-expire tokens by rotating the JWT secret key if immediate lockout is required.
@@ -1516,7 +1518,7 @@ This card helps you confirm you have selected the correct device before taking a
 | Clear Browser History | Clears saved browser data | MEDIUM — may affect users with saved sessions |
 | Check Disk | Runs a disk health check (chkdsk) | LOW — read-only scan |
 
-> **NOTE:** Create Restore Point, Delete Temp Files, Clear Browser History, and Check Disk are queued via the agent and will be available in Phase 5 of development. In the current version, clicking these buttons shows an informational message. Reboot and Shutdown are live and fully functional.
+> **NOTE:** All six actions are fully functional. Create Restore Point, Delete Temp Files, Clear Browser History, and Check Disk are queued as agent tasks — the agent picks them up on its next poll cycle (within 60 seconds). Reboot and Shutdown execute via the same mechanism.
 
 ### Step-by-step: Rebooting a Device
 
@@ -1754,34 +1756,34 @@ Services must be started in this order:
 ```
 RemoteManagementSystem/
 ├── api/
-│   ├── app.py              # Flask application factory
-│   ├── config.py           # Configuration class
+│   ├── app.py              # Flask application factory + builtin script sync
+│   ├── config.py           # Configuration class (pool_size=10, max_overflow=20)
 │   ├── extensions.py       # SQLAlchemy, JWT, Celery setup
-│   ├── models/             # Database models (SQLAlchemy)
-│   ├── routes/             # API endpoint blueprints
-│   ├── schemas/            # Marshmallow serialization schemas
-│   ├── services/           # Business logic layer
-│   ├── tasks/              # Celery async tasks
-│   ├── migrations/         # Alembic database migrations
-│   └── tests/              # pytest test suite
+│   ├── models/             # 11 SQLAlchemy model files
+│   ├── routes/             # 13 API route blueprints
+│   ├── tasks/              # Celery task modules (alert, patch, automation, report)
+│   ├── utils/
+│   │   ├── builtin_scripts.py  # 7 built-in PS1 scripts + ensure_builtin_scripts()
+│   │   └── notifications.py    # SMTP email alert sender (no-ops if SMTP_HOST unset)
+│   ├── reports/            # CSV report output directory (created at runtime)
+│   └── seed.py             # DB seed: admin user + default customer
 ├── agent/
-│   ├── rmm_agent.py        # Main agent loop (register/heartbeat/execute)
-│   ├── collector.py        # Hardware info, metrics, software inventory
-│   ├── heartbeat.py        # API client for agent communication
+│   ├── rmm_agent.py        # Main loop: register/heartbeat/tasks/patch-scan
+│   ├── collector.py        # Hardware info, metrics, software inventory, patch scan
+│   ├── heartbeat.py        # API client (register, heartbeat, get_tasks, report_patches)
 │   ├── executor.py         # Task execution engine
 │   ├── script_runner.py    # Script execution (ps1, bat, py, sh)
-│   └── config.ini          # Agent configuration
+│   └── config.ini          # Agent configuration (interval, patch_interval, etc.)
 ├── dashboard/
-│   ├── app.py              # Login page and sidebar scaffold
-│   ├── pages/              # One file per page (Streamlit multipage)
-│   ├── components/         # Reusable UI components
+│   ├── app.py              # Login page
+│   ├── pages/              # 16 Streamlit page files
 │   └── utils/
 │       ├── auth.py         # JWT login/logout/session management
-│       ├── api_client.py   # HTTP client wrapping all API calls
+│       ├── api_client.py   # RMMClient: session reuse, retry, 401 refresh
+│       ├── nav.py          # Shared sidebar (5 sections, user card, sign out)
 │       ├── styles.py       # CSS injection, stat cards, badge HTML
 │       └── formatters.py   # Date, byte, color formatting utilities
-├── scripts_library/        # Built-in script files stored on disk
-├── docs/                   # Additional documentation
+├── scripts_library/        # Script templates stored on disk
 └── CLAUDE.md               # Project-level AI assistant instructions
 ```
 
@@ -1791,10 +1793,10 @@ RemoteManagementSystem/
 2. Dashboard's `utils/auth.py` calls `POST /api/auth/login` on the Flask API.
 3. API validates credentials against the `users` table using bcrypt password hashing.
 4. If valid, API returns a JWT access token signed with `JWT_SECRET_KEY`.
-5. Dashboard stores the token in `st.session_state["access_token"]`.
-6. The token is appended to sidebar navigation links as `?tok=<token>`.
-7. On each page load, `_restore_from_query_params()` reads the token from the URL and restores the session.
-8. All subsequent API calls from `utils/api_client.py` include the token as `Authorization: Bearer <token>`.
+5. Dashboard stores the token in `st.session_state["access_token"]` — never in the URL.
+6. All 16 pages call `require_auth()` at load time, which checks session state and redirects to login if missing.
+7. All subsequent API calls from `utils/api_client.py` include the token as `Authorization: Bearer <token>`.
+8. On 401 response, the dashboard automatically calls `POST /api/auth/refresh` with the stored refresh token and retries the request once.
 9. Flask's `@jwt_required()` decorator validates the token on protected routes.
 
 ### Agent Registration Flow
@@ -1803,30 +1805,40 @@ RemoteManagementSystem/
 2. If `device_id` is blank, the agent is unregistered.
 3. Agent calls `POST /api/agent/register` with hardware info (hostname, OS, CPU, RAM, disk) and the `org_token` from config.
 4. API creates a device record in the database and returns a `device_id` and `agent_token`.
-5. Agent saves these to `config.ini`.
-6. On subsequent startups, agent uses stored `device_id` and `agent_token`.
-7. Every 60 seconds, agent calls `POST /api/agent/heartbeat` with current metrics.
-8. API updates the device's `last_seen` timestamp and latest metrics.
-9. API evaluates alert rules against the new metrics.
-10. If tasks (scripts, patches, maintenance) are queued, they are returned in the heartbeat response.
-11. Agent executes any returned tasks.
+5. Agent saves these to `agent_state.json`.
+6. On subsequent startups, agent loads stored `device_id` and `agent_token`.
+7. Every 60 seconds, agent calls `POST /api/agents/<device_id>/heartbeat` with current metrics.
+8. API updates the device's `last_seen` timestamp and stores metrics in `device_metrics`.
+9. Celery evaluates alert rules against new metrics every 60 seconds (beat schedule).
+10. Agent calls `GET /api/agents/<device_id>/tasks` to poll for queued ScriptRun records.
+11. Agent executes any returned tasks via `executor.py` and `script_runner.py`.
+12. Every `patch_interval` seconds (default 3600), agent scans for pending Windows updates via WUA COM and reports them via `PUT /api/agents/<device_id>/patches`.
 
 ### Database Models Overview
 
 | Model | Table | Key Fields |
 |---|---|---|
-| User | users | id, email, password_hash, role, is_active |
-| Customer | customers | id, name, email, phone, tier |
-| Device | devices | id, hostname, ip_address, os_name, customer_id, is_online, last_seen |
-| DeviceMetrics | device_metrics | id, device_id, cpu_pct, ram_pct, disk_pct, timestamp |
-| Alert | alerts | id, device_id, severity, message, status, triggered_at |
-| AlertRule | alert_rules | id, name, metric, operator, threshold, severity, cooldown_minutes |
-| Ticket | tickets | id, title, description, customer_id, priority, status, source |
-| Script | scripts | id, name, file_type, content, is_builtin |
-| ScriptRun | script_runs | id, script_id, device_id, status, exit_code, stdout, stderr |
-| Patch | patches | id, device_id, patch_name, kb_id, patch_type, status |
-| AutomationProfile | automation_profiles | id, name, schedule_type, is_active, os_patch_config, ... |
-| Invoice | invoices | id, customer_id, period_start, period_end, device_count, amount, status |
+| User | users | id, email, password_hash, role, is_active, mfa_enabled |
+| Customer | customers | id, name, slug, email, phone, tier, is_active |
+| DeviceGroup | device_groups | id, customer_id, name |
+| Device | devices | id, hostname, platform, os_name, customer_id, hardware_id, is_online, last_seen |
+| DeviceMetrics | device_metrics | id, device_id, cpu_pct, ram_pct, disk_pct, disks (JSON), collected_at |
+| InstalledSoftware | installed_software | id, device_id, name, version, publisher, source |
+| AlertRule | alert_rules | id, name, metric, operator, threshold, severity, cooldown_minutes, notification_channels |
+| Alert | alerts | id, rule_id, device_id, severity, message, status, acknowledged_by |
+| Ticket | tickets | id, title, description, customer_id, assignee_id, priority, status |
+| TicketComment | ticket_comments | id, ticket_id, author_id, body, is_internal |
+| Script | scripts | id, name, file_type, content, is_builtin, description (used as tag for built-ins) |
+| ScriptRun | script_runs | id, script_id, device_id, triggered_by, status, exit_code, stdout, stderr |
+| PatchPolicy | patch_policies | id, name, customer_id, auto_approve_critical, reboot_behavior |
+| PatchRecord | patch_records | id, device_id, policy_id, patch_name, kb_id, status, deployed_at |
+| AutomationProfile | automation_profiles | id, name, schedule_type, disk_config, maintenance_config, is_active |
+| ScheduledTaskRun | scheduled_task_runs | id, profile_id, device_id, status, result_summary |
+| Report | reports | id, name, template_type, customer_id, format, file_path, generated_by |
+| Invoice | invoices | id, customer_id, period_start, period_end, device_count, rate_per_device, total, status |
+| AgentToken | agent_tokens | id, device_id, token_hash, is_revoked |
+| AuditLog | audit_logs | id, user_id, action, resource_type, resource_id, ip_address, payload |
+| NetworkScan | network_scans | id, customer_id, scan_range, discovered_hosts, status |
 
 ---
 
