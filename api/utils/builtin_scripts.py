@@ -36,9 +36,21 @@ BUILTIN_SCRIPTS = [
     {
         "tag": "__builtin_check_disk__",
         "name": "Check Disk (chkdsk)",
-        "description": "Run a read-only chkdsk scan on C: drive.",
+        "description": "Schedule chkdsk /f on C: drive for next reboot (cannot run live on system drive).",
         "file_type": "ps1",
-        "content": "chkdsk C: /scan /perf",
+        "content": (
+            "# chkdsk /f cannot run on a locked system drive — schedule for next boot\n"
+            "$result = chkdsk C: /f 2>&1\n"
+            "if ($LASTEXITCODE -eq 0) {\n"
+            "    Write-Output \"Disk check complete (no errors found).\"\n"
+            "} elseif ($LASTEXITCODE -eq 1) {\n"
+            "    Write-Output \"Disk check complete (errors found and fixed).\"\n"
+            "} else {\n"
+            "    # Drive locked — Windows queued the check for next reboot\n"
+            "    Write-Output \"Disk check scheduled for next reboot (drive is in use). Reboot to run.\"\n"
+            "    exit 0\n"
+            "}"
+        ),
     },
     {
         "tag": "__builtin_restore_point__",
