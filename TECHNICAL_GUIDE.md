@@ -689,7 +689,7 @@ Built-in scripts are `Script` records with `is_builtin=True`. The `description` 
 |-----------|-----|-------------|-------------|
 | `clean_temp` | `__builtin_clean_temp__` | Built-in: Clean Temp Files | Removes `%TEMP%`, `%TMP%`, `C:\Windows\Temp` |
 | `defrag` | `__builtin_defrag__` | Built-in: Defragment | `Optimize-Volume -DriveLetter C -Defrag` |
-| `check_disk` | `__builtin_check_disk__` | Built-in: Check Disk | `Repair-Volume -DriveLetter C -Scan` |
+| `check_disk` | `__builtin_check_disk__` | Built-in: Check Disk | `chkdsk C: /f` — schedules for next reboot if drive locked; exits 0 in all cases |
 | `restore_point` | `__builtin_restore_point__` | Built-in: Create Restore Point | `Checkpoint-Computer -Description "RMM"` |
 | `clear_browser` | `__builtin_clear_browser__` | Built-in: Clear Browser History | Removes Chrome/Edge/Firefox cache dirs |
 | `reboot` | `__builtin_reboot__` | Built-in: Reboot | `Restart-Computer -Force` |

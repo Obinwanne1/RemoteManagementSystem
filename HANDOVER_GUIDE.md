@@ -1439,7 +1439,7 @@ Below the gauges is a table listing all disks with their used space, total capac
 
 **Action Buttons:**
 - **Defragment** — Schedules a disk defragmentation job on the agent (best for HDDs only, not SSDs).
-- **Check Disk** — Runs a chkdsk analysis on the selected disk.
+- **Check Disk** — Schedules chkdsk /f on C: for next reboot (system drive cannot be scanned live).
 - **Clean Temp Files** — Deletes temporary files to free space.
 
 These actions are queued via the agent and executed remotely.
@@ -1516,7 +1516,7 @@ This card helps you confirm you have selected the correct device before taking a
 | Create Restore Point | Creates a Windows system restore point | LOW — safe, no disruption |
 | Delete Temp Files | Removes temporary files to free space | LOW — safe, no disruption |
 | Clear Browser History | Clears saved browser data | MEDIUM — may affect users with saved sessions |
-| Check Disk | Runs a disk health check (chkdsk) | LOW — read-only scan |
+| Check Disk | Schedules chkdsk /f for next reboot | LOW — schedules for next reboot, no live disk changes |
 
 > **NOTE:** All six actions are fully functional. Create Restore Point, Delete Temp Files, Clear Browser History, and Check Disk are queued as agent tasks — the agent picks them up on its next poll cycle (within 60 seconds). Reboot and Shutdown execute via the same mechanism.
 

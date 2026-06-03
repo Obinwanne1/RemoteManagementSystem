@@ -566,7 +566,8 @@ BUILTIN_SCRIPTS = {
         "content": "Optimize-Volume -DriveLetter C -Defrag -Verbose",
         "file_type": "ps1",
     },
-    # ... (check_disk, restore_point, clear_browser, reboot, shutdown)
+    # check_disk: chkdsk C: /f — schedules for next reboot if drive locked; exits 0 always
+    # restore_point, clear_browser, reboot, shutdown: see builtin_scripts.py for full content
 }
 
 def ensure_builtin_scripts():
