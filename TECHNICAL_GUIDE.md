@@ -124,15 +124,17 @@ Device ──< AgentToken
 
 #### `User` (`users`)
 ```python
-id            Integer PK
-email         String(255) UNIQUE NOT NULL
-password_hash String(255)          # bcrypt rounds=12
-full_name     String(255)
-role          String(50)           # admin | technician | viewer
-mfa_secret    String(32)
-mfa_enabled   Boolean default False
-is_active     Boolean default True
-created_at    DateTime server_default=now()
+id                   Integer PK
+email                String(255) UNIQUE NOT NULL
+password_hash        String(255)          # bcrypt rounds=12
+full_name            String(255)
+role                 String(50)           # admin | technician | viewer
+mfa_secret           String(32)
+mfa_enabled          Boolean default False
+is_active            Boolean default True
+must_change_password Boolean default False server_default="false"
+                                          # True → intercept login with force-change screen
+created_at           DateTime server_default=now()
 ```
 
 #### `Customer` (`customers`)
@@ -347,6 +349,7 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 | POST | `/login` | None | Email+password → access+refresh tokens |
 | POST | `/refresh` | Refresh token | Rotate access token |
 | POST | `/logout` | JWT | Revoke token |
+| POST | `/me/force-change-password` | JWT | Set new password + clear `must_change_password` flag |
 
 ### Agents (`/api/agents/`)
 | Method | Path | Auth | Description |
@@ -461,8 +464,8 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/users` | JWT admin | List all users |
-| POST | `/users` | JWT admin | Create user |
-| PUT | `/users/<id>` | JWT admin | Update user |
+| POST | `/users` | JWT admin | Create user — accepts `must_change_password` bool |
+| PUT | `/users/<id>` | JWT admin | Update user — accepts `must_change_password` bool |
 | DELETE | `/users/<id>` | JWT admin | Delete user |
 | GET | `/org-token` | JWT admin | Return `ORG_REGISTRATION_TOKEN` for display in Admin panel |
 
@@ -488,7 +491,12 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 ```
 Login:
   POST /api/auth/login  {email, password}
-  → {access_token, refresh_token, user: {id, email, role, full_name}}
+  → {access_token, refresh_token, user: {id, email, role, full_name, must_change_password}}
+
+Force password change (if must_change_password=True):
+  Dashboard intercepts in app.py before showing any page.
+  User fills new password form → POST /api/auth/me/force-change-password {new_password}
+  → clears must_change_password flag → st.rerun() → normal dashboard
 
 Dashboard stores:
   st.session_state["access_token"]   = access_token
@@ -692,6 +700,17 @@ $result   = $searcher.Search("IsInstalled=0 and Type='Software'")
 
 Returns up to 500 patches as `[{name, kb_id, patch_type}]`. Reported via `PUT /api/agents/<id>/patches`. API deduplicates by `patch_name` and creates `PatchRecord` rows with `status='pending'`.
 
+### Software Collection
+
+`get_installed_software()` merges two sources, deduplicated by lowercase name:
+
+| Source | Function | Notes |
+|--------|----------|-------|
+| Windows registry | `_get_registry_software()` | 3 hive paths, 20s hard deadline |
+| winget | `_get_winget_software()` | Skips non-ASCII lines (progress bars); finds separator line before parsing |
+
+**Winget parser detail:** `winget list` prints Unicode block-char progress bars (█▒░, `ord > 127`) before the real data table. The parser skips these lines, finds the first all-dash separator line (length > 10), then parses only lines after it. The dashboard adds a `_clean()` filter (strips U+2500–U+259F) as defence-in-depth before HTML rendering.
+
 ### Resilience Features
 
 | Feature | Implementation |
@@ -699,6 +718,7 @@ Returns up to 500 patches as `[{name, kb_id, patch_type}]`. Reported via `PUT /a
 | Non-blocking CPU | `cpu_percent(interval=None)` after startup prime |
 | Bounded process scan | Cap at 200 processes, 3s timeout |
 | Bounded registry scan | 20s hard deadline |
+| Winget Unicode parser | Skip `ord > 127` lines; locate separator line before data |
 | Heartbeat backoff | 15s → 30s → 60s … → 300s cap on failure |
 | 401 re-registration | Main loop checks status code, triggers full re-register |
 | Local result queue | `pending_results.json`, cap 100, flushed each cycle |
@@ -778,6 +798,7 @@ def _request(self, method, path, **kwargs):
 | `list_alerts(**filters)` | GET | `/api/alerts/` |
 | `list_customers(per_page)` | GET | `/api/customers/` |
 | `list_users()` | GET | `/api/users/` |
+| `force_change_password(new_password)` | POST | `/api/auth/me/force-change-password` |
 | `list_patches(**filters)` | GET | `/api/patches/` |
 | `approve_patches(patch_ids)` | POST | `/api/patches/approve_bulk` |
 | `list_profiles()` | GET | `/api/automation/profiles` |
