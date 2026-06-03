@@ -270,6 +270,12 @@ def show_dashboard_home():
 
 
 # ── Route ─────────────────────────────────────────────────────────────────────
+# Restore token from ?tok= URL param before checking session state.
+# Without this, browser reload always wipes the session and shows login.
+tok = st.query_params.get("tok", "")
+if tok and "access_token" not in st.session_state:
+    st.session_state["access_token"] = tok
+
 if "access_token" not in st.session_state:
     show_login()
 else:
