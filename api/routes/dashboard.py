@@ -102,5 +102,22 @@ def recent_alerts():
 @jwt_required()
 def activity_feed():
     from models.audit import AuditLog
-    logs = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(20).all()
-    return jsonify([log.to_dict() for log in logs]), 200
+    from models.user import User
+    from sqlalchemy.orm import outerjoin
+
+    rows = (
+        db.session.query(AuditLog, User.email, User.full_name)
+        .outerjoin(User, AuditLog.user_id == User.id)
+        .order_by(AuditLog.created_at.desc())
+        .limit(100)
+        .all()
+    )
+
+    result = []
+    for log, user_email, user_full_name in rows:
+        d = log.to_dict()
+        d["user_email"] = user_email or "—"
+        d["user_full_name"] = user_full_name or "—"
+        result.append(d)
+
+    return jsonify(result), 200
