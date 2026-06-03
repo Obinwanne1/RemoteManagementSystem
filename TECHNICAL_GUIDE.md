@@ -457,6 +457,15 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 | POST | `/` | JWT admin | Create user |
 | PUT | `/<id>` | JWT admin | Update user (role, active, password) |
 
+### Admin (`/api/admin/`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/users` | JWT admin | List all users |
+| POST | `/users` | JWT admin | Create user |
+| PUT | `/users/<id>` | JWT admin | Update user |
+| DELETE | `/users/<id>` | JWT admin | Delete user |
+| GET | `/org-token` | JWT admin | Return `ORG_REGISTRATION_TOKEN` for display in Admin panel |
+
 ### Network (`/api/network/`)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -485,7 +494,8 @@ Dashboard stores:
   st.session_state["access_token"]   = access_token
   st.session_state["refresh_token"]  = refresh_token
   st.session_state["user"]           = user dict
-  st.query_params["tok"]             = access_token  ← persists in URL
+  st.query_params["tok"]             = access_token   ← persists in URL
+  st.query_params["rtok"]            = refresh_token  ← persists in URL
 
 API call:
   Authorization: Bearer <access_token>
@@ -497,18 +507,18 @@ On 401:
 
 On page reload (F5) or navigation:
   Streamlit session state is wiped on browser reload.
-  app.py reads st.query_params["tok"] before session state check.
-  require_auth() in every page also re-reads and re-stamps tok.
-  require_auth() re-stamps st.query_params["tok"] = token on every
-  authenticated page load — ensures current page URL always carries
-  the token so F5 on any page restores the session.
+  app.py reads st.query_params["tok"] and ["rtok"] before session state check.
+  require_auth() in every page also re-reads and re-stamps both params.
+  require_auth() re-stamps ?tok= and ?rtok= on every authenticated page
+  load — ensures F5 on any page restores both access and refresh tokens,
+  allowing silent renewal even after the 900s access token TTL expires.
 ```
 
-> **NOTE:** The access token is stored in the URL `?tok=` parameter. This is a pragmatic
-> trade-off for Streamlit's stateless page reload model. Mitigated by short token TTL
-> (900s default). In production with HTTPS, the token in URL is not visible in transit
-> but will appear in server access logs — rotate `JWT_ACCESS_TOKEN_EXPIRES` to 300s
-> for higher-security environments.
+> **NOTE:** Both access (`?tok=`) and refresh (`?rtok=`) tokens are stored in URL params.
+> This is a pragmatic trade-off for Streamlit's stateless page reload model — without it,
+> any F5 reload logs the user out. Mitigated by short access token TTL (900s default).
+> In production with HTTPS, tokens in URL are not visible in transit but appear in server
+> access logs — rotate `JWT_ACCESS_TOKEN_EXPIRES` to 300s for higher-security environments.
 
 ### Agent Token Flow
 

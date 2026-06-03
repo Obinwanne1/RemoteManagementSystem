@@ -5,10 +5,11 @@ NinjaOne-style Remote Monitoring & Management system.
 Stack: Flask API + Streamlit dashboard + Python agent + PostgreSQL + Redis/Celery.
 
 ## Build Status
-**ALL PHASES COMPLETE** (Phases 1–9 + A/B/C optimization pass)
+**ALL PHASES COMPLETE** (Phases 1–9 + A/B/C optimization pass + post-ship fixes)
 - Phase A: API speed/reliability (indexes, batch queries, pool sizing, error handlers, logging, Celery retry)
 - Phase B: Dashboard reliability (session reuse, retry/backoff, token refresh, cache_data, spinners, graceful degradation)
 - Phase C: Agent reliability (non-blocking CPU, bounded scans, exponential backoff, local task queue, structured logging)
+- Post-ship: Org enrollment token exposed in Admin panel; refresh token persisted in `?rtok=` URL param to survive page reloads
 
 ## State File
 Check `.claude/state.md` at session start for current phase and context.
@@ -61,6 +62,8 @@ Apply to all UI. Dark sidebar, white text, green accents.
 - `api/reports/` — CSV output directory for generated reports. Created at runtime. `Report.file_path` stores the path; dashboard reads bytes directly for download.
 - `dashboard/utils/nav.py` — shared sidebar nav component used by all 16 pages via `render_sidebar()`.
 - `dashboard/utils/api_client.py` — `RMMClient` class. Uses `st.session_state["_rmm_client"]` session reuse + 3-attempt retry backoff + 401 auto-refresh.
+- `dashboard/utils/auth.py` — `require_auth()` re-stamps `?tok=` + `?rtok=` on every page load so F5 restores both access and refresh tokens.
+- `api/routes/admin.py` — `GET /api/admin/org-token` (admin JWT only) returns `ORG_REGISTRATION_TOKEN` for display in Admin panel.
 
 ## Build Order (Phases)
 1. ✓ Agent Core → 2. ✓ API Foundation → 3. ✓ Dashboard UI → 4. ✓ Scripts →
