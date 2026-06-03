@@ -3,6 +3,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 from utils.auth import require_auth
+from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes
 
@@ -10,6 +11,7 @@ st.set_page_config(page_title="Disk Management — RMM", layout="wide")
 inject_css()
 
 client = require_auth()
+render_sidebar()
 
 st.markdown('<h1 style="margin:0">Disk Management</h1><p style="color:#6B7B6B;margin:2px 0 1rem;font-size:0.88rem">Disk health, usage and maintenance</p>', unsafe_allow_html=True)
 
@@ -174,10 +176,25 @@ else:
     act1, act2, act3 = st.columns(3)
     with act1:
         if st.button("🔧 Defragment", use_container_width=True):
-            st.info("Defragment queued — will execute via agent in Phase 5.")
+            with st.spinner("Queuing defragment..."):
+                _, err = client.queue_device_task(selected_device["id"], "defrag", timeout=1800)
+            if err:
+                st.error(f"Failed to queue: {err}")
+            else:
+                st.success("Defragment queued. Agent will execute on next poll.")
     with act2:
         if st.button("🩺 Check Disk", use_container_width=True):
-            st.info("Check Disk (chkdsk) queued — will execute via agent in Phase 5.")
+            with st.spinner("Queuing chkdsk..."):
+                _, err = client.queue_device_task(selected_device["id"], "check_disk")
+            if err:
+                st.error(f"Failed to queue: {err}")
+            else:
+                st.success("Check Disk (chkdsk) queued. Agent will execute on next poll.")
     with act3:
         if st.button("🗑️ Clean Temp Files", use_container_width=True):
-            st.info("Temp file cleanup queued — will execute via agent in Phase 5.")
+            with st.spinner("Queuing cleanup..."):
+                _, err = client.queue_device_task(selected_device["id"], "clean_temp")
+            if err:
+                st.error(f"Failed to queue: {err}")
+            else:
+                st.success("Temp file cleanup queued. Agent will execute on next poll.")

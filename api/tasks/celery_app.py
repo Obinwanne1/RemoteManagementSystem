@@ -41,6 +41,10 @@ def make_celery(app=None):
                 "task": "tasks.alert_tasks.mark_offline_devices",
                 "schedule": 180.0,
             },
+            "sync-patch-status-every-30-min": {
+                "task": "tasks.patch_tasks.sync_patch_status",
+                "schedule": 1800.0,
+            },
         },
     )
 

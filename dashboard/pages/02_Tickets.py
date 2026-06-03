@@ -2,6 +2,7 @@
 import streamlit as st
 
 from utils.auth import require_auth
+from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, BRAND, STATUS_COLORS, section_header
 from utils.formatters import fmt_datetime, PRIORITY_COLORS, SEVERITY_COLORS
 
@@ -9,6 +10,7 @@ st.set_page_config(page_title="Tickets — RMM", layout="wide")
 inject_css()
 
 client = require_auth()
+render_sidebar()
 
 # ── Page header ───────────────────────────────────────────────────────────────
 st.markdown(
@@ -167,7 +169,7 @@ else:
                 unsafe_allow_html=True,
             )
 
-            col_status, col_comment = st.columns([1, 2])
+            col_status, col_assign, col_comment = st.columns([1, 1, 2])
 
             with col_status:
                 st.markdown(section_header("Update Status"), unsafe_allow_html=True)
@@ -186,6 +188,28 @@ else:
                         st.error(f"Update failed: {uerr}")
                     else:
                         st.success("Status updated.")
+                        st.rerun()
+
+            with col_assign:
+                st.markdown(section_header("Assign To"), unsafe_allow_html=True)
+                users_data, _ = client.list_users()
+                users = users_data if isinstance(users_data, list) else []
+                user_opts = {"— Unassigned —": None}
+                user_opts.update({u.get("full_name") or u.get("email", u["id"]): u["id"] for u in users})
+                cur_assignee = t.get("assignee_id")
+                cur_label = next((k for k, v in user_opts.items() if v == cur_assignee), "— Unassigned —")
+                cur_idx = list(user_opts.keys()).index(cur_label) if cur_label in user_opts else 0
+                new_assignee_label = st.selectbox(
+                    "Assignee", list(user_opts.keys()), index=cur_idx,
+                    key=f"assignee_sel_{t['id']}", label_visibility="collapsed",
+                )
+                if st.button("Assign", key=f"assign_btn_{t['id']}"):
+                    new_uid = user_opts[new_assignee_label]
+                    _, aerr = client.update_ticket(t["id"], {"assignee_id": new_uid})
+                    if aerr:
+                        st.error(f"Assign failed: {aerr}")
+                    else:
+                        st.success("Assigned.")
                         st.rerun()
 
             with col_comment:

@@ -57,6 +57,17 @@ class APIClient:
             logger.warning(f"Task result post failed: {e}")
             return False
 
+    def report_patches(self, patches: list) -> bool:
+        """POST pending patch list to API."""
+        url = f"{self.base_url}/api/agents/{self.device_id}/patches"
+        try:
+            resp = self.session.put(url, json={"patches": patches}, timeout=60)
+            resp.raise_for_status()
+            return True
+        except requests.RequestException as e:
+            logger.warning("Patch report failed: %s", e)
+            return False
+
     def update_software(self, software: list) -> bool:
         url = f"{self.base_url}/api/agents/{self.device_id}/software"
         try:

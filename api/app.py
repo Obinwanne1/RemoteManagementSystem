@@ -26,6 +26,11 @@ def create_app(config_name=None):
     # Import models so Alembic detects them
     with app.app_context():
         from models import user, device, customer, alert, ticket, patch, script, automation, report, billing, audit  # noqa
+        try:
+            from utils.builtin_scripts import ensure_builtin_scripts
+            ensure_builtin_scripts()
+        except Exception:
+            app.logger.warning("Could not sync built-in scripts (DB may not be ready yet)")
 
     # Register blueprints
     from routes.auth import auth_bp

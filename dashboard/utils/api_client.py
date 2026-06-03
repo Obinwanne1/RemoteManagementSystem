@@ -255,6 +255,14 @@ class RMMClient:
     def delete_user(self, user_id: str):
         return self._delete(f"/api/admin/users/{user_id}")
 
+    # --- Device tasks ---
+    def queue_device_task(self, device_id: str, task_type: str, timeout: int = 300):
+        return self._post(f"/api/devices/{device_id}/queue_task",
+                          {"task_type": task_type, "timeout_seconds": timeout})
+
+    def deploy_patches(self, device_id: str, patch_ids: list):
+        return self._post(f"/api/devices/{device_id}/deploy_patches", {"patch_ids": patch_ids})
+
     # --- Reports ---
     def list_reports(self):
         return self._get("/api/reports/")

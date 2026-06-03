@@ -75,7 +75,11 @@ header[data-testid="stHeader"] {
     background: linear-gradient(180deg, #0A1409 0%, #0F1B10 40%, #0A1409 100%) !important;
     border-right: 1px solid #1A2E1A !important;
 }
-[data-testid="stSidebar"] > div { background: transparent !important; }
+[data-testid="stSidebar"] > div {
+    background: transparent !important;
+    overflow-y: auto !important;
+    max-height: 100vh !important;
+}
 [data-testid="stSidebar"] section { background: transparent !important; }
 
 /* All text inside sidebar: default light green */
@@ -89,7 +93,10 @@ header[data-testid="stHeader"] {
 }
 
 /* Hide default Streamlit auto-generated page nav — we use custom HTML nav */
-[data-testid="stSidebarNav"] { display: none !important; }
+[data-testid="stSidebarNav"],
+[data-testid="stSidebarNavItems"],
+section[data-testid="stSidebar"] > div > div > div > ul,
+nav[data-testid="stSidebarNav"] { display: none !important; }
 
 /* Nav link container */
 [data-testid="stSidebarNavLink"] {

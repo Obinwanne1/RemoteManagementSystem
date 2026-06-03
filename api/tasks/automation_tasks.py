@@ -41,6 +41,8 @@ def enqueue_profile_run(self, profile_id: str):
                 logger.info("enqueue_profile_run: no online devices for profile %s", profile_id)
                 return
 
+            from models.script import Script, ScriptRun
+
             for device in devices:
                 run = ScheduledTaskRun(
                     profile_id=profile_id,
@@ -48,7 +50,9 @@ def enqueue_profile_run(self, profile_id: str):
                     status="queued",
                 )
                 db.session.add(run)
+                _dispatch_profile_tasks(profile, device.id, db)
 
+            profile.last_run_at = datetime.now(timezone.utc)
             db.session.commit()
             logger.info(
                 "enqueue_profile_run: queued %d devices for profile %s",
@@ -62,3 +66,48 @@ def enqueue_profile_run(self, profile_id: str):
             db.session.rollback()
             logger.exception("enqueue_profile_run failed for profile %s", profile_id)
             raise
+
+
+def _dispatch_profile_tasks(profile, device_id: str, db_session) -> None:
+    """Create ScriptRun records for each enabled task in a profile config."""
+    from models.script import ScriptRun
+    from utils.builtin_scripts import get_builtin_script_id
+
+    task_map = []
+
+    disk = profile.disk_config or {}
+    if disk.get("defrag"):
+        task_map.append("defrag")
+    if disk.get("checkdisk"):
+        task_map.append("check_disk")
+
+    maint = profile.maintenance_config or {}
+    if maint.get("delete_temp"):
+        task_map.append("clean_temp")
+    if maint.get("restore_point"):
+        task_map.append("restore_point")
+    if maint.get("clear_history"):
+        task_map.append("clear_browser")
+    if maint.get("reboot"):
+        task_map.append("reboot")
+    if maint.get("shutdown"):
+        task_map.append("shutdown")
+
+    for task_type in task_map:
+        script_id = get_builtin_script_id(task_type)
+        if script_id:
+            run = ScriptRun(
+                script_id=script_id,
+                device_id=device_id,
+                timeout_seconds=300,
+            )
+            db_session.session.add(run)
+
+    # Attach any explicitly configured scripts
+    for script_id in (profile.scripts or []):
+        run = ScriptRun(
+            script_id=script_id,
+            device_id=device_id,
+            timeout_seconds=300,
+        )
+        db_session.session.add(run)

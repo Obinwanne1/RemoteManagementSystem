@@ -80,6 +80,13 @@ def evaluate_all_rules(self):
                         )
                         db.session.add(ticket)
 
+                    # Email notifications
+                    channels = rule.notification_channels or {}
+                    emails = channels.get("email", [])
+                    if emails:
+                        from utils.notifications import send_alert_notification
+                        send_alert_notification(rule.name, device.hostname, alert.message, emails)
+
             db.session.commit()
 
         except OperationalError as exc:
