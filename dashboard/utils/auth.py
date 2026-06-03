@@ -15,10 +15,13 @@ def get_client() -> RMMClient | None:
 
 
 def _restore_from_query_params() -> None:
-    """Restore access token from ?tok= URL param. Keeps param for refresh persistence."""
+    """Restore access + refresh tokens from URL params."""
     tok = st.query_params.get("tok", "")
     if tok:
         st.session_state["access_token"] = tok
+    rtok = st.query_params.get("rtok", "")
+    if rtok:
+        st.session_state["refresh_token"] = rtok
 
 
 def _redirect_to_login() -> None:
@@ -36,11 +39,14 @@ def require_auth() -> RMMClient:
     client = get_client()
     if not client:
         _redirect_to_login()
-    # Re-stamp token into URL on every authenticated page load so F5 reload
-    # always has ?tok= available regardless of which page the user is on.
+    # Re-stamp tokens into URL on every authenticated page load so F5 reload
+    # always has ?tok= and ?rtok= available regardless of which page the user is on.
     token = st.session_state.get("access_token", "")
     if token and st.query_params.get("tok", "") != token:
         st.query_params["tok"] = token
+    rtoken = st.session_state.get("refresh_token", "")
+    if rtoken and st.query_params.get("rtok", "") != rtoken:
+        st.query_params["rtok"] = rtoken
     # Restore user profile if missing (e.g. after page refresh)
     if not st.session_state.get("user"):
         data, err = client.get_me()
