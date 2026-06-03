@@ -796,7 +796,7 @@ def to_dict(self):
 | B-1 | `requests.Session` reuse via `st.session_state["_rmm_client"]` |
 | B-2 | Retry on transient failures: 3 attempts, backoff 0.5/1.0/2.0s |
 | B-3 | Token auto-refresh on 401 (POST /api/auth/refresh, retry once) |
-| B-4 | Access token removed from URL query params — session_state only |
+| B-4 | Access token persisted in `?tok=` URL param; refresh token in `?rtok=`. Both re-stamped on every authenticated page load by `require_auth()` so F5 restores full session |
 | B-5 | `st.cache_data` wrappers (TTL 30–120s by endpoint type) |
 | B-6 | `st.spinner` on all data loads across all 16 pages |
 | B-7 | Replaced hard `st.stop()` with `st.warning` (graceful degradation) |
@@ -874,7 +874,7 @@ def render_sidebar():
 | `07_Network_Discovery.py` | Trigger scans, view discovered hosts |
 | `08_Reports.py` | Generate reports, download CSV |
 | `09_Billing.py` | Invoice list, create invoice |
-| `10_Admin.py` | User management, audit logs |
+| `10_Admin.py` | User management, audit logs, agent enrollment token (Reveal/Hide card) |
 | `11_Automation.py` | Automation profile CRUD, run history |
 | `12_OS_Patches.py` | OS patch status, approve, deploy patches |
 | `13_Software_Patches.py` | Software patch status |
@@ -978,7 +978,7 @@ Change password after first login.
 
 - [ ] `.env` never committed (in `.gitignore`)
 - [ ] `SECRET_KEY` and `JWT_SECRET_KEY` are random 32-byte hex strings
-- [ ] `ORG_REGISTRATION_TOKEN` rotated after all agents registered
+- [ ] `ORG_REGISTRATION_TOKEN` rotated after all agents registered (token visible in Admin → System Info → Agent Enrollment Token card)
 - [ ] `rmm_app` DB user has no superuser privileges
 - [ ] Rate limiting active on `/api/auth/login` (10/min)
 - [ ] JWT tokens expire (900s access, 7d refresh)

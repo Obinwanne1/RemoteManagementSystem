@@ -518,7 +518,9 @@ file = rmm_agent.log
 Make these changes:
 
 1. **`url`** — change `http://localhost:5000` to the actual IP address or hostname of your RMM server. Example: `http://192.168.1.100:5000`
-2. **`org_token`** — enter the `ORG_REGISTRATION_TOKEN` value you set in the `.env` file in Chapter 4.
+2. **`org_token`** — enter the `ORG_REGISTRATION_TOKEN` value. Find it in either:
+   - The dashboard: **Admin** → **System Info** tab → **Agent Enrollment Token** card (click Reveal)
+   - Or directly in the `.env` file on the server: `ORG_REGISTRATION_TOKEN=...`
 3. Leave `device_id` and `agent_token` blank — the agent fills these in automatically on first registration.
 
 Example of a completed config:
@@ -1867,7 +1869,7 @@ Administrators only. Technicians and viewers are blocked from this page.
 
 ### Tab 1: System Info
 
-Three cards:
+Four cards:
 
 **Current User:** Your name, email, and role badge.
 
@@ -1880,6 +1882,14 @@ Three cards:
 - **Redis / Celery** — shows configured connection address.
 
 > **NOTE:** PostgreSQL and Redis show the configured address, not a live probe. To verify database connectivity, check the Flask API health endpoint.
+
+**Agent Enrollment Token:** The `ORG_REGISTRATION_TOKEN` used to enrol managed machines.
+
+- Token is masked by default (`a8b6ea•••••••••••`).
+- Click **Reveal** to show the full token, **Hide** to mask it again.
+- Copy the revealed token and paste it into `config.ini → org_token` on any machine you want to enrol.
+- Keep this token secret — anyone who has it can register devices to your organisation.
+- After all agents are enrolled, consider rotating the token in `.env` and restarting the API.
 
 ### Tab 2: Audit Log
 
@@ -2441,7 +2451,7 @@ Reboot: true
 3. Test connectivity from the device:
     - Open a browser on that device and go to `http://YOUR_SERVER_IP:5000/api/health`
     - If you see a JSON response, the API is reachable
-4. Verify `org_token` matches the `ORG_REGISTRATION_TOKEN` in the API's `.env` file exactly.
+4. Verify `org_token` matches exactly — find it in the dashboard: **Admin** → **System Info** → **Agent Enrollment Token** → Reveal. Or check `ORG_REGISTRATION_TOKEN` in the API's `.env` file directly.
 
 ---
 
