@@ -1,4 +1,5 @@
 """Software Patches — Installed software and update management."""
+import html
 import streamlit as st
 
 from utils.auth import require_auth
@@ -113,9 +114,9 @@ with right_col:
             rows_html = '<div style="border:1px solid #DDE8DD;border-radius:0 0 8px 8px;overflow:hidden;max-height:520px;overflow-y:auto">'
             for i, sw in enumerate(sw_list):
                 bg = "#FFFFFF" if i % 2 == 0 else "#FAFCFA"
-                name = sw.get("name") or "—"
-                version = sw.get("version") or "—"
-                publisher = sw.get("publisher") or "—"
+                name = html.escape(sw.get("name") or "—")
+                version = html.escape(sw.get("version") or "—")
+                publisher = html.escape(sw.get("publisher") or "—")
                 rows_html += (
                     f'<div style="display:grid;grid-template-columns:2.5fr 1.3fr 2fr;gap:8px;'
                     f'padding:0.45rem 1rem;background:{bg};border-bottom:1px solid #EEF2EE;'
