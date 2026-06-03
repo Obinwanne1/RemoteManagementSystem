@@ -241,6 +241,7 @@ See full model code in TECHNICAL_GUIDE.md. Key notes:
 - `ScriptRun`: `script_id` is NOT NULL FK — all tasks go through Script records
 - `AutomationProfile`: JSON columns `disk_config`, `maintenance_config`, `os_patch_config`, `software_patch_config`
 - `Report`: `file_path` exposed in `to_dict()` so dashboard can read CSV for download
+- `User`: has `must_change_password = db.Column(db.Boolean, default=False, server_default="false")` — set to `True` when admin creates a user with the "Require password change on first login" checkbox; cleared to `False` by `POST /api/auth/me/force-change-password`
 
 ### 2.6 Run Migrations
 
@@ -818,6 +819,43 @@ def to_dict(self):
 
 ---
 
+## Post-Ship Features
+
+### Force Password Change on First Login
+
+**How it works:**
+1. Admin creates (or edits) a user in `Admin → Users` and checks **"Require password change on first login"**.
+2. API sets `user.must_change_password = True` in the DB.
+3. On next login, `dashboard/app.py` reads `st.session_state["user"]["must_change_password"]`.
+4. If `True`, `show_force_change_password()` is rendered instead of the normal dashboard — user cannot navigate away.
+5. On submission, dashboard calls `client.force_change_password(new_password)` → `POST /api/auth/me/force-change-password`.
+6. API sets new bcrypt hash and clears the flag. User is redirected to the normal dashboard.
+
+**Files changed:**
+- `api/models/user.py` — `must_change_password` column + exposed in `to_dict()`
+- `api/routes/auth.py` — `POST /api/auth/me/force-change-password` endpoint
+- `api/routes/admin.py` — `create_user` + `update_user` accept `must_change_password` bool
+- `dashboard/utils/api_client.py` — `force_change_password(new_password)` method
+- `dashboard/pages/10_Admin.py` — checkbox in create + edit user forms
+- `dashboard/app.py` — routing block + `show_force_change_password()` function
+
+**Migration:** `api/migrations/versions/93baa3927b0c_add_must_change_password_to_users.py`
+
+### Software Patches — Winget Unicode Fix
+
+**Root cause:** `winget list` outputs Unicode block-character progress bars (█▒░, U+2588–U+2593) before the real data table. The old parser was ingesting these as software name/version.
+
+**Fix in `agent/collector.py` `_get_winget_software()`:**
+- Skip any line containing characters with `ord(c) > 127`
+- Find the separator line (only `-`, `_`, space chars, length > 10)
+- Parse only lines after the separator
+
+**Defence-in-depth in `dashboard/pages/13_Software_Patches.py`:**
+- `_clean(text)` strips any remaining chars in U+2500–U+259F (block/box-drawing) before HTML render
+- All three fields (name, version, publisher) run through `html.escape(_clean(...))`
+
+---
+
 ## Phase 5 — Dashboard Setup
 
 ### 5.1 Install deps
@@ -874,10 +912,10 @@ def render_sidebar():
 | `07_Network_Discovery.py` | Trigger scans, view discovered hosts |
 | `08_Reports.py` | Generate reports, download CSV |
 | `09_Billing.py` | Invoice list, create invoice |
-| `10_Admin.py` | User management, audit logs, agent enrollment token (Reveal/Hide card) |
+| `10_Admin.py` | User management (with "Require password change on first login" checkbox), audit logs, agent enrollment token (Reveal/Hide card) |
 | `11_Automation.py` | Automation profile CRUD, run history |
 | `12_OS_Patches.py` | OS patch status, approve, deploy patches |
-| `13_Software_Patches.py` | Software patch status |
+| `13_Software_Patches.py` | Installed software inventory per device (registry + winget); `_clean()` sanitizer strips Unicode block chars before render |
 | `14_Disk_Management.py` | Disk usage gauges, summary table, maintenance actions |
 | `15_Maintenance.py` | Remote actions (reboot/shutdown/clean/restore/chkdsk/browser) with confirm gate |
 | `16_Scripts.py` | Script library, run scripts on devices, view run history |

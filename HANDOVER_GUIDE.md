@@ -716,6 +716,15 @@ Everyone. This is the entry point to every page in the system.
 
 > **WARNING:** There is no "forgot password" link. If locked out, contact your system administrator to reset your password.
 
+### First Login — Forced Password Change
+
+If an administrator created your account with the **"Require password change on first login"** option enabled, the system will intercept your first login and display a **Set New Password** screen instead of the normal dashboard. You cannot navigate to any other page until you complete the password change.
+
+1. Enter a new password (minimum 8 characters).
+2. Confirm the new password.
+3. Click **Set Password →**.
+4. You are immediately taken to the dashboard. The temporary password no longer works.
+
 ### Understanding the Interface Layout
 
 After logging in, the screen has two sections:
@@ -1486,20 +1495,24 @@ Technicians and administrators.
 **Right column:**
 - Searchable table of all installed software packages
 
-### Step-by-step: Checking for Software Updates
+### What the Software List Shows
+
+The right column displays all software installed on the selected device, collected by the agent from two sources:
+- **Windows Registry** — the most comprehensive source; covers everything in Add/Remove Programs
+- **winget** — Microsoft's package manager; shows packages it knows about with their IDs
+
+Each row shows: **Name**, **Version**, and **Publisher** (where available). Use the search box to filter by name or publisher.
+
+> **NOTE:** The **Check for Updates** button is a placeholder for a future winget/Chocolatey update engine (Phase 6 roadmap). It does not currently trigger updates — use Automation Profiles (Chapter 18) for bulk software patching.
+
+### Step-by-step: Finding a Specific Application
 
 1. Click **Software Patches** in the sidebar.
 2. Select an online device from the left column dropdown.
-3. Click **Check for Updates**.
-4. The right column updates to show the software list with update status indicators.
+3. The right column loads the software list automatically.
+4. Type the application name or publisher in the **Search** box to filter.
 
-### Practical Example: Updating Chrome on a Device
-
-1. Go to **Software Patches**.
-2. Select the target device.
-3. Click **Check for Updates**.
-4. Find "Google Chrome" in the right column.
-5. If an update is available, queue the update using the appropriate button.
+> **TIP:** The **Installed** counter (top right of the software list) shows the total number of packages found on the selected device.
 
 > **NOTE:** For bulk software patching across many devices, use Automation Profiles (Chapter 18) — software patching here is device-by-device.
 
@@ -1920,8 +1933,8 @@ Each entry shows: action type, resource type and ID, timestamp, IP address, and 
 Shows a table of all registered users. Columns: Full Name, Email, Role, Created Date.
 
 Available actions in the Users tab:
-- **Create** new users (name, email, password, role)
-- **Edit** existing users (change role, update name/email)
+- **Create** new users (name, email, password, role) — includes **"Require password change on first login"** checkbox (checked by default). When enabled, the user must set a new password before accessing the dashboard.
+- **Edit** existing users (change role, update name/email) — includes **"Require password change on next login"** checkbox to force a reset on an existing account.
 - **Deactivate** users to block login without deleting records
 - **Reset passwords** by editing and setting a new password
 
