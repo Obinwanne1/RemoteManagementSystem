@@ -303,19 +303,49 @@ def _get_winget_software() -> list:
     import subprocess
     result = subprocess.run(
         ["winget", "list", "--accept-source-agreements"],
-        capture_output=True, text=True, encoding="utf-8",
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
         timeout=30, creationflags=0x08000000,  # CREATE_NO_WINDOW
     )
     if result.returncode != 0:
         return []
-    lines = result.stdout.strip().splitlines()
+
+    lines = result.stdout.splitlines()
+
+    # Locate the separator line (e.g. "---  ---  ---") that marks end of header.
+    # All lines before and including it are skipped (progress bars, header row).
+    # Progress/status lines contain non-ASCII block chars — skip those too.
+    sep_idx = None
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        # Non-ASCII line → progress output, skip
+        if any(ord(c) > 127 for c in stripped):
+            continue
+        # Separator line: mostly dashes and spaces
+        if stripped and all(c in "-_ " for c in stripped) and len(stripped) > 10:
+            sep_idx = idx
+            break
+
+    if sep_idx is None:
+        return []
+
     software = []
-    for line in lines[3:]:  # Skip header rows
+    for line in lines[sep_idx + 1:]:
+        # Skip non-ASCII lines (more progress output can appear mid-run)
+        if any(ord(c) > 127 for c in line):
+            continue
         parts = line.split()
-        if len(parts) >= 2:
-            software.append({
-                "name": " ".join(parts[:-2]) if len(parts) > 2 else parts[0],
-                "version": parts[-2] if len(parts) > 1 else None,
-                "source": "winget",
-            })
+        if len(parts) < 2:
+            continue
+        # winget columns: Name ... Id Version [Available] [Source]
+        # Version is typically the second-to-last or last column before Source.
+        # We take parts[-2] as version and everything before the last 3 as name.
+        name = " ".join(parts[:-3]) if len(parts) > 3 else parts[0]
+        version = parts[-3] if len(parts) > 3 else parts[-1]
+        if not name:
+            continue
+        software.append({
+            "name": name,
+            "version": version,
+            "source": "winget",
+        })
     return software
