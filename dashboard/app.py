@@ -275,6 +275,9 @@ def show_dashboard_home():
 tok = st.query_params.get("tok", "")
 if tok and "access_token" not in st.session_state:
     st.session_state["access_token"] = tok
+rtok = st.query_params.get("rtok", "")
+if rtok and "refresh_token" not in st.session_state:
+    st.session_state["refresh_token"] = rtok
 
 if "access_token" not in st.session_state:
     show_login()
