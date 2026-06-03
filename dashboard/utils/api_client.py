@@ -255,6 +255,9 @@ class RMMClient:
     def delete_user(self, user_id: str):
         return self._delete(f"/api/admin/users/{user_id}")
 
+    def get_org_token(self):
+        return self._get("/api/admin/org-token")
+
     # --- Device tasks ---
     def queue_device_task(self, device_id: str, task_type: str, timeout: int = 300):
         return self._post(f"/api/devices/{device_id}/queue_task",
