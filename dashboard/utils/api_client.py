@@ -157,6 +157,9 @@ class RMMClient:
     def shutdown_device(self, device_id: str):
         return self._post(f"/api/devices/{device_id}/shutdown")
 
+    def update_device(self, device_id: str, data: dict):
+        return self._put(f"/api/devices/{device_id}", data)
+
     # --- Alerts ---
     def list_alert_rules(self):
         return self._get("/api/alert_rules")

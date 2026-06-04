@@ -205,6 +205,36 @@ for device in devices:
             )
             st.plotly_chart(fig, use_container_width=True)
 
+        # ── Assign to Customer ────────────────────────────────────────────────
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        cust_data, _ = client.list_customers(per_page=200)
+        customers = (cust_data or {}).get("items", [])
+        cust_options = {c["id"]: c["name"] for c in customers}
+        cust_ids   = [""] + list(cust_options.keys())
+        cust_labels = ["— Unassigned —"] + list(cust_options.values())
+        current_cid = device.get("customer_id") or ""
+        current_idx = cust_ids.index(current_cid) if current_cid in cust_ids else 0
+
+        ca1, ca2 = st.columns([3, 1])
+        with ca1:
+            chosen_idx = st.selectbox(
+                "Assign to Customer",
+                range(len(cust_ids)),
+                format_func=lambda x: cust_labels[x],
+                index=current_idx,
+                key=f"cust_{device['id']}",
+            )
+        with ca2:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            if st.button("Save", key=f"save_cust_{device['id']}"):
+                new_cid = cust_ids[chosen_idx] or None
+                _, err = client.update_device(device["id"], {"customer_id": new_cid})
+                if err:
+                    st.error(f"Failed: {err}")
+                else:
+                    st.success(f"Assigned to {cust_labels[chosen_idx]}")
+                    st.rerun()
+
         # Actions
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         ab1, ab2, ab3, ab4 = st.columns([1.5, 1, 1, 3])
