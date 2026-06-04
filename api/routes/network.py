@@ -21,11 +21,11 @@ def trigger_scan():
     if err:
         return err
     data = request.get_json(silent=True) or {}
-    if not data.get("customer_id") or not data.get("scan_range"):
-        return jsonify({"error": "customer_id and scan_range required"}), 400
+    if not data.get("scan_range"):
+        return jsonify({"error": "scan_range required"}), 400
 
     scan = NetworkScan(
-        customer_id=data["customer_id"],
+        customer_id=data.get("customer_id") or None,
         initiated_by=get_jwt_identity(),
         scan_range=data["scan_range"],
         status="running",
