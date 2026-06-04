@@ -979,12 +979,13 @@ Key functions:
 |----------|-------------|
 | `_ping_host(ip)` | ICMP ping via `ping -n 1 -w 500` (Windows) or `-c 1 -W 1` (Unix). Returns bool. |
 | `_get_mac_for_ip(ip)` | ARP table lookup (`arp -a`). Returns MAC string or `None`. |
-| `_get_hostname(ip)` | Reverse DNS via `socket.gethostbyaddr(ip)[0]`. Returns hostname string (e.g. `iPhone.local`) or `None`. |
+| `_get_hostname(ip)` | Reverse DNS via `socket.gethostbyaddr(ip)[0]`. Returns hostname string (e.g. `iPhone.local`) or `None`. Runs **before** port probe so hostname is available for all fallbacks. |
 | `_guess_platform(vendor)` | Heuristic: "Apple" → ios/mac, "Samsung/Google/OnePlus" → android, else unknown. |
 | `_probe_platform(ip)` | Port probe fallback when OUI lookup returns unknown. Tries: 62078→iOS, 5555→Android, 445/3389/139→Windows, 548→macOS, 22→Linux. Returns `(platform, device_type)` or `("unknown", "unknown")`. |
-| `run_network_scan(scan_id)` | Celery task. Parses CIDR, concurrent ping via `ThreadPoolExecutor(50)`, ARP MAC, OUI vendor, calls `_get_hostname()` per live host, falls back to `_probe_platform()` when `platform == "unknown"`, calls `_upsert_agentless_host` per live IP, updates `NetworkScan` record. |
+| `_guess_platform_from_hostname(hostname)` | 3rd-stage fallback after OUI + port probe both fail. Matches 50+ keywords in rDNS hostname: Android brand names (samsung/galaxy/pixel/xiaomi/oneplus/huawei/oppo/vivo/realme/moto…) + Samsung model numbers (S10–S24, Note, A12–A73, Fold, Flip, Ultra); iOS keywords (iphone/ipad/ipod). Fritz!Box and most routers assign the device's advertised name. Returns `(platform, device_type)` or `("unknown", "unknown")`. |
+| `run_network_scan(scan_id)` | Celery task. Parses CIDR, concurrent ping via `ThreadPoolExecutor(50)`, ARP MAC, OUI vendor, rDNS hostname, port probe, hostname keyword fallback; calls `_upsert_agentless_host` per live IP, updates `NetworkScan` record. |
 | `ping_agentless_devices()` | Beat task (300s). Loads all `is_agentless=True` devices, pings each, updates `is_online`/`last_seen`, batch commit. Devices silent for >10 min are marked offline. |
-| `_upsert_agentless_host(ip, mac, vendor, platform, device_type, hostname=None)` | Internal helper. Accepts optional `hostname` param; uses `hostname or ip` for device hostname on new records. Never clobbers agent-managed (`is_agentless=False`) devices. |
+| `_upsert_agentless_host(ip, mac, vendor, platform, device_type, hostname=None)` | Internal helper. IP fallback searches ALL devices (not just agentless) to prevent duplicate records for agent-managed Windows PCs. Upgrades `platform`/`device_type` on existing agentless records when re-scan detects better info (unknown → android/ios/windows). Never clobbers agent-managed (`is_agentless=False`) devices. |
 
 ### D.4 New API Endpoints
 
