@@ -140,6 +140,11 @@ _ANDROID_HOSTNAME_KEYWORDS = (
     "android", "galaxy", "samsung", "pixel", "oneplus", "xiaomi", "redmi",
     "poco", "mi-", "huawei", "honor", "oppo", "vivo", "realme", "moto",
     "motorola", "nokia", "zte", "infinix", "tecno", "itel",
+    # Samsung model numbers (Fritz!Box format: "Name-s-S21-Ultra")
+    "-s10", "-s20", "-s21", "-s22", "-s23", "-s24",
+    "-note10", "-note20", "-note",
+    "-a50", "-a51", "-a52", "-a53", "-a54",
+    "-fold", "-flip", "-ultra",
 )
 
 # iOS/macOS hostname keywords
@@ -194,6 +199,10 @@ def _upsert_agentless_host(ip: str, mac: str | None, vendor: str,
         existing.is_online = True
         if vendor and vendor != "Unknown":
             existing.vendor = vendor
+        # Upgrade platform/device_type if we now have better detection
+        if platform != "unknown" and existing.platform in (None, "unknown"):
+            existing.platform = platform
+            existing.device_type = device_type
         db.session.commit()
         return "updated"
 
