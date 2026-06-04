@@ -105,7 +105,8 @@ def update_device(device_id):
         return err
     device = Device.query.get_or_404(device_id)
     data = request.get_json(silent=True) or {}
-    for field in ["display_name", "group_id", "customer_id"]:
+    for field in ["display_name", "group_id", "customer_id",
+                  "hostname", "platform", "device_type", "vendor"]:
         if field in data:
             setattr(device, field, data[field])
     db.session.commit()
