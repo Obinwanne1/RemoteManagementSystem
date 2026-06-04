@@ -10,6 +10,7 @@ def render_sidebar() -> None:
     with st.sidebar:
         # ── User card ─────────────────────────────────────────────────────────
         _role_pill = {
+            "superadmin": ("#7C3AED", "#7C3AED15"),
             "admin":      ("#EF4444", "#EF444415"),
             "technician": ("#F59E0B", "#F59E0B15"),
             "viewer":     ("#22C55E", "#22C55E15"),
@@ -39,7 +40,7 @@ def render_sidebar() -> None:
         """, unsafe_allow_html=True)
 
         # ── Admin shortcut (top, admin only) ─────────────────────────────────
-        if role == "admin":
+        if role in ("admin", "superadmin"):
             if st.button("🔧  Admin Panel", use_container_width=True, key="nav_admin"):
                 st.switch_page("pages/10_Admin.py")
             st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
@@ -79,7 +80,7 @@ def render_sidebar() -> None:
         st.page_link("pages/15_Maintenance.py",      label="Maintenance",       icon="🔨")
         st.page_link("pages/07_Network_Discovery.py",label="Network Discovery", icon="🌐")
 
-        if role in ("admin", "technician"):
+        if role in ("admin", "superadmin", "technician"):
             nav_section("BUSINESS")
             st.page_link("pages/08_Reports.py",      label="Reports",           icon="📈")
             st.page_link("pages/09_Billing.py",      label="Billing",           icon="💰")
