@@ -41,10 +41,11 @@ ag = (counts_data or {}).get("agentless", 0)
 total = len(all_devices)
 
 # ── Auto-highlight device linked from Overview health map ─────────────────────
-_linked_device_id = st.query_params.get("device", "")
+# Check session state (from st.switch_page) then query param (from direct URL)
+_linked_device_id = st.session_state.pop("_nav_device", None) or st.query_params.get("device", "")
 _linked_hostname = ""
 if _linked_device_id:
-    _match = next((d for d in all_devices if str(d.get("id")) == _linked_device_id), None)
+    _match = next((d for d in all_devices if str(d.get("id")) == str(_linked_device_id)), None)
     if _match:
         _linked_hostname = _match.get("hostname", "")
         st.info(f"Showing device: **{_linked_hostname}**")

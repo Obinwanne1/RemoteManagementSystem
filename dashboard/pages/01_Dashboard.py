@@ -8,7 +8,7 @@ from utils.auth import require_auth
 from utils.nav import render_sidebar
 from utils.styles import (
     inject_css, stat_card, alert_row, activity_row,
-    device_mini_card, plotly_layout, section_header, BRAND, STATUS_COLORS,
+    plotly_layout, section_header, BRAND, STATUS_COLORS,
 )
 from utils.formatters import fmt_datetime
 
@@ -44,7 +44,7 @@ with _title_col:
     """, unsafe_allow_html=True)
 with _refresh_col:
     st.markdown("<div style='padding-top:0.6rem'></div>", unsafe_allow_html=True)
-    if st.button("⟳ Refresh", key="dash_refresh", use_container_width=True):
+    if st.button("⟳ Refresh", key="dash_refresh", type="primary", use_container_width=True):
         st.rerun()
 
 st.divider()
@@ -141,13 +141,46 @@ with right:
         </div>
         """, unsafe_allow_html=True)
     else:
+        # Inject CSS — card buttons scoped to main content area only (not sidebar)
+        st.markdown("""<style>
+        section[data-testid="stMain"] button[kind="secondary"] {
+            background:#FFF !important;border:1px solid #DDE8DD !important;
+            border-radius:10px !important;padding:0.75rem 1rem !important;
+            text-align:left !important;box-shadow:0 1px 4px rgba(0,0,0,0.04) !important;
+            height:auto !important;min-height:88px !important;width:100% !important;
+            color:#1A1A1A !important;line-height:1.5 !important;
+            transition:border-color 0.15s,box-shadow 0.15s !important;
+        }
+        section[data-testid="stMain"] button[kind="secondary"]:hover {
+            border-color:#407E3C !important;
+            box-shadow:0 4px 16px rgba(64,126,60,0.18) !important;
+            background:#F8FBF8 !important;
+        }
+        section[data-testid="stMain"] button[kind="secondary"] p {
+            font-size:0.82rem !important;color:#1A1A1A !important;
+        }
+        </style>""", unsafe_allow_html=True)
+
+        _SCOL = {
+            "healthy": "#22C55E", "warning": "#F59E0B",
+            "critical": "#EF4444", "offline": "#8492A6", "unknown": "#8492A6",
+        }
         COLS = 4
         for i in range(0, len(health), COLS):
             row_devs = health[i:i + COLS]
             cols = st.columns(COLS)
             for j, dev in enumerate(row_devs):
                 with cols[j]:
-                    st.markdown(device_mini_card(dev), unsafe_allow_html=True)
+                    online = dev.get("is_online", False)
+                    status = dev.get("status", "unknown")
+                    hostname = dev.get("hostname", "—")
+                    dot = "🟢" if online else "⚫"
+                    label = f"{dot} **{hostname}**\n{status.upper()}"
+                    if st.button(label, key=f"hm_{dev.get('id',f'{i}{j}')}",
+                                 use_container_width=True,
+                                 help="Click to view device in Devices page"):
+                        st.session_state["_nav_device"] = str(dev.get("id", ""))
+                        st.switch_page("pages/04_Devices.py")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
