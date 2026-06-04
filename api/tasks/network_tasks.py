@@ -143,7 +143,9 @@ _ANDROID_HOSTNAME_KEYWORDS = (
     # Samsung model numbers (Fritz!Box format: "Name-s-S21-Ultra")
     "-s10", "-s20", "-s21", "-s22", "-s23", "-s24",
     "-note10", "-note20", "-note",
-    "-a50", "-a51", "-a52", "-a53", "-a54",
+    "-a12", "-a13", "-a14", "-a15", "-a16", "-a22", "-a23",
+    "-a32", "-a33", "-a34", "-a35", "-a50", "-a51", "-a52", "-a53", "-a54",
+    "-a55", "-a72", "-a73",
     "-fold", "-flip", "-ultra",
 )
 
