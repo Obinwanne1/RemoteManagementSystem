@@ -116,7 +116,11 @@ def _probe_platform(ip: str) -> tuple[str, str]:
         return "ios", "mobile"
     if _open(5555):
         return "android", "mobile"
-    if _open(445) or _open(3389) or _open(139):
+    # Require 2+ Windows ports to avoid false-positives from routers/NAS with only SMB open.
+    # Fritz!Box and similar devices expose port 445 (SMB) but not 139 or 3389.
+    # Real Windows PCs have 445+139 by default; RDP (3389) optional.
+    win_ports = (_open(3389), _open(445), _open(139))
+    if sum(win_ports) >= 2:
         return "windows", "desktop"
     if _open(548):
         return "mac", "desktop"
@@ -191,6 +195,20 @@ def _upsert_agentless_host(ip: str, mac: str | None, vendor: str,
     # Fallback: match by IP — search ALL devices so agent-managed machines aren't duplicated
     if not existing:
         existing = Device.query.filter_by(ip_address=ip).first()
+
+    # Fallback: match by hostname (bare part, case-insensitive) — catches multi-adapter machines
+    # where agent registered with Ethernet MAC/IP but scan sees WiFi MAC/IP.
+    # e.g. agent hostname "DESKTOP-0NSDM8E", scan rdns "DESKTOP-0NSDM8E.fritz.box" → same bare name.
+    if not existing and hostname:
+        bare_rdns = hostname.split(".")[0].upper()
+        existing = Device.query.filter(
+            Device.hostname.ilike(bare_rdns)
+        ).first()
+        if existing is None:
+            # Also try matching agent devices whose stored hostname starts with bare_rdns
+            existing = Device.query.filter(
+                Device.hostname.ilike(f"{bare_rdns}.%")
+            ).first()
 
     if existing:
         # Never demote an agent-managed device
@@ -278,8 +296,16 @@ def _run_scan(scan_id: str):
             # Try reverse DNS for a friendly hostname (needed before hostname-based detection)
             rdns = _get_hostname(ip)
 
-            # If OUI lookup failed, try port probing
-            if platform == "unknown":
+            # If OUI lookup failed, try port probing — skip for actual router/gateway hostnames.
+            # Match only bare router names, not device.fritz.box suffixes (all LAN devices get those).
+            _ROUTER_EXACT = ("fritz.box", "fritzbox", "router", "gateway", "modem",
+                             "router.fritz.box", "dsldevice", "repeater", "ap.lan")
+            h_lower = (rdns or "").lower()
+            # Bare hostname (strip .fritz.box / .local suffix for comparison)
+            bare = h_lower.split(".")[0]
+            is_router = h_lower in _ROUTER_EXACT or bare in ("router", "gateway", "modem",
+                                                              "fritzbox", "repeater")
+            if platform == "unknown" and not is_router:
                 platform, device_type = _probe_platform(ip)
 
             # Final fallback: infer from rDNS hostname (catches Android phones with ADB off)
@@ -295,6 +321,10 @@ def _run_scan(scan_id: str):
                 "hostname": rdns or ip,
                 "status": "up",
             })
+
+            # Skip persisting router/gateway devices — no value in tracking them as endpoints
+            if is_router:
+                continue
 
             result = _upsert_agentless_host(
                 ip=ip, mac=mac, vendor=vendor,
