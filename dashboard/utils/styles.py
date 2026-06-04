@@ -319,9 +319,15 @@ def device_mini_card(device: dict) -> str:
         c = "#22C55E" if pct < 75 else ("#F59E0B" if pct < 90 else "#EF4444")
         return f'<div style="background:#EEF2EE;border-radius:3px;height:4px"><div style="background:{c};width:{min(pct,100):.0f}%;height:4px;border-radius:3px"></div></div>'
 
+    device_id = device.get("id", "")
+    href = f"/Devices?device={device_id}" if device_id else "/Devices"
     return (
+        f'<a href="{href}" target="_self" style="text-decoration:none;display:block">'
         f'<div style="background:#FFF;border-radius:10px;padding:0.85rem 1rem;'
-        f'border:1px solid #DDE8DD;box-shadow:0 1px 4px rgba(0,0,0,0.04);margin-bottom:0.4rem">'
+        f'border:1px solid #DDE8DD;box-shadow:0 1px 4px rgba(0,0,0,0.04);margin-bottom:0.4rem;'
+        f'cursor:pointer;transition:box-shadow 0.15s,border-color 0.15s" '
+        f'onmouseover="this.style.boxShadow=\'0 4px 16px rgba(64,126,60,0.18)\';this.style.borderColor=\'#407E3C\'" '
+        f'onmouseout="this.style.boxShadow=\'0 1px 4px rgba(0,0,0,0.04)\';this.style.borderColor=\'#DDE8DD\'">'
         f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
         f'<div style="display:flex;align-items:center;gap:7px">'
         f'<div style="width:7px;height:7px;border-radius:50%;background:{dot};box-shadow:0 0 5px {dot}88;flex-shrink:0"></div>'
@@ -334,7 +340,7 @@ def device_mini_card(device: dict) -> str:
         f'<div>CPU {cpu:.0f}%{bar(cpu)}</div>'
         f'<div>RAM {ram:.0f}%{bar(ram)}</div>'
         f'<div>DSK {disk:.0f}%{bar(disk)}</div>'
-        f'</div></div>'
+        f'</div></div></a>'
     )
 
 

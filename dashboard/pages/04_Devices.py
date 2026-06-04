@@ -40,10 +40,20 @@ pc = (counts_data or {}).get("by_platform", {})
 ag = (counts_data or {}).get("agentless", 0)
 total = len(all_devices)
 
+# ── Auto-highlight device linked from Overview health map ─────────────────────
+_linked_device_id = st.query_params.get("device", "")
+_linked_hostname = ""
+if _linked_device_id:
+    _match = next((d for d in all_devices if str(d.get("id")) == _linked_device_id), None)
+    if _match:
+        _linked_hostname = _match.get("hostname", "")
+        st.info(f"Showing device: **{_linked_hostname}**")
+
 # ── Shared search + status filter (apply inside each tab) ─────────────────────
 sf1, sf2, sf3 = st.columns([2, 1.2, 1.2])
 with sf1:
-    search = st.text_input("🔍  Search hostname / IP", placeholder="e.g. DESKTOP- or 192.168.", label_visibility="collapsed")
+    _default_search = _linked_hostname if _linked_device_id and _linked_hostname else ""
+    search = st.text_input("🔍  Search hostname / IP", value=_default_search, placeholder="e.g. DESKTOP- or 192.168.", label_visibility="collapsed")
 with sf2:
     status_filter = st.selectbox("Status", ["All statuses", "healthy", "warning", "critical", "offline"],
                                   label_visibility="collapsed")
