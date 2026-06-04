@@ -1255,9 +1255,9 @@ Technicians and administrators.
 
 ### How Platform Detection Works
 
-The system uses two methods to identify each discovered device's operating system:
+The system uses three stages to identify each discovered device's operating system, stopping as soon as a match is found:
 
-1. **OUI vendor lookup** — the first 6 characters of the MAC address are matched against a built-in database of 500+ hardware manufacturers. Apple MACs → iOS/macOS, Samsung/Google/OnePlus MACs → Android, etc.
+1. **OUI vendor lookup** — the first 6 characters of the MAC address are matched against a built-in database of 500+ hardware manufacturers. Apple MACs → iOS, Samsung/Google/OnePlus MACs → Android, etc.
 
 2. **Port probing** (fallback) — if OUI lookup cannot determine the platform, the system tries connecting to six well-known ports:
    - Port 62078 → iOS (iTunes Wi-Fi sync port)
@@ -1266,7 +1266,14 @@ The system uses two methods to identify each discovered device's operating syste
    - Port 548 → macOS (Apple Filing Protocol)
    - Port 22 → Linux (SSH)
 
-> **NOTE:** Modern smartphones randomize their MAC address for each network they join. This defeats OUI lookup. They also typically block all the ports listed above. If a phone or tablet appears as "Unknown" after a scan, this is why. Use the **Edit** button on that device's row in the Devices page to manually set its platform and type.
+3. **Hostname keyword matching** (final fallback) — if both OUI and port probe fail, the system checks the device's reverse-DNS hostname (the name your router assigns, e.g. `Galaxy-S21-Ultra.fritz.box`) against 50+ keywords:
+   - Android brands: samsung, galaxy, pixel, xiaomi, redmi, poco, huawei, honor, oppo, vivo, realme, motorola, nokia, zte, and more
+   - Samsung model numbers: S10–S24, Note, A12–A73, Fold, Flip, Ultra
+   - iOS: iphone, ipad, ipod
+
+   Fritz!Box, ASUS, TP-Link, and most home routers assign the device's advertised name as the hostname, making this stage effective even when MAC randomization defeats OUI lookup and ADB is disabled.
+
+> **NOTE:** A device may still appear as "Unknown" if: (a) its MAC is randomized AND all listed ports are blocked AND its router-assigned hostname contains no recognisable keywords, or (b) it was offline during the latest scan. Re-running a scan when the device is connected will trigger all three detection stages again. Devices previously stored as "Unknown" are automatically upgraded to the correct platform on the next successful scan — no manual intervention needed. If a device genuinely cannot be auto-detected, use the **Edit** button on its row in the Devices page.
 
 ### Step-by-step: Saving Discovered Devices
 
@@ -3001,7 +3008,7 @@ pytest tests/ -v
 **Discover phones/IoT devices (no agent possible):**
 
 1. Network Discovery → enter subnet (e.g. `192.168.1.0/24`) → Scan Network
-2. Review results — iOS = Apple OUI, Android = Samsung/Google/etc. OUI
+2. Review results — detected via OUI vendor, port probe, then hostname keywords (Samsung model names, brand names)
 3. Click **Save All to Devices**
 4. Devices appear in Devices → Android / iOS / Agentless tabs
 5. System pings them every 5 minutes automatically

@@ -646,12 +646,21 @@ On 401: agent re-registers (full registration flow).
 - Parses CIDR range from the `NetworkScan` record
 - Concurrent ICMP ping sweep via `ThreadPoolExecutor(50)` — all IPs in range pinged in parallel
 - For each live IP: ARP table lookup for MAC address, OUI vendor lookup via `lookup_vendor(mac)`
-- Reverse DNS via `_get_hostname(ip)` — populates device hostname (e.g. `iPhone.local`); falls back to IP if `None`
-- If OUI lookup yields `platform == "unknown"`, falls back to `_probe_platform(ip)` — tries 6 TCP ports to detect OS (62078→iOS, 5555→Android, 445/3389/139→Windows, 548→macOS, 22→Linux)
+- Reverse DNS via `_get_hostname(ip)` runs **before** port probe so hostname is available for all fallbacks
+- Detection pipeline (stops at first match):
+  1. `_guess_platform(vendor)` — OUI vendor string keywords
+  2. `_probe_platform(ip)` — 6 TCP ports (62078→iOS, 5555→Android, 445/3389/139→Windows, 548→macOS, 22→Linux)
+  3. `_guess_platform_from_hostname(rdns)` — 50+ keyword match on rDNS hostname (brand names + Samsung model numbers S10–S24, Note, A12–A73, Fold, Flip, Ultra); catches Android phones with ADB disabled
 - Calls `_upsert_agentless_host(ip, mac, vendor, platform, device_type, hostname=hostname)` per live host
 - Updates `NetworkScan` record with status, host count, and completion timestamp
 
-> **NOTE:** Phones with randomized MAC addresses per network will defeat OUI lookup. Port probing also typically fails on phones (all ports closed by default). These devices remain "unknown" platform after scan — use the manual Edit button on the agentless device row in the Devices page.
+`_upsert_agentless_host` behaviour:
+- MAC lookup → IP lookup (ALL devices, not just agentless) → create new
+- IP fallback over all devices prevents duplicate agentless records for agent-managed Windows PCs
+- On update: upgrades `platform`/`device_type` when existing record is "unknown" and new scan detects better info
+- Never modifies agent-managed (`is_agentless=False`) records
+
+> **NOTE:** Phones with fully randomized MACs and all ports blocked will still reach the hostname fallback. If the router assigns a model-name hostname (Fritz!Box, ASUS, TP-Link all do), the device will be identified. Devices that remain "unknown" after all three stages can be corrected via the Edit button on the agentless device row.
 
 #### `ping_agentless_devices()`
 - Loads all `Device` records where `is_agentless=True`
