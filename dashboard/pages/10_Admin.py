@@ -13,7 +13,7 @@ render_sidebar()
 user = current_user() or {}
 
 # ── Role guard ─────────────────────────────────────────────────────────────────
-if user.get("role") != "admin":
+if user.get("role") not in ("admin", "superadmin"):
     st.error("Admin access required. This page is restricted to admin users.")
     from utils.auth import logout
     if st.button("Sign Out / Switch Account", type="primary"):
@@ -303,6 +303,7 @@ with tab_users:
     st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
 
     ROLE_COLORS = {
+        "superadmin": "#7C3AED",
         "admin": "#407E3C",
         "technician": "#3B82F6",
         "viewer": "#6B7B6B",
@@ -383,14 +384,22 @@ with tab_users:
                         unsafe_allow_html=True,
                     )
                 with col_actions:
-                    ea, da = st.columns(2)
-                    with ea:
-                        if st.button("Edit", key=f"edit_btn_{uid}", use_container_width=True):
-                            st.session_state[f"edit_open_{uid}"] = not st.session_state.get(f"edit_open_{uid}", False)
-                    with da:
-                        if not is_self:
-                            if st.button("Delete", key=f"del_btn_{uid}", use_container_width=True, type="primary"):
-                                st.session_state[f"del_confirm_{uid}"] = True
+                    if urole == "superadmin":
+                        st.markdown(
+                            '<div style="padding:0.4rem 0.75rem;border-radius:6px;background:#F3F0FF;'
+                            'color:#7C3AED;font-size:0.75rem;font-weight:600;text-align:center;'
+                            'border:1px solid #7C3AED33">Protected — use CLI</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        ea, da = st.columns(2)
+                        with ea:
+                            if st.button("Edit", key=f"edit_btn_{uid}", use_container_width=True):
+                                st.session_state[f"edit_open_{uid}"] = not st.session_state.get(f"edit_open_{uid}", False)
+                        with da:
+                            if not is_self:
+                                if st.button("Delete", key=f"del_btn_{uid}", use_container_width=True, type="primary"):
+                                    st.session_state[f"del_confirm_{uid}"] = True
 
                 # Delete confirmation
                 if st.session_state.get(f"del_confirm_{uid}"):
