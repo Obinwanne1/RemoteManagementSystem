@@ -329,3 +329,6 @@ class RMMClient:
 
     def update_device(self, device_id: str, data: dict):
         return self._put(f"/api/devices/{device_id}", data)
+
+    def delete_device(self, device_id: str):
+        return self._delete(f"/api/devices/{device_id}")

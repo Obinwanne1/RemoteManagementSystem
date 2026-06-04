@@ -102,7 +102,7 @@ def _pct_bar(pct: float, color: str) -> str:
 
 
 # ── Agentless device row ──────────────────────────────────────────────────────
-def _render_agentless_row(device: dict):
+def _render_agentless_row(device: dict, tab_key: str = ""):
     is_online = device.get("is_online", False)
     dot_color = "#22C55E" if is_online else "#8492A6"
     platform = device.get("platform", "unknown")
@@ -165,18 +165,18 @@ def _render_agentless_row(device: dict):
         current_cid = device.get("customer_id") or ""
         current_idx = cust_ids.index(current_cid) if current_cid in cust_ids else 0
 
-        ca1, ca2, ca3 = st.columns([2.5, 0.8, 1.2])
+        ca1, ca2, ca3, ca4 = st.columns([2.5, 0.8, 1.0, 0.8])
         with ca1:
             chosen_idx = st.selectbox(
                 "Assign to Customer",
                 range(len(cust_ids)),
                 format_func=lambda x: cust_labels[x],
                 index=current_idx,
-                key=f"cust_{device['id']}",
+                key=f"cust_{tab_key}_{device['id']}",
             )
         with ca2:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("Save", key=f"save_cust_{device['id']}"):
+            if st.button("Save", key=f"save_cust_{tab_key}_{device['id']}"):
                 new_cid = cust_ids[chosen_idx] or None
                 _, e = client.update_device(device["id"], {"customer_id": new_cid})
                 st.error(f"Failed: {e}") if e else st.success(f"Assigned to {cust_labels[chosen_idx]}")
@@ -184,7 +184,7 @@ def _render_agentless_row(device: dict):
                     st.rerun()
         with ca3:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("🔔 Ping Now", key=f"ping_{device['id']}", use_container_width=True):
+            if st.button("🔔 Ping Now", key=f"ping_{tab_key}_{device['id']}", use_container_width=True):
                 result, e = client.ping_check_device(device["id"])
                 if e:
                     st.error(f"Ping failed: {e}")
@@ -195,10 +195,15 @@ def _render_agentless_row(device: dict):
                     else:
                         st.warning("No response — device may be offline or blocking ICMP")
                     st.rerun()
+        with ca4:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            if st.button("🗑 Delete", key=f"del_{tab_key}_{device['id']}", use_container_width=True):
+                _, e = client.delete_device(device["id"])
+                st.error(f"Delete failed: {e}") if e else st.rerun()
 
 
 # ── Agent device row (original full row) ─────────────────────────────────────
-def _render_agent_row(device: dict):
+def _render_agent_row(device: dict, tab_key: str = ""):
     status   = device.get("status", "unknown")
     s_color  = STATUS_COLORS.get(status, "#8492A6")
     is_online = device.get("is_online", False)
@@ -291,7 +296,7 @@ def _render_agent_row(device: dict):
                 height=140, margin=dict(t=20, b=8, l=8, r=8),
                 paper_bgcolor="#FFF",
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key=f"gauge_{tab_key}_{device.get('id')}")
 
         # Assign to customer
         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
@@ -310,11 +315,11 @@ def _render_agent_row(device: dict):
                 range(len(cust_ids)),
                 format_func=lambda x: cust_labels[x],
                 index=current_idx,
-                key=f"cust_{device['id']}",
+                key=f"cust_{tab_key}_{device['id']}",
             )
         with ca2:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("Save", key=f"save_cust_{device['id']}"):
+            if st.button("Save", key=f"save_cust_{tab_key}_{device['id']}"):
                 new_cid = cust_ids[chosen_idx] or None
                 _, e = client.update_device(device["id"], {"customer_id": new_cid})
                 st.error(f"Failed: {e}") if e else st.success(f"Assigned to {cust_labels[chosen_idx]}")
@@ -325,13 +330,13 @@ def _render_agent_row(device: dict):
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         ab1, ab2, ab3, ab4 = st.columns([1.5, 1, 1, 3])
         with ab1:
-            show_hist = st.button("📊 Metrics History", key=f"hist_{device['id']}")
+            show_hist = st.button("📊 Metrics History", key=f"hist_{tab_key}_{device['id']}")
         with ab2:
-            if is_online and st.button("🔄 Reboot", key=f"reboot_{device['id']}"):
+            if is_online and st.button("🔄 Reboot", key=f"reboot_{tab_key}_{device['id']}"):
                 _, e = client.reboot_device(device["id"])
                 st.error(e) if e else st.success("Reboot queued")
         with ab3:
-            if is_online and st.button("⏹ Shutdown", key=f"shut_{device['id']}"):
+            if is_online and st.button("⏹ Shutdown", key=f"shut_{tab_key}_{device['id']}"):
                 _, e = client.shutdown_device(device["id"])
                 st.error(e) if e else st.success("Shutdown queued")
 
@@ -364,7 +369,7 @@ def _render_agent_row(device: dict):
                         title=dict(text="24-hour usage history",
                                    font=dict(size=12, color="#6B7B6B")),
                     )
-                    st.plotly_chart(fig2, use_container_width=True)
+                    st.plotly_chart(fig2, use_container_width=True, key=f"history_{tab_key}_{device.get('id')}")
 
 
 # ── Render each tab ───────────────────────────────────────────────────────────
@@ -398,6 +403,6 @@ for tab, name in zip(tabs, tab_names):
             )
             for device in devices:
                 if device.get("is_agentless"):
-                    _render_agentless_row(device)
+                    _render_agentless_row(device, tab_key=name)
                 else:
-                    _render_agent_row(device)
+                    _render_agent_row(device, tab_key=name)
