@@ -64,10 +64,12 @@ RemoteManagementSystem/
 │   ├── routes/               ← 13 route modules
 │   ├── tasks/                ← Celery task modules
 │   │   └── network_tasks.py
+│   ├── reset_superadmin.py
 │   └── utils/
 │       ├── builtin_scripts.py
 │       ├── notifications.py
-│       └── oui.py
+│       ├── oui.py
+│       └── superadmin.py
 ├── dashboard/
 │   ├── app.py
 │   ├── requirements.txt
@@ -850,6 +852,74 @@ def to_dict(self):
 
 **Migration:** `api/migrations/versions/93baa3927b0c_add_must_change_password_to_users.py`
 
+### Superadmin Role
+
+**What it is:** A permanent highest-privilege account auto-seeded at every API startup. Cannot be deleted or modified via the API or dashboard UI.
+
+**Files:**
+- `api/utils/superadmin.py` — `ensure_superadmin()`: queries for an existing `superadmin` role user; creates one if absent using `SUPERADMIN_EMAIL`/`SUPERADMIN_PASSWORD` env vars (defaults: `superadmin@rmm.local` / `SuperAdmin@RMM1`). Called from `create_app()` in `api/app.py`.
+- `api/reset_superadmin.py` — CLI: `python reset_superadmin.py <new_password>` (min 10 chars). Resets password without a JWT token. Use when locked out of all admin accounts.
+- `api/routes/admin.py` — PUT and DELETE endpoints return 403 `"Cannot modify superadmin account"` if target user has role `superadmin`.
+- All 9 route files — `_require_role()` helper has superadmin bypass: `if claims.get("role") == "superadmin": return None`
+- `dashboard/pages/10_Admin.py` — role guard changed to `role not in ("admin", "superadmin")`; superadmin row in Users tab shows "Protected — use CLI" instead of Edit/Delete buttons; `ROLE_COLORS` includes `"superadmin": "#7C3AED"`.
+- `dashboard/utils/nav.py` and `dashboard/app.py` — Admin Panel button shown for `role in ("admin", "superadmin")`; Business section shown for `role in ("admin", "superadmin", "technician")`; role pill includes `"superadmin": ("#7C3AED", "#7C3AED15")`.
+
+**Env vars (optional):**
+```
+SUPERADMIN_EMAIL=superadmin@rmm.local
+SUPERADMIN_PASSWORD=SuperAdmin@RMM1
+```
+
+**Emergency recovery:**
+```bash
+cd api
+python reset_superadmin.py <new_password>
+```
+
+---
+
+### Agentless Device Identification Enhancements
+
+**Port probing (`api/tasks/network_tasks.py`):**
+
+`_probe_platform(ip)` is called when OUI lookup returns `platform == "unknown"`. It tries 6 TCP ports with a short timeout:
+
+| Port | Platform |
+|------|----------|
+| 62078 | iOS (iTunes Wi-Fi sync) |
+| 5555 | Android (ADB) |
+| 445, 3389, 139 | Windows (SMB/RDP/NetBIOS) |
+| 548 | macOS (AFP) |
+| 22 | Linux (SSH) |
+| All closed | `("unknown", "unknown")` |
+
+> **Limitation:** Modern phones randomize MAC addresses per network, which breaks OUI lookup. They also typically close all probed ports. Devices with randomized MACs and no open ports remain "Unknown" — use the manual Edit form.
+
+**Reverse DNS (`api/tasks/network_tasks.py`):**
+
+`_get_hostname(ip)` calls `socket.gethostbyaddr(ip)[0]` for each live host discovered during a scan. The result (e.g. `iPhone.local`) is stored in `discovered_hosts` and passed to `_upsert_agentless_host()` as the `hostname` parameter. On new records, the device hostname is set to `hostname or ip`.
+
+**Manual Edit form (`dashboard/pages/04_Devices.py`):**
+
+Each agentless device row now has an Edit button alongside Ping Now and Delete. Clicking Edit shows an inline `st.form` with:
+- `hostname` — text_input
+- `platform` — selectbox (unknown, windows, mac, linux, android, ios)
+- `device_type` — selectbox (unknown, desktop, laptop, mobile, server)
+
+On submit, calls `client.update_device(device_id, {hostname, platform, device_type})`.
+
+**Duplicate widget key fix (`dashboard/pages/04_Devices.py`):**
+
+Root cause: Streamlit renders all tabs simultaneously. A device appearing in both "All" and a platform-specific tab caused duplicate widget keys (e.g. `gauge_<uuid>` created twice).
+
+Fix: `tab_key` parameter added to `_render_agent_row(device, tab_key="")` and `_render_agentless_row(device, tab_key="")`. All widget keys inside those functions are prefixed with `tab_key`. The render loop passes `tab_key=name` where `name` is the tab label string.
+
+**`delete_device` in `api_client.py`:**
+
+Added `delete_device(device_id)` → `DELETE /api/devices/<id>`. Used by the Delete button on agentless device rows.
+
+---
+
 ### Software Patches — Winget Unicode Fix
 
 **Root cause:** `winget list` outputs Unicode block-character progress bars (█▒░, U+2588–U+2593) before the real data table. The old parser was ingesting these as software name/version.
@@ -909,10 +979,12 @@ Key functions:
 |----------|-------------|
 | `_ping_host(ip)` | ICMP ping via `ping -n 1 -w 500` (Windows) or `-c 1 -W 1` (Unix). Returns bool. |
 | `_get_mac_for_ip(ip)` | ARP table lookup (`arp -a`). Returns MAC string or `None`. |
+| `_get_hostname(ip)` | Reverse DNS via `socket.gethostbyaddr(ip)[0]`. Returns hostname string (e.g. `iPhone.local`) or `None`. |
 | `_guess_platform(vendor)` | Heuristic: "Apple" → ios/mac, "Samsung/Google/OnePlus" → android, else unknown. |
-| `run_network_scan(scan_id)` | Celery task. Parses CIDR, concurrent ping via `ThreadPoolExecutor(50)`, ARP MAC, OUI vendor, calls `_upsert_agentless_host` per live IP, updates `NetworkScan` record. |
+| `_probe_platform(ip)` | Port probe fallback when OUI lookup returns unknown. Tries: 62078→iOS, 5555→Android, 445/3389/139→Windows, 548→macOS, 22→Linux. Returns `(platform, device_type)` or `("unknown", "unknown")`. |
+| `run_network_scan(scan_id)` | Celery task. Parses CIDR, concurrent ping via `ThreadPoolExecutor(50)`, ARP MAC, OUI vendor, calls `_get_hostname()` per live host, falls back to `_probe_platform()` when `platform == "unknown"`, calls `_upsert_agentless_host` per live IP, updates `NetworkScan` record. |
 | `ping_agentless_devices()` | Beat task (300s). Loads all `is_agentless=True` devices, pings each, updates `is_online`/`last_seen`, batch commit. Devices silent for >10 min are marked offline. |
-| `_upsert_agentless_host(ip, mac, vendor, platform, device_type)` | Internal helper. Never clobbers agent-managed (`is_agentless=False`) devices. |
+| `_upsert_agentless_host(ip, mac, vendor, platform, device_type, hostname=None)` | Internal helper. Accepts optional `hostname` param; uses `hostname or ip` for device hostname on new records. Never clobbers agent-managed (`is_agentless=False`) devices. |
 
 ### D.4 New API Endpoints
 
@@ -941,7 +1013,9 @@ Reads `config.ini`, updates `[api] url` and `[api] org_token`, clears `[agent] d
 - 7 OS filter tabs: All | Windows | macOS | Linux | Android | iOS | Agentless (each with count badge)
 - Loads all devices once + `platform_counts`; filters client-side per tab
 - Agent device row: CPU/RAM/disk gauges, reboot/shutdown buttons, customer assign
-- Agentless device row: IP, MAC, vendor badge, platform badge, last seen, online dot, Ping Now button, customer assign
+- Agentless device row: IP, MAC, vendor badge, platform badge, last seen, online dot, Ping Now button, Edit button, Delete button, customer assign
+- Edit button on agentless rows shows inline `st.form` with hostname (text_input), platform (selectbox), device_type (selectbox); calls `client.update_device(device_id, {...})` on submit. Workaround for randomized-MAC phones that port probing cannot identify.
+- Duplicate widget key fix: `_render_agent_row(device, tab_key="")` and `_render_agentless_row(device, tab_key="")` accept `tab_key` param; all 11 widget keys inside those functions are prefixed with `tab_key` (e.g. `f"gauge_{tab_key}_{device['id']}"`). Render loop passes `tab_key=name` (the tab label string).
 - Platform icons: windows=🪟 mac=🍎 linux=🐧 android=🤖 ios=📱 unknown=💻
 
 **`dashboard/pages/07_Network_Discovery.py`** — Complete rewrite:
@@ -967,6 +1041,7 @@ Reads `config.ini`, updates `[api] url` and `[api] org_token`, clears `[agent] d
 | `trigger_network_scan(customer_id, scan_range)` | POST | `/api/network/scan` |
 | `get_server_ips()` | GET | `/api/admin/server_ips` |
 | `update_device(device_id, data)` | PUT | `/api/devices/<id>` |
+| `delete_device(device_id)` | DELETE | `/api/devices/<id>` |
 
 ---
 
@@ -1053,6 +1128,9 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/1
 ORG_REGISTRATION_TOKEN=<python -c "import secrets; print(secrets.token_hex(24))">
 API_BASE_URL=http://localhost:5000
 DASHBOARD_URL=http://localhost:8501
+# Superadmin credentials (optional — override defaults)
+SUPERADMIN_EMAIL=superadmin@rmm.local
+SUPERADMIN_PASSWORD=SuperAdmin@RMM1
 # SMTP (optional — omit to disable email alerts)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
@@ -1138,6 +1216,7 @@ Change password after first login.
 - [ ] No `FLASK_DEBUG=1` in production
 - [ ] `SMTP_PASS` is an app-specific password, not your Gmail password
 - [ ] `api/reports/` directory not exposed via HTTP
+- [ ] Superadmin default password changed (see Admin → Users or run `cd api ; python reset_superadmin.py <new_password>`)
 
 ---
 
@@ -1156,3 +1235,4 @@ Change password after first login.
 | Built-in scripts as Script records | Avoids new DB migration; reuses existing ScriptRun task queue |
 | `file_path` on Report | Dashboard and API on same machine; bytes read directly — no file serving needed |
 | SMTP gated on env var | Email optional; missing config silently skips, no crash |
+| Superadmin always-present | Emergency lockout recovery without out-of-band DB access |

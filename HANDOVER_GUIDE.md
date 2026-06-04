@@ -810,7 +810,7 @@ Sarah is a new junior technician. It is her first day.
 
 The system uses Role-Based Access Control (RBAC). Different users have different access depending on their role. There are three roles: **admin**, **technician**, and **viewer**.
 
-### The Three Roles Explained
+### The Four Roles Explained
 
 **Viewer**
 Read-only access. Viewers can browse the dashboard, look at device metrics, read alerts, and view tickets. They cannot create tickets, run scripts, approve patches, or access the Admin page. Use this role for managers or clients who need read-only visibility.
@@ -836,8 +836,12 @@ Complete access. Includes everything technicians do, plus:
 - Billing and invoice creation
 - System-wide configuration
 
+**Super Administrator**
+Full system access including emergency recovery. The superadmin account exists permanently — it is re-created automatically every time the API starts if it does not exist. There is exactly one superadmin account per system. It cannot be modified or deleted through the web interface. To change its password, a server administrator must use the CLI tool (`reset_superadmin.py`). See Chapter 26 for details.
+
 ### Role Badges in the Sidebar
 
+- **SUPERADMIN** — purple badge
 - **ADMIN** — red badge
 - **TECHNICIAN** — yellow/amber badge
 - **VIEWER** — green badge
@@ -974,6 +978,8 @@ The Devices page is divided into seven tabs, each showing a count badge:
 - IP address, MAC address, vendor badge (e.g., "Apple, Inc."), platform badge
 - Last seen timestamp, online/offline status dot
 - **Ping Now** button — triggers an immediate reachability check and updates online status
+- **Edit** button — opens an inline form to manually correct the hostname, platform (windows/mac/linux/android/ios/unknown), and device type (desktop/laptop/mobile/server/unknown). Useful when automatic detection could not identify the device (see Chapter 15).
+- **Delete** button — removes the agentless device record permanently
 - Customer assignment control
 
 > **NOTE:** Agentless devices do not report CPU, RAM, or disk metrics. They are presence-monitored only — the system confirms they are reachable on the network, nothing more.
@@ -1247,13 +1253,28 @@ Technicians and administrators.
 
 > **NOTE:** The scan uses concurrent ICMP ping (50 parallel threads). On large subnets (/16 or wider), expect longer scan times and consider narrowing the range.
 
+### How Platform Detection Works
+
+The system uses two methods to identify each discovered device's operating system:
+
+1. **OUI vendor lookup** — the first 6 characters of the MAC address are matched against a built-in database of 500+ hardware manufacturers. Apple MACs → iOS/macOS, Samsung/Google/OnePlus MACs → Android, etc.
+
+2. **Port probing** (fallback) — if OUI lookup cannot determine the platform, the system tries connecting to six well-known ports:
+   - Port 62078 → iOS (iTunes Wi-Fi sync port)
+   - Port 5555 → Android (ADB debug port)
+   - Ports 445, 3389, or 139 → Windows (file sharing / Remote Desktop)
+   - Port 548 → macOS (Apple Filing Protocol)
+   - Port 22 → Linux (SSH)
+
+> **NOTE:** Modern smartphones randomize their MAC address for each network they join. This defeats OUI lookup. They also typically block all the ports listed above. If a phone or tablet appears as "Unknown" after a scan, this is why. Use the **Edit** button on that device's row in the Devices page to manually set its platform and type.
+
 ### Step-by-step: Saving Discovered Devices
 
 1. Review the scan results. Verify the detected platform icons look correct.
 2. Click **Save All to Devices**.
 3. A confirmation shows how many devices were created, updated, or skipped (skipped = already registered with an agent).
 4. Go to **Devices** → **Agentless** tab to see all saved devices.
-5. Phones appear in the **Android** or **iOS** tabs depending on their vendor OUI.
+5. Phones appear in the **Android** or **iOS** tabs depending on their detected platform. If shown as Unknown, use the Edit button to correct it.
 
 ### Automatic Online/Offline Monitoring
 
@@ -2060,6 +2081,50 @@ On the first Monday of each month:
 4. Go to **Users** tab. Verify all listed users are current employees.
 5. Go to **System Info** → Services card. Verify all services are healthy.
 
+### The Superadmin Account
+
+**What it is:** A permanently present, highest-privilege account built into the system. It exists so that if all regular admin accounts are locked out, deactivated, or forgotten, the system can still be accessed and recovered.
+
+**Key facts:**
+- There is exactly one superadmin account per system.
+- It is automatically re-created every time the Flask API starts, if it does not already exist.
+- It cannot be edited or deleted through the web interface. The Edit and Delete buttons are replaced by "Protected — use CLI" in the Users tab.
+- It has a purple role badge in the sidebar.
+- It has full access to every feature in the system.
+
+**Default credentials** (change these immediately after installation):
+- Email: `superadmin@rmm.local`
+- Password: `SuperAdmin@RMM1`
+
+**Changing the superadmin email or password via environment variables:**
+
+Edit the `.env` file on the server and set:
+```
+SUPERADMIN_EMAIL=your-preferred-email@company.com
+SUPERADMIN_PASSWORD=YourNewStrongPassword123
+```
+Then restart the Flask API. The account will be updated on next startup.
+
+**Emergency password reset (when locked out of the web interface):**
+
+If you cannot log in as superadmin and need to reset the password without a web session:
+
+1. Open a terminal on the RMM server.
+2. Navigate to the `api` folder:
+   ```powershell
+   Set-Location C:\RMM\RemoteManagementSystem\api
+   .\venv\Scripts\Activate.ps1
+   ```
+3. Run the reset tool:
+   ```powershell
+   python reset_superadmin.py YourNewPassword123
+   ```
+   The password must be at least 10 characters. The tool confirms success and the new password takes effect immediately — no restart required.
+
+> **WARNING:** Keep the superadmin password in a secure password manager or sealed physical document. It is your last line of defence if all other admin access is lost.
+
+> **NOTE:** The superadmin account does not appear in the Audit Log's normal user activity in the same way as regular users — but its LOGIN events are still recorded.
+
 ---
 
 # PART VIII — TECHNICAL REFERENCE
@@ -2419,69 +2484,70 @@ Reboot: true
 
 ### Full Permissions Matrix
 
-| Feature / Action | Viewer | Technician | Admin |
-|---|---|---|---|
-| **Dashboard** | | | |
-| View Dashboard Overview | Yes | Yes | Yes |
-| **Tickets** | | | |
-| View tickets | Yes | Yes | Yes |
-| Create tickets | No | Yes | Yes |
-| Update ticket status | No | Yes | Yes |
-| Add comments (public) | No | Yes | Yes |
-| Add comments (internal) | No | Yes | Yes |
-| Delete tickets | No | No | Yes |
-| **Customers** | | | |
-| View customers | Yes | Yes | Yes |
-| Create customers | No | Yes | Yes |
-| Edit customers | No | Yes | Yes |
-| Delete customers | No | No | Yes |
-| **Devices** | | | |
-| View device list | Yes | Yes | Yes |
-| View device metrics | Yes | Yes | Yes |
-| **Alerts** | | | |
-| View alerts | Yes | Yes | Yes |
-| Acknowledge alerts | No | Yes | Yes |
-| Resolve alerts | No | Yes | Yes |
-| Create/manage alert rules | No | Yes | Yes |
-| **App Center** | | | |
-| View software inventory | Yes | Yes | Yes |
-| **Network Discovery** | | | |
-| Run network scan | No | Yes | Yes |
-| View scan results | Yes | Yes | Yes |
-| **Reports** | | | |
-| Generate reports | No | Yes | Yes |
-| View/download report history | Yes | Yes | Yes |
-| **Billing** | | | |
-| View invoices | Yes | Yes | Yes |
-| Create invoices | No | No | Yes |
-| Update invoice status | No | No | Yes |
-| **Administration** | | | |
-| Access Admin page | No | No | Yes |
-| View Audit Log | No | No | Yes |
-| Manage users | No | No | Yes |
-| **Automation** | | | |
-| View profiles | Yes | Yes | Yes |
-| Create/edit profiles | No | Yes | Yes |
-| Run profile now | No | Yes | Yes |
-| Delete profiles | No | No | Yes |
-| **OS Patches** | | | |
-| View pending patches | Yes | Yes | Yes |
-| Approve patches | No | Yes | Yes |
-| **Software Patches** | | | |
-| View software list | Yes | Yes | Yes |
-| Check for updates | No | Yes | Yes |
-| **Disk Management** | | | |
-| View disk gauges | Yes | Yes | Yes |
-| Run disk actions | No | Yes | Yes |
-| **Maintenance** | | | |
-| View maintenance page | Yes | Yes | Yes |
-| Reboot/Shutdown devices | No | Yes | Yes |
-| Run maintenance actions | No | Yes | Yes |
-| **Scripts** | | | |
-| View script library | Yes | Yes | Yes |
-| Run scripts | No | Yes | Yes |
-| Upload scripts | No | Yes | Yes |
-| View run history | Yes | Yes | Yes |
+| Feature / Action | Viewer | Technician | Admin | Superadmin |
+|---|---|---|---|---|
+| **Dashboard** | | | | |
+| View Dashboard Overview | Yes | Yes | Yes | Yes |
+| **Tickets** | | | | |
+| View tickets | Yes | Yes | Yes | Yes |
+| Create tickets | No | Yes | Yes | Yes |
+| Update ticket status | No | Yes | Yes | Yes |
+| Add comments (public) | No | Yes | Yes | Yes |
+| Add comments (internal) | No | Yes | Yes | Yes |
+| Delete tickets | No | No | Yes | Yes |
+| **Customers** | | | | |
+| View customers | Yes | Yes | Yes | Yes |
+| Create customers | No | Yes | Yes | Yes |
+| Edit customers | No | Yes | Yes | Yes |
+| Delete customers | No | No | Yes | Yes |
+| **Devices** | | | | |
+| View device list | Yes | Yes | Yes | Yes |
+| View device metrics | Yes | Yes | Yes | Yes |
+| **Alerts** | | | | |
+| View alerts | Yes | Yes | Yes | Yes |
+| Acknowledge alerts | No | Yes | Yes | Yes |
+| Resolve alerts | No | Yes | Yes | Yes |
+| Create/manage alert rules | No | Yes | Yes | Yes |
+| **App Center** | | | | |
+| View software inventory | Yes | Yes | Yes | Yes |
+| **Network Discovery** | | | | |
+| Run network scan | No | Yes | Yes | Yes |
+| View scan results | Yes | Yes | Yes | Yes |
+| **Reports** | | | | |
+| Generate reports | No | Yes | Yes | Yes |
+| View/download report history | Yes | Yes | Yes | Yes |
+| **Billing** | | | | |
+| View invoices | Yes | Yes | Yes | Yes |
+| Create invoices | No | No | Yes | Yes |
+| Update invoice status | No | No | Yes | Yes |
+| **Administration** | | | | |
+| Access Admin page | No | No | Yes | Yes |
+| View Audit Log | No | No | Yes | Yes |
+| Manage users | No | No | Yes | Yes |
+| Modify/delete superadmin account | No | No | No | CLI only |
+| **Automation** | | | | |
+| View profiles | Yes | Yes | Yes | Yes |
+| Create/edit profiles | No | Yes | Yes | Yes |
+| Run profile now | No | Yes | Yes | Yes |
+| Delete profiles | No | No | Yes | Yes |
+| **OS Patches** | | | | |
+| View pending patches | Yes | Yes | Yes | Yes |
+| Approve patches | No | Yes | Yes | Yes |
+| **Software Patches** | | | | |
+| View software list | Yes | Yes | Yes | Yes |
+| Check for updates | No | Yes | Yes | Yes |
+| **Disk Management** | | | | |
+| View disk gauges | Yes | Yes | Yes | Yes |
+| Run disk actions | No | Yes | Yes | Yes |
+| **Maintenance** | | | | |
+| View maintenance page | Yes | Yes | Yes | Yes |
+| Reboot/Shutdown devices | No | Yes | Yes | Yes |
+| Run maintenance actions | No | Yes | Yes | Yes |
+| **Scripts** | | | | |
+| View script library | Yes | Yes | Yes | Yes |
+| Run scripts | No | Yes | Yes | Yes |
+| Upload scripts | No | Yes | Yes | Yes |
+| View run history | Yes | Yes | Yes | Yes |
 
 ---
 
@@ -2939,6 +3005,35 @@ pytest tests/ -v
 3. Click **Save All to Devices**
 4. Devices appear in Devices → Android / iOS / Agentless tabs
 5. System pings them every 5 minutes automatically
+
+---
+
+## Quick Reference Card — Superadmin Emergency Recovery
+
+**Use this when:** All regular admin accounts are locked out, forgotten, or deactivated and you cannot log in to the web interface.
+
+**Step 1 — Access the server machine directly** (physical or remote desktop to the RMM server).
+
+**Step 2 — Open a terminal and reset the password:**
+```powershell
+Set-Location C:\RMM\RemoteManagementSystem\api
+.\venv\Scripts\Activate.ps1
+python reset_superadmin.py YourNewPassword123
+```
+Password must be at least 10 characters. No API restart needed.
+
+**Step 3 — Log in to the dashboard:**
+- URL: http://localhost:8501
+- Email: `superadmin@rmm.local` (or whatever is set in `SUPERADMIN_EMAIL` in `.env`)
+- Password: the one you just set
+
+**Step 4 — Recover access for regular admins:**
+- Go to Admin → Users tab
+- Re-activate or reset passwords for admin accounts as needed
+
+**To permanently change superadmin credentials** (recommended after install):
+1. Edit `.env` — set `SUPERADMIN_EMAIL` and `SUPERADMIN_PASSWORD`
+2. Restart the Flask API: `cd api ; python app.py`
 
 ---
 

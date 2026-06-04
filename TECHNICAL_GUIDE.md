@@ -131,7 +131,9 @@ id                   Integer PK
 email                String(255) UNIQUE NOT NULL
 password_hash        String(255)          # bcrypt rounds=12
 full_name            String(255)
-role                 String(50)           # admin | technician | viewer
+role                 String(50)           # superadmin | admin | technician | viewer
+                                          # superadmin: highest privilege, bypasses all _require_role() checks,
+                                          # cannot be deleted or modified via API
 mfa_secret           String(32)
 mfa_enabled          Boolean default False
 is_active            Boolean default True
@@ -474,8 +476,8 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 |--------|------|------|-------------|
 | GET | `/users` | JWT admin | List all users |
 | POST | `/users` | JWT admin | Create user — accepts `must_change_password` bool |
-| PUT | `/users/<id>` | JWT admin | Update user — accepts `must_change_password` bool |
-| DELETE | `/users/<id>` | JWT admin | Delete user |
+| PUT | `/users/<id>` | JWT admin | Update user — accepts `must_change_password` bool. Returns 403 if target is superadmin. |
+| DELETE | `/users/<id>` | JWT admin | Delete user. Returns 403 if target is superadmin. |
 | GET | `/org-token` | JWT admin | Return `ORG_REGISTRATION_TOKEN` for display in Admin panel |
 | GET | `/server_ips` | None | Returns `{"hostname": "...", "lan_ips": ["192.168.x.x"]}` via socket.getaddrinfo |
 
@@ -559,21 +561,24 @@ On 401: agent re-registers (full registration flow).
 
 ### Role Permissions Matrix
 
-| Action | viewer | technician | admin |
-|--------|--------|-----------|-------|
-| View dashboard, devices, alerts | ✓ | ✓ | ✓ |
-| Create/update tickets | — | ✓ | ✓ |
-| Acknowledge/resolve alerts | — | ✓ | ✓ |
-| Run scripts | — | ✓ | ✓ |
-| Queue maintenance tasks | — | ✓ | ✓ |
-| Approve/deploy patches | — | ✓ | ✓ |
-| Manage automation profiles | — | ✓ | ✓ |
-| Create/update customers | — | ✓ | ✓ |
-| Generate reports | — | ✓ | ✓ |
-| Create/manage users | — | — | ✓ |
-| Delete any resource | — | — | ✓ |
-| View Admin page | — | — | ✓ |
-| Manage billing/invoices | — | — | ✓ |
+| Action | viewer | technician | admin | superadmin |
+|--------|--------|-----------|-------|-----------|
+| View dashboard, devices, alerts | ✓ | ✓ | ✓ | ✓ |
+| Create/update tickets | — | ✓ | ✓ | ✓ |
+| Acknowledge/resolve alerts | — | ✓ | ✓ | ✓ |
+| Run scripts | — | ✓ | ✓ | ✓ |
+| Queue maintenance tasks | — | ✓ | ✓ | ✓ |
+| Approve/deploy patches | — | ✓ | ✓ | ✓ |
+| Manage automation profiles | — | ✓ | ✓ | ✓ |
+| Create/update customers | — | ✓ | ✓ | ✓ |
+| Generate reports | — | ✓ | ✓ | ✓ |
+| Create/manage users | — | — | ✓ | ✓ |
+| Delete any resource | — | — | ✓ | ✓ |
+| View Admin page | — | — | ✓ | ✓ |
+| Manage billing/invoices | — | — | ✓ | ✓ |
+| Modify/delete superadmin account | — | — | — | — (CLI only) |
+
+> **NOTE:** All `_require_role()` guards in all 9 route files include a superadmin bypass: `if claims.get("role") == "superadmin": return None`. The superadmin account itself cannot be modified or deleted via any API endpoint — use `api/reset_superadmin.py` for password changes.
 
 ---
 
@@ -641,8 +646,12 @@ On 401: agent re-registers (full registration flow).
 - Parses CIDR range from the `NetworkScan` record
 - Concurrent ICMP ping sweep via `ThreadPoolExecutor(50)` — all IPs in range pinged in parallel
 - For each live IP: ARP table lookup for MAC address, OUI vendor lookup via `lookup_vendor(mac)`
-- Calls `_upsert_agentless_host(ip, mac, vendor, platform, device_type)` per live host
+- Reverse DNS via `_get_hostname(ip)` — populates device hostname (e.g. `iPhone.local`); falls back to IP if `None`
+- If OUI lookup yields `platform == "unknown"`, falls back to `_probe_platform(ip)` — tries 6 TCP ports to detect OS (62078→iOS, 5555→Android, 445/3389/139→Windows, 548→macOS, 22→Linux)
+- Calls `_upsert_agentless_host(ip, mac, vendor, platform, device_type, hostname=hostname)` per live host
 - Updates `NetworkScan` record with status, host count, and completion timestamp
+
+> **NOTE:** Phones with randomized MAC addresses per network will defeat OUI lookup. Port probing also typically fails on phones (all ports closed by default). These devices remain "unknown" platform after scan — use the manual Edit button on the agentless device row in the Devices page.
 
 #### `ping_agentless_devices()`
 - Loads all `Device` records where `is_agentless=True`
@@ -837,6 +846,7 @@ def _request(self, method, path, **kwargs):
 | `trigger_network_scan(customer_id, scan_range)` | POST | `/api/network/scan` |
 | `get_server_ips()` | GET | `/api/admin/server_ips` |
 | `update_device(device_id, data)` | PUT | `/api/devices/<id>` |
+| `delete_device(device_id)` | DELETE | `/api/devices/<id>` |
 
 ### Cache Strategy
 
@@ -980,11 +990,17 @@ app.register_blueprint(mymodule.mymodule_bp, url_prefix='/api/mymodule')
 2. Enter the subnet in CIDR notation (e.g. `192.168.1.0/24`) and optionally assign a customer.
 3. Click **Scan Network** — the scan takes 15–30 seconds via concurrent ICMP ping.
 4. Discovered devices appear with IP, MAC, vendor (from OUI lookup), and detected platform.
-   - iOS devices are identified by Apple OUI prefixes.
-   - Android devices are identified by Samsung/Google/OnePlus/etc. OUI prefixes.
+   - iOS devices are identified by Apple OUI prefixes, or by port 62078 being open (port probe fallback).
+   - Android devices are identified by Samsung/Google/OnePlus/etc. OUI prefixes, or by port 5555 being open.
+   - When OUI lookup returns unknown, `_probe_platform(ip)` tries 6 TCP ports to detect the OS.
+   - Reverse DNS (`_get_hostname`) populates a friendly hostname (e.g. `Printer.local`) when available.
 5. Click **Save All to Devices** to persist them to the database.
 6. Devices appear in Devices → Android/iOS/Agentless tabs.
 7. Celery beat pings them every 5 minutes — online/offline status updates within 10 minutes of disconnect.
+
+**Identifying devices that evade automated detection (randomized MAC + closed ports):**
+
+Modern phones randomize their MAC address per network, defeating OUI lookup. They also typically block all probed ports. These devices will remain platform "unknown" after a scan. Use the **Edit** button on the agentless device row in the Devices page to manually set hostname, platform, and device_type. This calls `PUT /api/devices/<id>` via `client.update_device(device_id, data)`.
 
 ### Adding a New Report Template
 
@@ -1021,6 +1037,7 @@ COLLECTORS = {
 1. **Dashboard users** — JWT (HS256, `JWT_SECRET_KEY`), 900s access / 7d refresh
 2. **Agents** — `X-Agent-Token` header, token stored as SHA256 hash in `agent_tokens` table
 3. **API startup** — `ORG_REGISTRATION_TOKEN` required for agent registration
+4. **Superadmin** — seeded at every API startup via `ensure_superadmin()` in `api/utils/superadmin.py`; bypasses all `_require_role()` checks; cannot be deleted or modified via API; password reset via `api/reset_superadmin.py` CLI
 
 ### Known Risks & Mitigations
 
@@ -1033,6 +1050,7 @@ COLLECTORS = {
 | DB credentials in env | `.env` in `.gitignore`. Never committed. |
 | Report file exposure | `api/reports/` not served via HTTP. Download reads bytes directly in dashboard. |
 | SMTP credential exposure | `SMTP_PASS` read from env only. Never logged. |
+| Superadmin lockout | Auto-seeded at every API startup — account always exists. Emergency password reset: `cd api ; python reset_superadmin.py <new_password>` |
 
 ### Production Checklist
 
@@ -1067,6 +1085,8 @@ COLLECTORS = {
 | `SMTP_USER` | — | — | SMTP login username |
 | `SMTP_PASS` | — | — | SMTP login password (use app-specific password) |
 | `SMTP_FROM` | — | `SMTP_USER` | From address for alert emails |
+| `SUPERADMIN_EMAIL` | — | `superadmin@rmm.local` | Email for the auto-seeded superadmin account |
+| `SUPERADMIN_PASSWORD` | — | `SuperAdmin@RMM1` | Password for the auto-seeded superadmin account. Change in production. |
 | `FLASK_ENV` | — | `production` | Set to `development` for debug mode |
 | `FLASK_DEBUG` | — | `0` | Set to `1` only in development |
 
