@@ -165,7 +165,7 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
         current_cid = device.get("customer_id") or ""
         current_idx = cust_ids.index(current_cid) if current_cid in cust_ids else 0
 
-        ca1, ca2, ca3, ca4 = st.columns([2.5, 0.8, 1.0, 0.8])
+        ca1, ca2, ca3, ca4, ca5 = st.columns([2.5, 0.8, 0.9, 0.9, 0.8])
         with ca1:
             chosen_idx = st.selectbox(
                 "Assign to Customer",
@@ -184,7 +184,11 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
                     st.rerun()
         with ca3:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("🔔 Ping Now", key=f"ping_{tab_key}_{device['id']}", use_container_width=True):
+            if st.button("✏️ Edit", key=f"edit_{tab_key}_{device['id']}", use_container_width=True):
+                st.session_state[f"ag_edit_{device['id']}"] = not st.session_state.get(f"ag_edit_{device['id']}", False)
+        with ca4:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            if st.button("🔔 Ping", key=f"ping_{tab_key}_{device['id']}", use_container_width=True):
                 result, e = client.ping_check_device(device["id"])
                 if e:
                     st.error(f"Ping failed: {e}")
@@ -195,11 +199,39 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
                     else:
                         st.warning("No response — device may be offline or blocking ICMP")
                     st.rerun()
-        with ca4:
+        with ca5:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("🗑 Delete", key=f"del_{tab_key}_{device['id']}", use_container_width=True):
+            if st.button("🗑", key=f"del_{tab_key}_{device['id']}", use_container_width=True):
                 _, e = client.delete_device(device["id"])
                 st.error(f"Delete failed: {e}") if e else st.rerun()
+
+        # Edit form
+        if st.session_state.get(f"ag_edit_{device['id']}"):
+            PLATFORMS = ["unknown", "windows", "mac", "linux", "android", "ios"]
+            DEVICE_TYPES = ["unknown", "desktop", "laptop", "mobile", "server"]
+            cur_platform = device.get("platform", "unknown")
+            cur_dtype = device.get("device_type", "unknown")
+            p_idx = PLATFORMS.index(cur_platform) if cur_platform in PLATFORMS else 0
+            d_idx = DEVICE_TYPES.index(cur_dtype) if cur_dtype in DEVICE_TYPES else 0
+            with st.form(key=f"ag_edit_form_{tab_key}_{device['id']}"):
+                ef1, ef2, ef3 = st.columns(3)
+                with ef1:
+                    new_hostname = st.text_input("Friendly name / hostname", value=device.get("hostname") or device.get("ip_address", ""))
+                with ef2:
+                    new_platform = st.selectbox("Platform", PLATFORMS, index=p_idx)
+                with ef3:
+                    new_dtype = st.selectbox("Device type", DEVICE_TYPES, index=d_idx)
+                if st.form_submit_button("Save device info", use_container_width=True):
+                    _, e = client.update_device(device["id"], {
+                        "hostname": new_hostname,
+                        "platform": new_platform,
+                        "device_type": new_dtype,
+                    })
+                    if e:
+                        st.error(f"Failed: {e}")
+                    else:
+                        st.session_state.pop(f"ag_edit_{device['id']}", None)
+                        st.rerun()
 
 
 # ── Agent device row (original full row) ─────────────────────────────────────

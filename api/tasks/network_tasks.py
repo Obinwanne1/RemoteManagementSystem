@@ -88,9 +88,57 @@ def _guess_platform(vendor: str) -> tuple[str, str]:
     return "unknown", "unknown"
 
 
+def _probe_platform(ip: str) -> tuple[str, str]:
+    """
+    Probe well-known ports to guess OS/platform when OUI is Unknown.
+    Returns (platform, device_type). Falls back to ("unknown", "unknown").
+
+    Port map:
+      62078 → iOS  (iTunes Wi-Fi sync, open on iPhones/iPads)
+      5555  → Android (ADB, enabled on developer phones)
+      445   → Windows (SMB)
+      139   → Windows (NetBIOS)
+      22    → Linux or macOS (SSH)
+      5000  → macOS (AirPlay / Control Center — skip, conflicts with our API)
+      548   → macOS (AFP file sharing)
+      3389  → Windows (RDP)
+    """
+    import socket
+
+    def _open(port: int, timeout: float = 0.5) -> bool:
+        try:
+            with socket.create_connection((ip, port), timeout=timeout):
+                return True
+        except Exception:
+            return False
+
+    if _open(62078):
+        return "ios", "mobile"
+    if _open(5555):
+        return "android", "mobile"
+    if _open(445) or _open(3389) or _open(139):
+        return "windows", "desktop"
+    if _open(548):
+        return "mac", "desktop"
+    if _open(22):
+        return "linux", "desktop"
+    return "unknown", "unknown"
+
+
+def _get_hostname(ip: str) -> str | None:
+    """Reverse DNS lookup — returns hostname if resolvable (e.g. iPhone.local)."""
+    import socket
+    try:
+        name = socket.gethostbyaddr(ip)[0]
+        return name if name != ip else None
+    except Exception:
+        return None
+
+
 def _upsert_agentless_host(ip: str, mac: str | None, vendor: str,
                            platform: str, device_type: str,
-                           customer_id: str | None = None) -> str:
+                           customer_id: str | None = None,
+                           hostname: str | None = None) -> str:
     """
     Persist a discovered host as an agentless Device.
     Returns 'created' or 'updated'.
@@ -124,7 +172,7 @@ def _upsert_agentless_host(ip: str, mac: str | None, vendor: str,
 
     # Create new agentless device
     device = Device(
-        hostname=ip,          # use IP as hostname until user renames
+        hostname=hostname or ip,   # use rDNS name if available, else IP
         platform=platform,
         device_type=device_type,
         ip_address=ip,
@@ -189,12 +237,20 @@ def _run_scan(scan_id: str):
             vendor = lookup_vendor(mac) if mac else "Unknown"
             platform, device_type = _guess_platform(vendor)
 
+            # If OUI lookup failed (randomized MAC or unknown vendor), try port probing
+            if platform == "unknown":
+                platform, device_type = _probe_platform(ip)
+
+            # Try reverse DNS for a friendly hostname
+            rdns = _get_hostname(ip)
+
             discovered.append({
                 "ip": ip,
                 "mac": mac,
                 "vendor": vendor,
                 "platform": platform,
                 "device_type": device_type,
+                "hostname": rdns or ip,
                 "status": "up",
             })
 
@@ -202,6 +258,7 @@ def _run_scan(scan_id: str):
                 ip=ip, mac=mac, vendor=vendor,
                 platform=platform, device_type=device_type,
                 customer_id=scan.customer_id,
+                hostname=rdns,
             )
             if result == "created":
                 created_count += 1
