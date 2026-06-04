@@ -304,3 +304,28 @@ class RMMClient:
 
     def generate_invoice(self, data: dict):
         return self._post("/api/billing/invoices/generate", data)
+
+    # --- Network / Agentless ---
+    def get_platform_counts(self):
+        return self._get("/api/devices/platform_counts")
+
+    def ping_check_device(self, device_id: str):
+        return self._post(f"/api/devices/{device_id}/ping_check")
+
+    def upsert_agentless_devices(self, hosts: list, customer_id=None):
+        payload = {"hosts": hosts}
+        if customer_id:
+            payload["customer_id"] = customer_id
+        return self._post("/api/network/agentless_devices", payload)
+
+    def trigger_network_scan(self, customer_id, scan_range: str):
+        payload = {"scan_range": scan_range}
+        if customer_id:
+            payload["customer_id"] = customer_id
+        return self._post("/api/network/scan", payload)
+
+    def get_server_ips(self):
+        return self._get("/api/admin/server_ips")
+
+    def update_device(self, device_id: str, data: dict):
+        return self._put(f"/api/devices/{device_id}", data)
