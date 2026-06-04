@@ -649,16 +649,18 @@ On 401: agent re-registers (full registration flow).
 - Reverse DNS via `_get_hostname(ip)` runs **before** port probe so hostname is available for all fallbacks
 - Detection pipeline (stops at first match):
   1. `_guess_platform(vendor)` — OUI vendor string keywords
-  2. `_probe_platform(ip)` — 6 TCP ports (62078→iOS, 5555→Android, 445/3389/139→Windows, 548→macOS, 22→Linux)
+  2. `_probe_platform(ip)` — TCP ports: 62078→iOS, 5555→Android, **2+ of** (445/3389/139)→Windows (2-port threshold prevents routers/NAS with only SMB from being misidentified), 548→macOS, 22→Linux; skipped entirely for router hostnames
   3. `_guess_platform_from_hostname(rdns)` — 50+ keyword match on rDNS hostname (brand names + Samsung model numbers S10–S24, Note, A12–A73, Fold, Flip, Ultra); catches Android phones with ADB disabled
-- Calls `_upsert_agentless_host(ip, mac, vendor, platform, device_type, hostname=hostname)` per live host
+- Router/gateway hostnames (`fritz.box`, `router`, `gateway`, `modem`, etc.) are included in `discovered_hosts` for scan display but **never persisted** as agentless device records
+- Calls `_upsert_agentless_host(...)` for all non-router live hosts
 - Updates `NetworkScan` record with status, host count, and completion timestamp
 
-`_upsert_agentless_host` behaviour:
-- MAC lookup → IP lookup (ALL devices, not just agentless) → create new
-- IP fallback over all devices prevents duplicate agentless records for agent-managed Windows PCs
-- On update: upgrades `platform`/`device_type` when existing record is "unknown" and new scan detects better info
-- Never modifies agent-managed (`is_agentless=False`) records
+`_upsert_agentless_host` lookup order (stops at first match):
+1. MAC address — primary stable key
+2. IP address across ALL devices (not just agentless) — prevents duplicates for agent-managed PCs
+3. Bare hostname match (strips `.fritz.box`/`.local`, case-insensitive) — catches multi-adapter machines where agent and scan see different MACs (e.g. Ethernet vs WiFi adapter)
+- On match with non-agentless device: returns `"skipped"` — never modifies agent-managed records
+- On match with agentless device: upgrades `platform`/`device_type` if currently "unknown" and new scan detects better info
 
 > **NOTE:** Phones with fully randomized MACs and all ports blocked will still reach the hostname fallback. If the router assigns a model-name hostname (Fritz!Box, ASUS, TP-Link all do), the device will be identified. Devices that remain "unknown" after all three stages can be corrected via the Edit button on the agentless device row.
 
