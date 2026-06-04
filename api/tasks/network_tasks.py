@@ -135,6 +135,33 @@ def _get_hostname(ip: str) -> str | None:
         return None
 
 
+# Android model-name keywords that appear in rDNS hostnames assigned by routers.
+_ANDROID_HOSTNAME_KEYWORDS = (
+    "android", "galaxy", "samsung", "pixel", "oneplus", "xiaomi", "redmi",
+    "poco", "mi-", "huawei", "honor", "oppo", "vivo", "realme", "moto",
+    "motorola", "nokia", "zte", "infinix", "tecno", "itel",
+)
+
+# iOS/macOS hostname keywords
+_IOS_HOSTNAME_KEYWORDS = ("iphone", "ipad", "ipod")
+
+
+def _guess_platform_from_hostname(hostname: str) -> tuple[str, str]:
+    """
+    Infer platform from rDNS hostname when OUI lookup + port probe both fail.
+    Routers (Fritz!Box, ASUS, TP-Link) often assign the device's advertised name.
+    Returns (platform, device_type) or ("unknown", "unknown").
+    """
+    if not hostname:
+        return "unknown", "unknown"
+    h = hostname.lower()
+    if any(k in h for k in _IOS_HOSTNAME_KEYWORDS):
+        return "ios", "mobile"
+    if any(k in h for k in _ANDROID_HOSTNAME_KEYWORDS):
+        return "android", "mobile"
+    return "unknown", "unknown"
+
+
 def _upsert_agentless_host(ip: str, mac: str | None, vendor: str,
                            platform: str, device_type: str,
                            customer_id: str | None = None,
@@ -154,9 +181,9 @@ def _upsert_agentless_host(ip: str, mac: str | None, vendor: str,
     if mac:
         existing = Device.query.filter_by(mac_address=mac).first()
 
-    # Fallback: match by IP (for hosts with no ARP entry)
+    # Fallback: match by IP — search ALL devices so agent-managed machines aren't duplicated
     if not existing:
-        existing = Device.query.filter_by(ip_address=ip, is_agentless=True).first()
+        existing = Device.query.filter_by(ip_address=ip).first()
 
     if existing:
         # Never demote an agent-managed device
@@ -237,12 +264,16 @@ def _run_scan(scan_id: str):
             vendor = lookup_vendor(mac) if mac else "Unknown"
             platform, device_type = _guess_platform(vendor)
 
-            # If OUI lookup failed (randomized MAC or unknown vendor), try port probing
+            # Try reverse DNS for a friendly hostname (needed before hostname-based detection)
+            rdns = _get_hostname(ip)
+
+            # If OUI lookup failed, try port probing
             if platform == "unknown":
                 platform, device_type = _probe_platform(ip)
 
-            # Try reverse DNS for a friendly hostname
-            rdns = _get_hostname(ip)
+            # Final fallback: infer from rDNS hostname (catches Android phones with ADB off)
+            if platform == "unknown" and rdns:
+                platform, device_type = _guess_platform_from_hostname(rdns)
 
             discovered.append({
                 "ip": ip,
