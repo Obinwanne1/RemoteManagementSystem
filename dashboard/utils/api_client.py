@@ -160,6 +160,24 @@ class RMMClient:
     def update_device(self, device_id: str, data: dict):
         return self._put(f"/api/devices/{device_id}", data)
 
+    def get_platform_counts(self):
+        return self._get("/api/devices/platform_counts")
+
+    def ping_check_device(self, device_id: str):
+        return self._post(f"/api/devices/{device_id}/ping_check")
+
+    def upsert_agentless_devices(self, hosts: list, customer_id: str = None):
+        payload = {"hosts": hosts}
+        if customer_id:
+            payload["customer_id"] = customer_id
+        return self._post("/api/network/agentless_devices", payload)
+
+    def trigger_network_scan(self, customer_id: str, scan_range: str):
+        return self._post("/api/network/scan", {"customer_id": customer_id, "scan_range": scan_range})
+
+    def get_server_ips(self):
+        return self._get("/api/admin/server_ips")
+
     # --- Alerts ---
     def list_alert_rules(self):
         return self._get("/api/alert_rules")

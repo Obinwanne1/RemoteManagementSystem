@@ -32,8 +32,43 @@ def trigger_scan():
     )
     db.session.add(scan)
     db.session.commit()
-    # Phase 9: actual scan via Celery
+    from tasks.network_tasks import run_network_scan
+    run_network_scan.delay(scan.id)
     return jsonify({"message": "Scan started", "scan_id": scan.id}), 202
+
+
+@network_bp.route("/agentless_devices", methods=["POST"])
+@jwt_required()
+def upsert_agentless_devices():
+    """Persist a batch of discovered hosts as agentless Device records."""
+    err = _require_role("admin", "technician")
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    hosts = data.get("hosts", [])
+    customer_id = data.get("customer_id") or None
+    if not hosts:
+        return jsonify({"error": "hosts list required"}), 400
+
+    from tasks.network_tasks import _upsert_agentless_host
+    created = updated = skipped = 0
+    for h in hosts:
+        result = _upsert_agentless_host(
+            ip=h.get("ip", ""),
+            mac=h.get("mac"),
+            vendor=h.get("vendor", "Unknown"),
+            platform=h.get("platform", "unknown"),
+            device_type=h.get("device_type", "unknown"),
+            customer_id=customer_id,
+        )
+        if result == "created":
+            created += 1
+        elif result == "updated":
+            updated += 1
+        else:
+            skipped += 1
+
+    return jsonify({"created": created, "updated": updated, "skipped": skipped}), 200
 
 
 @network_bp.route("/scans", methods=["GET"])

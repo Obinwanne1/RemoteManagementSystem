@@ -42,6 +42,10 @@ def list_devices():
     is_online = request.args.get("is_online")
     q = request.args.get("q", "")
 
+    platform_filter = request.args.get("platform")
+    is_agentless = request.args.get("is_agentless")
+    device_type = request.args.get("device_type")
+
     query = Device.query
     if customer_id:
         query = query.filter_by(customer_id=customer_id)
@@ -51,6 +55,12 @@ def list_devices():
         query = query.filter_by(status=status)
     if is_online is not None:
         query = query.filter_by(is_online=is_online.lower() == "true")
+    if platform_filter:
+        query = query.filter_by(platform=platform_filter)
+    if is_agentless is not None:
+        query = query.filter_by(is_agentless=is_agentless.lower() == "true")
+    if device_type:
+        query = query.filter_by(device_type=device_type)
     if q:
         query = query.filter(Device.hostname.ilike(f"%{q}%"))
 
@@ -65,6 +75,17 @@ def list_devices():
         "page": page,
         "pages": paginated.pages,
     }), 200
+
+
+@devices_bp.route("/platform_counts", methods=["GET"])
+@jwt_required()
+def platform_counts():
+    rows = db.session.execute(
+        db.select(Device.platform, func.count(Device.id)).group_by(Device.platform)
+    ).all()
+    by_platform = {r[0]: r[1] for r in rows if r[0]}
+    agentless_count = Device.query.filter_by(is_agentless=True).count()
+    return jsonify({"by_platform": by_platform, "agentless": agentless_count}), 200
 
 
 @devices_bp.route("/<device_id>", methods=["GET"])
@@ -194,6 +215,23 @@ def deploy_patches_route(device_id):
     from tasks.patch_tasks import deploy_patches
     deploy_patches.delay(device_id, patch_ids)
     return jsonify({"message": "Patch deployment queued", "count": len(patch_ids)}), 202
+
+
+@devices_bp.route("/<device_id>/ping_check", methods=["POST"])
+@jwt_required()
+def ping_check(device_id):
+    """Immediately ping an agentless device and update its online status."""
+    device = Device.query.get_or_404(device_id)
+    if not device.is_agentless or not device.ip_address:
+        return jsonify({"error": "Only available for agentless devices with an IP"}), 400
+    from tasks.network_tasks import _ping_host
+    alive = _ping_host(device.ip_address)
+    now = datetime.now(timezone.utc)
+    device.is_online = alive
+    if alive:
+        device.last_seen = now
+    db.session.commit()
+    return jsonify({"is_online": alive, "checked_at": now.isoformat()}), 200
 
 
 def _queue_builtin_task(device_id: str, task_type: str, timeout: int = 300):

@@ -130,6 +130,59 @@ with tab_sysinfo:
         unsafe_allow_html=True,
     )
 
+    # ── Server IP / Agent Setup ───────────────────────────────────────────────
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+    ip_data, ip_err = client.get_server_ips()
+    lan_ips = (ip_data or {}).get("lan_ips", [])
+    server_hostname = (ip_data or {}).get("hostname", "—")
+
+    st.markdown(
+        f'<div style="{CARD}">'
+        f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.08em;color:#6B7B6B;margin-bottom:0.75rem">WiFi / LAN Agent Setup</div>'
+        f'<div style="font-size:0.8rem;color:#4B5B4B;margin-bottom:0.75rem">'
+        f'Server hostname: <b>{server_hostname}</b>. Copy an IP below, '
+        f'then use it as the <code>url</code> in <code>agent/config.ini</code> '
+        f'on any device you want to enroll over WiFi or LAN.</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    if ip_err:
+        st.warning(f"Could not detect server IPs: {ip_err}")
+    elif lan_ips:
+        for ip in lan_ips:
+            st.code(f"http://{ip}:5000", language=None)
+    else:
+        st.info("No LAN IPs detected. Make sure the server is connected to the network.")
+
+    with st.expander("Agent setup instructions"):
+        st.markdown("""
+**To enroll a WiFi/LAN laptop or desktop:**
+
+1. Copy the `agent/` folder to the target machine (USB, shared drive, or `scp`).
+2. Edit `agent/config.ini`:
+   ```ini
+   [api]
+   url = http://<SERVER_IP_FROM_ABOVE>:5000
+   org_token = <paste enrollment token below>
+   ```
+   *(Delete the `[agent]` section entirely if re-registering an existing machine.)*
+3. On the target machine, run:
+   ```
+   python setup_agent.py <SERVER_IP> <ORG_TOKEN>
+   ```
+   Or manually edit `config.ini` and run:
+   ```
+   python rmm_agent.py
+   ```
+4. The device appears in the **Devices** page within 60 seconds.
+
+**For mobile phones / tablets:** Use **Network Discovery** to scan your subnet — phones are auto-detected via MAC/OUI and ping-monitored. No agent needed.
+""")
+
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+
     if org_err:
         st.warning(f"Could not load org token: {org_err}")
     elif org_token_val:
