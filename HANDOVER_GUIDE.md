@@ -1259,12 +1259,14 @@ The system uses three stages to identify each discovered device's operating syst
 
 1. **OUI vendor lookup** — the first 6 characters of the MAC address are matched against a built-in database of 500+ hardware manufacturers. Apple MACs → iOS, Samsung/Google/OnePlus MACs → Android, etc.
 
-2. **Port probing** (fallback) — if OUI lookup cannot determine the platform, the system tries connecting to six well-known ports:
+2. **Port probing** (fallback) — if OUI lookup cannot determine the platform, the system tries connecting to well-known ports:
    - Port 62078 → iOS (iTunes Wi-Fi sync port)
    - Port 5555 → Android (ADB debug port)
-   - Ports 445, 3389, or 139 → Windows (file sharing / Remote Desktop)
+   - **Two or more** of ports 445, 3389, 139 → Windows (requires 2 to avoid false-positives from routers and NAS devices that only expose SMB on port 445)
    - Port 548 → macOS (Apple Filing Protocol)
    - Port 22 → Linux (SSH)
+
+   Router and gateway devices (Fritz!Box, router, modem, etc.) are detected via their hostname and skipped entirely — they appear in the scan results for reference but are never added to your device fleet.
 
 3. **Hostname keyword matching** (final fallback) — if both OUI and port probe fail, the system checks the device's reverse-DNS hostname (the name your router assigns, e.g. `Galaxy-S21-Ultra.fritz.box`) against 50+ keywords:
    - Android brands: samsung, galaxy, pixel, xiaomi, redmi, poco, huawei, honor, oppo, vivo, realme, motorola, nokia, zte, and more
