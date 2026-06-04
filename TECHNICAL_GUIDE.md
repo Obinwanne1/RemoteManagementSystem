@@ -492,7 +492,7 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/summary` | JWT | Aggregated counts (devices, alerts, tickets, online) |
-| GET | `/health_map` | JWT | Device health list (limit 500) |
+| GET | `/health_map` | JWT | Device health list (limit 500) — returned objects include `id`, `hostname`, `status`, `is_online`; used by Dashboard Overview to render clickable cards |
 | GET | `/activity` | JWT | Recent audit log entries |
 
 ---
@@ -899,6 +899,17 @@ def _request(self, method, path, **kwargs):
 | `st.cache_data` | TTL caching on list endpoints — prevents repeated API calls on re-renders |
 | `st.spinner` | All data loads wrapped — user sees progress feedback |
 | Graceful degradation | `st.warning` instead of `st.stop()` — page stays interactive on partial failure |
+
+### Device Health Map — Clickable Cards
+
+Cards in `dashboard/pages/01_Dashboard.py` use `st.button()` + `st.switch_page()` for reliable Streamlit-native navigation. Plain `<a href>` links and `components.html()` with `window.parent.location.href` are intercepted/sandboxed by Streamlit's SPA router and do not work.
+
+**Navigation flow:**
+1. User clicks a health map card → `st.session_state["_nav_device"] = str(device_id)` → `st.switch_page("pages/04_Devices.py")`
+2. `04_Devices.py` reads `st.session_state.pop("_nav_device", None)` on load, falls back to `st.query_params.get("device")` for direct URL access
+3. If matched, pre-fills search box with the device hostname and shows an info banner
+
+**CSS scoping:** Card button styles are injected inside the `else` branch of the health map render and use `section[data-testid="stMain"] button[kind="secondary"]` to target only main-area secondary buttons — sidebar buttons are excluded. Refresh button uses `type="primary"` to opt out of card styling entirely.
 
 ---
 

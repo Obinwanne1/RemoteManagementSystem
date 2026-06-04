@@ -904,7 +904,7 @@ Click **Overview** in the sidebar to see the full dashboard. Below the stat card
 A circle chart dividing your fleet into: Healthy, Warning, Critical, and Offline. Hover over a slice to see the exact count.
 
 **Device Health Map (right)**
-A grid of mini device cards. Each shows hostname, online/offline status (green dot = online, grey = offline), and current CPU, RAM, and disk percentages. Scan this quickly to spot problems.
+A grid of mini device cards. Each shows hostname, online/offline status (green dot = online, grey = offline), and current CPU, RAM, and disk percentages. Scan this quickly to spot problems. **Each card is clickable** — clicking navigates directly to the Devices page with that device's hostname pre-filled in the search box and a banner confirming which device was selected.
 
 **Recent Alerts (bottom left)**
 The 10 most recent open alerts. Each row shows a severity color bar, the alert message, and timestamp.
@@ -920,7 +920,7 @@ This is the recommended routine to start your shift:
 2. Look at the five stat cards. Note any red numbers.
 3. Click **Overview** in the sidebar.
 4. Scan the donut chart. If the Critical slice is non-zero, investigate.
-5. Scan the Device Health Map for high CPU, RAM, or disk numbers.
+5. Scan the Device Health Map for high CPU, RAM, or disk numbers. Click any card to jump directly to that device in the Devices page.
 6. Read Recent Alerts. Are there critical alerts you have not seen before?
 7. Glance at the Activity Feed for unexpected overnight activity.
 8. If anything needs attention, navigate to Alerts, Devices, or Tickets from the sidebar.
