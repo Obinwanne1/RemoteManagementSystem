@@ -1,5 +1,6 @@
+import threading
 from datetime import datetime, timezone
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from extensions import db
 from models.audit import NetworkScan
@@ -32,9 +33,17 @@ def trigger_scan():
     )
     db.session.add(scan)
     db.session.commit()
-    from tasks.network_tasks import run_network_scan
-    run_network_scan.delay(scan.id)
-    return jsonify({"message": "Scan started", "scan_id": scan.id}), 202
+
+    app = current_app._get_current_object()
+    scan_id = scan.id
+
+    def _run():
+        from tasks.network_tasks import _run_scan
+        with app.app_context():
+            _run_scan(scan_id)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"message": "Scan started", "scan_id": scan_id}), 202
 
 
 @network_bp.route("/agentless_devices", methods=["POST"])

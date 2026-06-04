@@ -1,6 +1,13 @@
 import os
+import sys
+from pathlib import Path
 from celery import Celery
 from dotenv import load_dotenv
+
+# Ensure api/ directory is in sys.path so all task imports find Flask app modules
+_api_dir = str(Path(__file__).parent.parent)
+if _api_dir not in sys.path:
+    sys.path.insert(0, _api_dir)
 
 load_dotenv()
 

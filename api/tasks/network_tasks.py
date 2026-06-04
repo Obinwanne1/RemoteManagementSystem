@@ -7,8 +7,14 @@ import ipaddress
 import re
 import subprocess
 import sys
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+
+# Ensure api/ is in sys.path so Flask app modules are importable from Celery worker
+_api_dir = str(Path(__file__).parent.parent)
+if _api_dir not in sys.path:
+    sys.path.insert(0, _api_dir)
 
 from tasks.celery_app import celery
 
@@ -135,14 +141,10 @@ def _upsert_agentless_host(ip: str, mac: str | None, vendor: str,
     return "created"
 
 
-# ── Celery tasks ──────────────────────────────────────────────────────────────
+# ── Core scan logic (called from Flask thread, runs inside app_context) ────────
 
-@celery.task(name="tasks.network_tasks.run_network_scan", bind=True, max_retries=2)
-def run_network_scan(self, scan_id: str):
-    """
-    Ping-sweep a CIDR range, identify hosts via ARP+OUI, persist agentless devices.
-    Updates the NetworkScan record with results.
-    """
+def _run_scan(scan_id: str):
+    """Pure scan logic — no Celery, no app context. Called from background thread."""
     from extensions import db
     from models.audit import NetworkScan
     from utils.oui import lookup_vendor
@@ -171,7 +173,6 @@ def run_network_scan(self, scan_id: str):
     discovered = []
     created_count = 0
 
-    # Concurrent ping sweep
     with ThreadPoolExecutor(max_workers=50) as pool:
         futures = {pool.submit(_ping_host, str(ip)): str(ip) for ip in hosts_iter}
         for future in as_completed(futures):
@@ -198,11 +199,8 @@ def run_network_scan(self, scan_id: str):
             })
 
             result = _upsert_agentless_host(
-                ip=ip,
-                mac=mac,
-                vendor=vendor,
-                platform=platform,
-                device_type=device_type,
+                ip=ip, mac=mac, vendor=vendor,
+                platform=platform, device_type=device_type,
                 customer_id=scan.customer_id,
             )
             if result == "created":
@@ -215,35 +213,57 @@ def run_network_scan(self, scan_id: str):
     db.session.commit()
 
 
+# ── Celery tasks (kept for beat schedule / future use) ─────────────────────────
+
+@celery.task(name="tasks.network_tasks.run_network_scan", bind=True, max_retries=2)
+def run_network_scan(self, scan_id: str):
+    """Celery wrapper — delegates to _run_scan inside a Flask app context."""
+    import os, sys
+    from pathlib import Path
+    _api = str(Path(__file__).resolve().parent.parent)
+    sys.path.insert(0, _api)
+    os.chdir(_api)
+    from app import create_app
+    with create_app().app_context():
+        _run_scan(scan_id)
+
+
 @celery.task(name="tasks.network_tasks.ping_agentless_devices", bind=True)
 def ping_agentless_devices(self):
     """
     Ping all known agentless devices and update online/offline status.
     Runs every 5 minutes via Celery beat.
     """
+    import os, sys
+    from pathlib import Path
+    _api = str(Path(__file__).resolve().parent.parent)
+    sys.path.insert(0, _api)
+    os.chdir(_api)
+
+    from app import create_app
     from extensions import db
     from models.device import Device
 
-    now = datetime.now(timezone.utc)
-    devices = Device.query.filter_by(is_agentless=True).filter(
-        Device.ip_address.isnot(None)
-    ).all()
+    app = create_app()
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+        devices = Device.query.filter_by(is_agentless=True).filter(
+            Device.ip_address.isnot(None)
+        ).all()
 
-    for device in devices:
-        alive = _ping_host(device.ip_address)
-        if alive:
-            device.is_online = True
-            device.last_seen = now
-        else:
-            # Only flip offline if not seen recently (avoid false negatives from
-            # transient ping loss)
-            if device.last_seen:
-                age_seconds = (now - device.last_seen.replace(tzinfo=timezone.utc)
-                               if device.last_seen.tzinfo is None
-                               else (now - device.last_seen)).total_seconds()
-                if age_seconds > 600:  # 10 minutes without response
-                    device.is_online = False
+        for device in devices:
+            alive = _ping_host(device.ip_address)
+            if alive:
+                device.is_online = True
+                device.last_seen = now
             else:
-                device.is_online = False
+                if device.last_seen:
+                    age_seconds = (now - device.last_seen.replace(tzinfo=timezone.utc)
+                                   if device.last_seen.tzinfo is None
+                                   else (now - device.last_seen)).total_seconds()
+                    if age_seconds > 600:
+                        device.is_online = False
+                else:
+                    device.is_online = False
 
-    db.session.commit()
+        db.session.commit()
