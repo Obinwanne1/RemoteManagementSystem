@@ -34,7 +34,7 @@ if err:
     st.stop()
 
 all_devices = data.get("items", [])
-online_devices = [d for d in all_devices if d.get("is_online")]
+online_devices = [d for d in all_devices if d.get("is_online") and not d.get("is_agentless")]
 
 if not online_devices:
     st.markdown(
