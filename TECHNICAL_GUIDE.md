@@ -44,6 +44,8 @@
 │  api/models/*.py   (11 SQLAlchemy models, 21 tables)             │
 │  api/utils/builtin_scripts.py   (7 built-in PS1 scripts)         │
 │  api/utils/notifications.py     (SMTP email, opt-in)             │
+│  api/utils/oui.py               (MAC vendor lookup, 500+ entries)│
+│  api/tasks/network_tasks.py     (ICMP scan + agentless ping beat) │
 └──────┬──────────────┬───────────────────┬────────────────────────┘
        │              │                   │
   PostgreSQL      Redis (broker)      Agent API endpoints
@@ -56,6 +58,7 @@
        │    │  tasks/patch_tasks.py   — beat 1800s      │
        │    │  tasks/automation_tasks.py — on demand    │
        │    │  tasks/report_tasks.py  — on demand       │
+       │    │  tasks/network_tasks.py — beat 300s       │
        │    └────────────────────────────────────────┘
        │
 ┌──────▼──────────────────────────────────────────────────────────┐
@@ -171,6 +174,10 @@ last_seen    DateTime
 agent_version String(20)
 display_name String(255)
 created_at   DateTime
+is_agentless Boolean default False NOT NULL  # True = network-discovered, no agent
+device_type  String(50) default 'laptop' NOT NULL  # laptop | desktop | mobile | server | unknown
+vendor       String(255) nullable             # OUI lookup result, e.g. "Apple, Inc."
+# NOTE: customer_id is nullable=True — agentless devices start unassigned
 ```
 
 #### `DeviceMetrics` (`device_metrics`)
@@ -374,6 +381,8 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 | POST | `/<id>/shutdown` | JWT admin/tech | Queue shutdown task |
 | POST | `/<id>/queue_task` | JWT admin/tech | Queue any built-in maintenance task |
 | POST | `/<id>/deploy_patches` | JWT admin/tech | Trigger patch deployment via Celery |
+| GET | `/platform_counts` | JWT | Returns `{"by_platform": {windows: N, ...}, "agentless": N}` |
+| POST | `/<id>/ping_check` | JWT admin/tech | Ping device IP, update is_online/last_seen. Only for is_agentless=True devices. |
 
 **`queue_task` valid `task_type` values:**
 `clean_temp`, `defrag`, `check_disk`, `restore_point`, `clear_browser`, `reboot`, `shutdown`
@@ -468,12 +477,14 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 | PUT | `/users/<id>` | JWT admin | Update user — accepts `must_change_password` bool |
 | DELETE | `/users/<id>` | JWT admin | Delete user |
 | GET | `/org-token` | JWT admin | Return `ORG_REGISTRATION_TOKEN` for display in Admin panel |
+| GET | `/server_ips` | None | Returns `{"hostname": "...", "lan_ips": ["192.168.x.x"]}` via socket.getaddrinfo |
 
 ### Network (`/api/network/`)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/scan` | JWT admin/tech | Trigger network discovery scan |
+| POST | `/scan` | JWT admin/tech | Trigger network discovery scan (dispatches `run_network_scan.delay`) |
 | GET | `/scans` | JWT | List scan results |
+| POST | `/agentless_devices` | JWT admin/tech | Batch upsert agentless devices. Body: `{"hosts": [...], "customer_id": optional}`. Returns `{"created": N, "updated": M, "skipped": K}`. |
 
 ### Dashboard Summary (`/api/dashboard/`)
 | Method | Path | Auth | Description |
@@ -575,6 +586,7 @@ On 401: agent re-registers (full registration flow).
 | `evaluate_all_rules` | Every 60s | `tasks.alert_tasks` |
 | `mark_offline_devices` | Every 180s | `tasks.alert_tasks` |
 | `sync_patch_status` | Every 1800s | `tasks.patch_tasks` |
+| `ping_agentless_devices` | Every 300s | `tasks.network_tasks` |
 
 ### Task Signatures
 
@@ -624,6 +636,20 @@ On 401: agent re-registers (full registration flow).
 - Reads `disk_config` and `maintenance_config` JSON
 - For each enabled task type, creates a `ScriptRun` pointing to the corresponding built-in script
 - Also creates `ScriptRun` records for any custom scripts attached to the profile
+
+#### `run_network_scan(scan_id)`
+- Parses CIDR range from the `NetworkScan` record
+- Concurrent ICMP ping sweep via `ThreadPoolExecutor(50)` — all IPs in range pinged in parallel
+- For each live IP: ARP table lookup for MAC address, OUI vendor lookup via `lookup_vendor(mac)`
+- Calls `_upsert_agentless_host(ip, mac, vendor, platform, device_type)` per live host
+- Updates `NetworkScan` record with status, host count, and completion timestamp
+
+#### `ping_agentless_devices()`
+- Loads all `Device` records where `is_agentless=True`
+- Pings each device's `ip_address`
+- Updates `is_online=True` and `last_seen=now()` on response
+- Devices that have not responded for more than 10 minutes are marked `is_online=False`
+- Changes committed in a single batch after all pings complete
 
 ### Starting Celery (Windows)
 
@@ -805,6 +831,12 @@ def _request(self, method, path, **kwargs):
 | `run_profile(profile_id)` | POST | `/api/automation/profiles/<id>/run` |
 | `create_report(data)` | POST | `/api/reports/` |
 | `list_reports()` | GET | `/api/reports/` |
+| `get_platform_counts()` | GET | `/api/devices/platform_counts` |
+| `ping_check_device(device_id)` | POST | `/api/devices/<id>/ping_check` |
+| `upsert_agentless_devices(hosts, customer_id=None)` | POST | `/api/network/agentless_devices` |
+| `trigger_network_scan(customer_id, scan_range)` | POST | `/api/network/scan` |
+| `get_server_ips()` | GET | `/api/admin/server_ips` |
+| `update_device(device_id, data)` | PUT | `/api/devices/<id>` |
 
 ### Cache Strategy
 
@@ -917,6 +949,42 @@ app.register_blueprint(mymodule.mymodule_bp, url_prefix='/api/mymodule')
 2. Restart the API — `ensure_builtin_scripts()` creates the DB record automatically
 3. Optionally add the `task_type` to `_dispatch_profile_tasks()` in `tasks/automation_tasks.py`
 4. Optionally add a UI button in the relevant dashboard page calling `client.queue_device_task(device_id, "my_task")`
+
+### Adding WiFi/Agentless Devices
+
+**For Windows/Linux/macOS laptops on the same WiFi/LAN:**
+
+1. Find the server's LAN IP: Admin → System Info → Server IP Addresses, or check your router.
+2. Copy the `agent/` folder to the target machine (USB, network share, or git clone).
+3. On the target machine, install dependencies:
+   ```bash
+   cd agent
+   python -m venv venv
+   venv\Scripts\activate   # Windows
+   pip install -r requirements.txt
+   ```
+4. Run the setup helper — patches `config.ini` automatically:
+   ```bash
+   python setup_agent.py 192.168.x.x <org_token>
+   ```
+   The org token is shown in Admin → System Info → Agent Enrollment Token.
+5. Start the agent:
+   ```bash
+   python rmm_agent.py
+   ```
+6. The device appears in Devices → Windows/Linux/macOS tab within 60 seconds.
+
+**For phones, tablets, and IoT devices (no agent possible):**
+
+1. Go to Network Discovery in the dashboard.
+2. Enter the subnet in CIDR notation (e.g. `192.168.1.0/24`) and optionally assign a customer.
+3. Click **Scan Network** — the scan takes 15–30 seconds via concurrent ICMP ping.
+4. Discovered devices appear with IP, MAC, vendor (from OUI lookup), and detected platform.
+   - iOS devices are identified by Apple OUI prefixes.
+   - Android devices are identified by Samsung/Google/OnePlus/etc. OUI prefixes.
+5. Click **Save All to Devices** to persist them to the database.
+6. Devices appear in Devices → Android/iOS/Agentless tabs.
+7. Celery beat pings them every 5 minutes — online/offline status updates within 10 minutes of disconnect.
 
 ### Adding a New Report Template
 

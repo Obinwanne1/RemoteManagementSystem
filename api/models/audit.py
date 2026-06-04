@@ -55,7 +55,7 @@ class NetworkScan(db.Model):
     __tablename__ = "network_scans"
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    customer_id = db.Column(db.String(36), db.ForeignKey("customers.id"), nullable=False)
+    customer_id = db.Column(db.String(36), db.ForeignKey("customers.id"), nullable=True)
     initiated_by = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True)
     scan_range = db.Column(db.String(50), nullable=False)
     started_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

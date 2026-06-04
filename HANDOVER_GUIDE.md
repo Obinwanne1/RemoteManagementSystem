@@ -583,6 +583,48 @@ To ensure the agent restarts automatically when the machine reboots:
 4. The newly registered machine should appear with a green online dot.
 5. Within 60 seconds, its CPU, RAM, and disk metrics will begin populating.
 
+### Deploying the Agent on Other WiFi/LAN Machines
+
+Use this procedure to monitor any Windows, Linux, or macOS machine on the same network — without physically accessing the RMM server machine.
+
+> **NOTE:** The API already binds to `0.0.0.0:5000`, so any machine on the same LAN can reach it. The only change needed is pointing the agent at the server's LAN IP instead of localhost.
+
+**Step 1: Get the server's LAN IP**
+
+Go to **Admin** → **System Info** tab → **Server IP Addresses** card. Each LAN IP is displayed in a copyable code block. Alternatively, check your router's DHCP client list for the hostname of the RMM server machine.
+
+**Step 2: Copy the agent folder to the target machine**
+
+Copy the entire `agent\` folder to the target machine using a USB drive, network share, email, or git clone. Suggested destination: `C:\RMM\agent\`
+
+**Step 3: Get the org token**
+
+Go to **Admin** → **System Info** tab → **Agent Enrollment Token** card → click **Reveal**. Copy the token.
+
+**Step 4: Run the setup helper**
+
+On the target machine, open PowerShell and run:
+
+```powershell
+Set-Location C:\RMM\agent
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python setup_agent.py 192.168.x.x <org_token>
+```
+
+Replace `192.168.x.x` with the server's actual LAN IP and `<org_token>` with the token from Step 3. The script updates `config.ini` automatically and clears any previous device ID so the agent registers fresh.
+
+**Step 5: Start the agent**
+
+```powershell
+python rmm_agent.py
+```
+
+Within 60 seconds the device appears in the **Devices** tab with a green online dot.
+
+> **TIP:** Follow Step 6 in this chapter (Task Scheduler auto-start) to ensure the agent restarts after reboots on WiFi machines too.
+
 ---
 
 ## Chapter 7: First-Time Setup Walkthrough
@@ -900,13 +942,43 @@ ACME Corp calls at 9am — their server is unresponsive.
 
 ### What it is
 
-The Devices page shows every registered machine — every computer or server that has the agent installed and has checked in. This is the most information-dense page in the system.
+The Devices page shows every registered machine — every computer or server that has the agent installed and has checked in, plus any network-discovered agentless devices. This is the most information-dense page in the system.
 
 ### Who uses it
 
 All roles. Technicians and administrators interact with it most frequently.
 
-### What You See
+### OS Filter Tabs
+
+The Devices page is divided into seven tabs, each showing a count badge:
+
+| Tab | What it shows |
+|---|---|
+| **All** | Every device — agent-managed and agentless |
+| **Windows** | Agent-managed Windows computers |
+| **macOS** | Agent-managed Mac computers |
+| **Linux** | Agent-managed Linux machines |
+| **Android** | Phones and tablets discovered via network scan, identified by Android OUI |
+| **iOS** | Apple phones and tablets discovered via network scan, identified by Apple OUI |
+| **Agentless** | All network-discovered devices regardless of type |
+
+### Two Device Display Modes
+
+**Agent-managed devices** (Windows/macOS/Linux tabs) show:
+- Hostname, IP address, OS, last seen, online/offline status dot
+- Live CPU, RAM, and disk usage gauges
+- Remote reboot and shutdown buttons
+- Customer assignment control
+
+**Agentless devices** (Android/iOS/Agentless tabs) show:
+- IP address, MAC address, vendor badge (e.g., "Apple, Inc."), platform badge
+- Last seen timestamp, online/offline status dot
+- **Ping Now** button — triggers an immediate reachability check and updates online status
+- Customer assignment control
+
+> **NOTE:** Agentless devices do not report CPU, RAM, or disk metrics. They are presence-monitored only — the system confirms they are reachable on the network, nothing more.
+
+### What You See (Agent Devices)
 
 | Column | Description |
 |---|---|
@@ -1145,7 +1217,7 @@ Your manager asks you to confirm all DataSafe Ltd devices have Adobe Acrobat ver
 
 ### What it is
 
-Network Discovery scans the local network and reports all hosts it can find — computers, servers, printers, and network devices. Use it to discover unregistered devices, audit network exposure, or investigate what is connected to a client's network.
+Network Discovery performs a real ICMP ping sweep of a subnet you specify. It discovers all reachable hosts — computers, phones, printers, IoT devices — identifies their MAC address and vendor, and lets you save them permanently to your device fleet. Phones and tablets discovered this way appear in the Android and iOS tabs on the Devices page and are pinged automatically every 5 minutes.
 
 ### Who uses it
 
@@ -1155,26 +1227,51 @@ Technicians and administrators.
 
 | Column | Description |
 |---|---|
+| Platform icon | Visual indicator (🪟 Windows, 🍎 Apple/iOS, 🐧 Linux, 🤖 Android, 💻 Unknown) |
 | IP Address | The discovered host's IP |
-| Hostname | DNS name, if resolvable |
-| MAC Address | Hardware MAC address, if available |
-| Open Ports | Detected open ports |
-| Status | Whether the host responded to probes |
+| MAC Address | Hardware MAC address from ARP table |
+| Vendor | OUI lookup result (e.g., "Apple, Inc.", "Samsung Electronics") |
+| Platform | Detected OS family |
+| Status | Online (responded to ping) or Offline |
 
 ### Step-by-step: Running a Network Scan
 
 1. Click **Network Discovery** in the sidebar (under TOOLS).
-2. Click the **Run Scan** button.
-3. Wait for the scan to complete (30 seconds to a few minutes depending on network size).
-4. The results table populates with all discovered hosts.
+2. In the **Subnet** field, enter the network range in CIDR notation. Example: `192.168.1.0/24`
+3. Optionally select a **Customer** to assign all discovered devices to.
+4. Click **Scan Network**.
+5. A spinner shows while the scan runs (typically 15–30 seconds for a /24 subnet).
+6. The results table populates automatically when the scan completes.
 
 > **WARNING:** Running a network scan on a network with intrusion detection may trigger security alerts. Check with the client before scanning sensitive networks.
 
-> **NOTE:** Scan results persist in your session but are not saved to the database. Take a screenshot or note key findings if you need them later.
+> **NOTE:** The scan uses concurrent ICMP ping (50 parallel threads). On large subnets (/16 or wider), expect longer scan times and consider narrowing the range.
+
+### Step-by-step: Saving Discovered Devices
+
+1. Review the scan results. Verify the detected platform icons look correct.
+2. Click **Save All to Devices**.
+3. A confirmation shows how many devices were created, updated, or skipped (skipped = already registered with an agent).
+4. Go to **Devices** → **Agentless** tab to see all saved devices.
+5. Phones appear in the **Android** or **iOS** tabs depending on their vendor OUI.
+
+### Automatic Online/Offline Monitoring
+
+Once devices are saved, the system pings them automatically every 5 minutes via a background task. If a device does not respond for more than 10 minutes, its status is set to offline. No manual action is needed — the Devices page reflects current reachability automatically.
+
+### Past Scan History
+
+When no scan is running, the page shows the last 5 completed scans with their subnet, host count, and timestamp. Click any scan to review its results without re-scanning.
 
 ### Practical Example: Investigating an Unauthorized Device
 
-A client suspects an unauthorized device on their network. You run Network Discovery and compare results against the known RMM device list. Any unrecognized IP or MAC address warrants investigation.
+A client suspects an unauthorized device on their network.
+
+1. Go to **Network Discovery**.
+2. Enter the client's subnet (e.g. `192.168.10.0/24`) and click **Scan Network**.
+3. Compare the results against the known device list — look for unrecognized MAC addresses or vendors.
+4. Any unfamiliar IP or vendor warrants investigation.
+5. Save the results so the device appears in the Agentless tab for ongoing monitoring.
 
 ---
 
@@ -2814,6 +2911,34 @@ cd C:\RMM\RemoteManagementSystem\api
 .\venv\Scripts\Activate.ps1
 pytest tests/ -v
 ```
+
+---
+
+## Quick Reference Card — WiFi Device Deployment
+
+**Deploy agent on a WiFi/LAN machine (Windows/Linux/macOS):**
+
+1. Get server LAN IP: Admin → System Info → Server IP Addresses
+2. Copy `agent\` folder to target machine (USB, network share, or git clone)
+3. On target machine:
+   ```powershell
+   cd C:\RMM\agent
+   python -m venv venv
+   .\venv\Scripts\Activate.ps1
+   pip install -r requirements.txt
+   python setup_agent.py 192.168.x.x <org_token>
+   ```
+   Org token: Admin → System Info → Agent Enrollment Token → Reveal
+4. Start the agent: `python rmm_agent.py`
+5. Device appears in Devices tab within 60 seconds
+
+**Discover phones/IoT devices (no agent possible):**
+
+1. Network Discovery → enter subnet (e.g. `192.168.1.0/24`) → Scan Network
+2. Review results — iOS = Apple OUI, Android = Samsung/Google/etc. OUI
+3. Click **Save All to Devices**
+4. Devices appear in Devices → Android / iOS / Agentless tabs
+5. System pings them every 5 minutes automatically
 
 ---
 

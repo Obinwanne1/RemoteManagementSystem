@@ -63,9 +63,11 @@ RemoteManagementSystem/
 │   ├── models/               ← 11 SQLAlchemy model files
 │   ├── routes/               ← 13 route modules
 │   ├── tasks/                ← Celery task modules
+│   │   └── network_tasks.py
 │   └── utils/
 │       ├── builtin_scripts.py
-│       └── notifications.py
+│       ├── notifications.py
+│       └── oui.py
 ├── dashboard/
 │   ├── app.py
 │   ├── requirements.txt
@@ -83,6 +85,7 @@ RemoteManagementSystem/
 │   ├── executor.py
 │   ├── heartbeat.py
 │   ├── script_runner.py
+│   ├── setup_agent.py
 │   ├── config.ini
 │   └── requirements.txt
 └── scripts_library/
@@ -283,6 +286,7 @@ celery_app = Celery(
         'tasks.patch_tasks',
         'tasks.automation_tasks',
         'tasks.report_tasks',
+        'tasks.network_tasks',
     ]
 )
 
@@ -299,6 +303,10 @@ celery_app.conf.beat_schedule = {
         'task': 'tasks.patch_tasks.sync_patch_status',
         'schedule': 1800.0,
     },
+    'ping-agentless-devices-every-5-min': {
+        'task': 'tasks.network_tasks.ping_agentless_devices',
+        'schedule': 300.0,
+    },
 }
 
 celery_app.conf.task_acks_late = True
@@ -313,6 +321,7 @@ celery_app.conf.worker_pool = 'solo'  # Windows: no fork()
 | `tasks/patch_tasks.py` | `deploy_patches(device_id, patch_ids)`, `sync_patch_status` | on-demand / 1800s beat |
 | `tasks/automation_tasks.py` | `enqueue_profile_run(profile_id)` | triggered per profile schedule |
 | `tasks/report_tasks.py` | `generate_report(report_id)` | triggered on report creation |
+| `tasks/network_tasks.py` | `run_network_scan(scan_id)`, `ping_agentless_devices` | on-demand / 300s beat |
 
 ---
 
@@ -856,6 +865,111 @@ def to_dict(self):
 
 ---
 
+## Phase D — WiFi & Agentless Device Support
+
+### D.1 Database Migration
+
+Migration file: `api/migrations/versions/f3e2d1c0b9a8_agentless_device_columns.py`
+Chains after: `93baa3927b0c`
+
+New columns on `devices` table:
+
+```python
+is_agentless  = db.Column(db.Boolean,     default=False, nullable=False)
+device_type   = db.Column(db.String(50),  default='laptop', nullable=False)
+#   Valid values: laptop | desktop | mobile | server | unknown
+vendor        = db.Column(db.String(255), nullable=True)
+#   OUI lookup result e.g. "Apple, Inc."
+# customer_id changed from nullable=False → nullable=True
+#   (agentless devices start unassigned)
+```
+
+Run migration:
+```bash
+cd api
+flask db upgrade
+```
+
+### D.2 `api/utils/oui.py`
+
+Static OUI → vendor lookup. No pip dependencies. 500+ entries.
+
+```python
+def lookup_vendor(mac: str) -> str:
+    """Return vendor string for a MAC address, or 'Unknown'."""
+    # Normalises mac, strips separators, upper-cases, slices first 6 chars (OUI prefix)
+    # Looks up in a built-in dict of 500+ OUI → vendor name entries
+```
+
+### D.3 `api/tasks/network_tasks.py`
+
+Key functions:
+
+| Function | Description |
+|----------|-------------|
+| `_ping_host(ip)` | ICMP ping via `ping -n 1 -w 500` (Windows) or `-c 1 -W 1` (Unix). Returns bool. |
+| `_get_mac_for_ip(ip)` | ARP table lookup (`arp -a`). Returns MAC string or `None`. |
+| `_guess_platform(vendor)` | Heuristic: "Apple" → ios/mac, "Samsung/Google/OnePlus" → android, else unknown. |
+| `run_network_scan(scan_id)` | Celery task. Parses CIDR, concurrent ping via `ThreadPoolExecutor(50)`, ARP MAC, OUI vendor, calls `_upsert_agentless_host` per live IP, updates `NetworkScan` record. |
+| `ping_agentless_devices()` | Beat task (300s). Loads all `is_agentless=True` devices, pings each, updates `is_online`/`last_seen`, batch commit. Devices silent for >10 min are marked offline. |
+| `_upsert_agentless_host(ip, mac, vendor, platform, device_type)` | Internal helper. Never clobbers agent-managed (`is_agentless=False`) devices. |
+
+### D.4 New API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/devices/platform_counts` | Returns `{"by_platform": {windows: N, ...}, "agentless": N}` |
+| POST | `/api/devices/<id>/ping_check` | Pings device IP, updates `is_online`/`last_seen`. Only for `is_agentless=True` devices. |
+| POST | `/api/network/agentless_devices` | Batch upsert. Body: `{"hosts": [...], "customer_id": optional}`. Returns `{"created": N, "updated": M, "skipped": K}`. |
+| GET | `/api/admin/server_ips` | Returns `{"hostname": "...", "lan_ips": ["192.168.x.x"]}`. No auth required. |
+
+`POST /api/network/scan` now wires `run_network_scan.delay(scan.id)` (was previously a stub).
+
+### D.5 `agent/setup_agent.py`
+
+CLI helper for WiFi deployment:
+
+```bash
+python setup_agent.py <server_lan_ip> <org_token>
+```
+
+Reads `config.ini`, updates `[api] url` and `[api] org_token`, clears `[agent] device_id` and `[agent] agent_token` so the agent re-registers cleanly on next start.
+
+### D.6 Updated Dashboard Pages
+
+**`dashboard/pages/04_Devices.py`** — Complete rewrite:
+- 7 OS filter tabs: All | Windows | macOS | Linux | Android | iOS | Agentless (each with count badge)
+- Loads all devices once + `platform_counts`; filters client-side per tab
+- Agent device row: CPU/RAM/disk gauges, reboot/shutdown buttons, customer assign
+- Agentless device row: IP, MAC, vendor badge, platform badge, last seen, online dot, Ping Now button, customer assign
+- Platform icons: windows=🪟 mac=🍎 linux=🐧 android=🤖 ios=📱 unknown=💻
+
+**`dashboard/pages/07_Network_Discovery.py`** — Complete rewrite:
+- Fixed bug: was calling GET on a POST-only route
+- CIDR input (default `192.168.1.0/24`) + customer assignment dropdown
+- Triggers `POST /api/network/scan`, polls `GET /api/network/scans/<id>` every 3s with spinner
+- Results table: platform icon, IP, MAC, vendor, platform badge, status badge
+- "Save All to Devices" button → `upsert_agentless_devices()`
+- Idle state shows past scan history (last 5 scans)
+
+**`dashboard/pages/10_Admin.py`** — Server IP card added:
+- Calls `get_server_ips()`, displays each LAN IP as `st.code()` block (hover-to-copy)
+- Step-by-step agent setup instructions with `setup_agent.py` usage example
+- Collapsible "How to deploy agent on other WiFi machines" section
+
+### D.7 New `api_client.py` Methods
+
+| Method | HTTP | Path |
+|--------|------|------|
+| `get_platform_counts()` | GET | `/api/devices/platform_counts` |
+| `ping_check_device(device_id)` | POST | `/api/devices/<id>/ping_check` |
+| `upsert_agentless_devices(hosts, customer_id=None)` | POST | `/api/network/agentless_devices` |
+| `trigger_network_scan(customer_id, scan_range)` | POST | `/api/network/scan` |
+| `get_server_ips()` | GET | `/api/admin/server_ips` |
+| `update_device(device_id, data)` | PUT | `/api/devices/<id>` |
+
+---
+
 ## Phase 5 — Dashboard Setup
 
 ### 5.1 Install deps
@@ -906,10 +1020,10 @@ def render_sidebar():
 | `01_Dashboard.py` | Overview metrics, device health map, recent alerts, activity feed |
 | `02_Tickets.py` | Create/view/update/assign/comment tickets |
 | `03_Customers.py` | Customer CRUD, device count per customer |
-| `04_Devices.py` | Device list, detail view, metrics charts |
+| `04_Devices.py` | Device list with 7 OS filter tabs (All/Windows/macOS/Linux/Android/iOS/Agentless); agent devices show CPU/RAM/disk gauges + reboot/shutdown; agentless devices show IP, MAC, vendor badge, Ping Now button |
 | `05_Alerts.py` | Alert rules config, active alerts, acknowledge/resolve |
 | `06_App_Center.py` | Software inventory across devices |
-| `07_Network_Discovery.py` | Trigger scans, view discovered hosts |
+| `07_Network_Discovery.py` | CIDR input, POST-triggered scan with 3s polling, results table (icon/IP/MAC/vendor/platform/status), Save All to Devices button, past scan history |
 | `08_Reports.py` | Generate reports, download CSV |
 | `09_Billing.py` | Invoice list, create invoice |
 | `10_Admin.py` | User management (with "Require password change on first login" checkbox), audit logs, agent enrollment token (Reveal/Hide card) |
