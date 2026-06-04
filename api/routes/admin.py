@@ -13,7 +13,7 @@ admin_bp = Blueprint("admin", __name__)
 def _require_admin():
     uid = get_jwt_identity()
     user = User.query.get(uid)
-    if not user or user.role != "admin":
+    if not user or user.role not in ("admin", "superadmin"):
         return None, jsonify({"error": "Admin access required"}), 403
     return user, None, None
 
@@ -83,6 +83,8 @@ def update_user(user_id):
     user = User.query.get(user_id)
     if not user:
         return jsonify({"error": "User not found"}), 404
+    if user.role == "superadmin":
+        return jsonify({"error": "Superadmin account cannot be modified via the API. Use reset_superadmin.py CLI."}), 403
 
     data = request.get_json(silent=True) or {}
     if "full_name" in data:
@@ -119,6 +121,8 @@ def delete_user(user_id):
     user = User.query.get(user_id)
     if not user:
         return jsonify({"error": "User not found"}), 404
+    if user.role == "superadmin":
+        return jsonify({"error": "Superadmin account cannot be deleted"}), 403
 
     _audit("DELETE", admin.id, resource_id=user_id, payload={"email": user.email})
     db.session.delete(user)
