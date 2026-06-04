@@ -31,6 +31,11 @@ def create_app(config_name=None):
             ensure_builtin_scripts()
         except Exception:
             app.logger.warning("Could not sync built-in scripts (DB may not be ready yet)")
+        try:
+            from utils.superadmin import ensure_superadmin
+            ensure_superadmin()
+        except Exception:
+            app.logger.warning("Could not ensure superadmin (DB may not be ready yet)")
 
     # Register blueprints
     from routes.auth import auth_bp

@@ -11,6 +11,8 @@ customers_bp = Blueprint("customers", __name__)
 
 def _require_role(*roles):
     claims = get_jwt()
+    if claims.get("role") == "superadmin":
+        return None  # superadmin bypasses all role checks
     if claims.get("role") not in roles:
         return jsonify({"error": "Insufficient permissions"}), 403
     return None
