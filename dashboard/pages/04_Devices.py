@@ -1,4 +1,4 @@
-"""Devices — list, filter, metrics history, remote actions."""
+"""Devices — OS filter tabs, agent devices + agentless (WiFi/mobile)."""
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
@@ -17,96 +17,194 @@ render_sidebar()
 
 st.markdown("""
 <h1 style="margin:0">Devices</h1>
-<p style="color:#6B7B6B;margin:2px 0 1rem;font-size:0.88rem">All registered endpoints</p>
+<p style="color:#6B7B6B;margin:2px 0 1rem;font-size:0.88rem">
+All registered endpoints — agent-managed and agentless (WiFi discovered)</p>
 """, unsafe_allow_html=True)
 
-# ── Filters ───────────────────────────────────────────────────────────────────
-st.markdown("""
-<div style="background:#FFF;border-radius:10px;padding:0.9rem 1.1rem;
-            border:1px solid #DDE8DD;box-shadow:0 1px 4px rgba(0,0,0,0.04);
-            margin-bottom:1rem">
-""", unsafe_allow_html=True)
+PLATFORM_ICON = {
+    "windows": "🪟", "mac": "🍎", "linux": "🐧",
+    "android": "🤖", "ios": "📱", "unknown": "💻",
+}
 
-fc1, fc2, fc3 = st.columns([2, 1.2, 1.2])
-with fc1:
-    search = st.text_input("🔍  Search hostname", placeholder="e.g. DESKTOP-", label_visibility="collapsed")
-with fc2:
-    status_filter = st.selectbox("Status", ["All statuses", "healthy", "warning", "critical", "offline"],
-                                  label_visibility="collapsed")
-with fc3:
-    online_filter = st.selectbox("Online", ["All devices", "Online only", "Offline only"],
-                                  label_visibility="collapsed")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-# ── Load ──────────────────────────────────────────────────────────────────────
-params = {}
-if search:
-    params["q"] = search
-if status_filter != "All statuses":
-    params["status"] = status_filter
-if online_filter == "Online only":
-    params["is_online"] = "true"
-elif online_filter == "Offline only":
-    params["is_online"] = "false"
-
+# ── Load all devices + platform counts ────────────────────────────────────────
 with st.spinner("Loading devices..."):
-    data, err = client.list_devices(per_page=200, **params)
+    data, err = client.list_devices(per_page=200)
+    counts_data, _ = client.get_platform_counts()
+
 if err:
     st.warning(f"Could not load devices — {err}")
     st.stop()
 
-devices = data.get("items", [])
+all_devices = data.get("items", [])
+pc = (counts_data or {}).get("by_platform", {})
+ag = (counts_data or {}).get("agentless", 0)
+total = len(all_devices)
 
-if not devices:
-    st.markdown("""
-    <div style="text-align:center;padding:3rem;background:#FFF;border-radius:12px;
-                border:1px solid #DDE8DD;color:#6B7B6B">
-        <div style="font-size:2.5rem;margin-bottom:0.75rem">💻</div>
-        <div style="font-size:1rem;font-weight:600;color:#1A2B1A;margin-bottom:0.4rem">No devices found</div>
-        <div style="font-size:0.85rem">Deploy the agent to register endpoints.</div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.stop()
+# ── Shared search + status filter (apply inside each tab) ─────────────────────
+sf1, sf2, sf3 = st.columns([2, 1.2, 1.2])
+with sf1:
+    search = st.text_input("🔍  Search hostname / IP", placeholder="e.g. DESKTOP- or 192.168.", label_visibility="collapsed")
+with sf2:
+    status_filter = st.selectbox("Status", ["All statuses", "healthy", "warning", "critical", "offline"],
+                                  label_visibility="collapsed")
+with sf3:
+    online_filter = st.selectbox("Online", ["All devices", "Online only", "Offline only"],
+                                  label_visibility="collapsed")
 
-# Caption
-st.markdown(f"""
-<div style="font-size:0.8rem;color:#6B7B6B;margin-bottom:0.6rem;padding:0 0.25rem">
-    Showing {len(devices)} device{"s" if len(devices) != 1 else ""}
-</div>
-""", unsafe_allow_html=True)
 
-# ── Column header ─────────────────────────────────────────────────────────────
-st.markdown("""
-<div style="display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr 1fr 1fr 0.8fr;
-            gap:8px;padding:0.4rem 1rem;background:#F4F6F4;border-radius:7px 7px 0 0;
-            border:1px solid #DDE8DD;border-bottom:none;
-            font-size:0.72rem;font-weight:700;text-transform:uppercase;
-            letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0">
-    <div>Device</div>
-    <div>OS</div>
-    <div style="text-align:center">CPU</div>
-    <div style="text-align:center">RAM</div>
-    <div style="text-align:center">Disk</div>
-    <div>Last Seen</div>
-    <div>Status</div>
-</div>
-""", unsafe_allow_html=True)
+def _apply_filters(devices: list) -> list:
+    out = devices
+    if search:
+        s = search.lower()
+        out = [d for d in out if s in (d.get("hostname") or "").lower()
+               or s in (d.get("ip_address") or "").lower()]
+    if status_filter != "All statuses":
+        out = [d for d in out if d.get("status") == status_filter]
+    if online_filter == "Online only":
+        out = [d for d in out if d.get("is_online")]
+    elif online_filter == "Offline only":
+        out = [d for d in out if not d.get("is_online")]
+    return out
 
-# ── Device rows ───────────────────────────────────────────────────────────────
+
+def _tab_devices(tab_name: str) -> list:
+    platform_map = {
+        "Windows": "windows", "macOS": "mac", "Linux": "linux",
+        "Android": "android", "iOS": "ios",
+    }
+    if tab_name == "All":
+        return _apply_filters(all_devices)
+    if tab_name == "Agentless":
+        return _apply_filters([d for d in all_devices if d.get("is_agentless")])
+    p = platform_map.get(tab_name)
+    return _apply_filters([d for d in all_devices if d.get("platform") == p])
+
+
+# ── OS Tabs ───────────────────────────────────────────────────────────────────
+tab_labels = [
+    f"All ({total})",
+    f"🪟 Windows ({pc.get('windows', 0)})",
+    f"🍎 macOS ({pc.get('mac', 0)})",
+    f"🐧 Linux ({pc.get('linux', 0)})",
+    f"🤖 Android ({pc.get('android', 0)})",
+    f"📱 iOS ({pc.get('ios', 0)})",
+    f"📡 Agentless ({ag})",
+]
+tab_names = ["All", "Windows", "macOS", "Linux", "Android", "iOS", "Agentless"]
+tabs = st.tabs(tab_labels)
+
+# ── Helper: percent bar ───────────────────────────────────────────────────────
 def _pct_bar(pct: float, color: str) -> str:
     return (
         f'<div style="background:#EEF2EE;border-radius:3px;height:4px;margin-top:3px">'
         f'<div style="background:{color};width:{min(pct,100):.0f}%;height:4px;border-radius:3px"></div></div>'
     )
 
-selected = st.session_state.get("selected_device_id")
 
-for device in devices:
+# ── Agentless device row ──────────────────────────────────────────────────────
+def _render_agentless_row(device: dict):
+    is_online = device.get("is_online", False)
+    dot_color = "#22C55E" if is_online else "#8492A6"
+    platform = device.get("platform", "unknown")
+    icon = PLATFORM_ICON.get(platform, "💻")
+    dev_type = device.get("device_type", "unknown")
+
+    with st.expander(
+        f'{icon}  {device.get("hostname", device.get("ip_address", "—"))}   '
+        f'{"🟢 Online" if is_online else "⚫ Offline"}  ·  '
+        f'{device.get("vendor") or "Unknown vendor"}  ·  '
+        f'{platform.upper()}  ·  AGENTLESS',
+    ):
+        c1, c2 = st.columns(2)
+
+        with c1:
+            st.markdown(f"""
+<div style="background:#FAFCFA;border-radius:8px;padding:0.85rem 1rem;border:1px solid #E8EEE8">
+    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;
+                letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0.6rem">Network</div>
+    <table style="width:100%;border-collapse:collapse;font-size:0.83rem">
+        <tr><td style="color:#6B7B6B;padding:2px 0;width:40%">IP</td>
+            <td style="color:#1A1A1A;font-family:monospace;font-weight:600">{device.get('ip_address','—')}</td></tr>
+        <tr><td style="color:#6B7B6B;padding:2px 0">MAC</td>
+            <td style="color:#1A1A1A;font-family:monospace;font-size:0.8rem">{device.get('mac_address','—')}</td></tr>
+        <tr><td style="color:#6B7B6B;padding:2px 0">Vendor</td>
+            <td style="color:#1A1A1A">{device.get('vendor','Unknown')}</td></tr>
+        <tr><td style="color:#6B7B6B;padding:2px 0">Platform</td>
+            <td style="color:#1A1A1A">{icon} {platform}</td></tr>
+        <tr><td style="color:#6B7B6B;padding:2px 0">Device type</td>
+            <td style="color:#1A1A1A;text-transform:capitalize">{dev_type}</td></tr>
+        <tr><td style="color:#6B7B6B;padding:2px 0">Last seen</td>
+            <td style="color:#1A1A1A">{fmt_datetime(device.get('last_seen'))}</td></tr>
+    </table>
+</div>""", unsafe_allow_html=True)
+
+        with c2:
+            st.markdown(f"""
+<div style="background:#FAFCFA;border-radius:8px;padding:0.85rem 1rem;border:1px solid #E8EEE8;height:100%">
+    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;
+                letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0.6rem">Status</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.5rem">
+        <div style="width:10px;height:10px;border-radius:50%;background:{dot_color};
+                    box-shadow:0 0 5px {dot_color}88"></div>
+        <span style="font-size:0.88rem;font-weight:600;color:#1A1A1A">
+            {"Online" if is_online else "Offline"}</span>
+    </div>
+    <div style="font-size:0.78rem;color:#6B7B6B;margin-bottom:0.75rem">
+        Agentless — ping-monitored only.<br>
+        Remote actions not available without an agent.
+    </div>
+</div>""", unsafe_allow_html=True)
+
+        # Assign to customer
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        cust_data, _ = client.list_customers(per_page=200)
+        customers = (cust_data or {}).get("items", [])
+        cust_options = {c["id"]: c["name"] for c in customers}
+        cust_ids = [""] + list(cust_options.keys())
+        cust_labels = ["— Unassigned —"] + list(cust_options.values())
+        current_cid = device.get("customer_id") or ""
+        current_idx = cust_ids.index(current_cid) if current_cid in cust_ids else 0
+
+        ca1, ca2, ca3 = st.columns([2.5, 0.8, 1.2])
+        with ca1:
+            chosen_idx = st.selectbox(
+                "Assign to Customer",
+                range(len(cust_ids)),
+                format_func=lambda x: cust_labels[x],
+                index=current_idx,
+                key=f"cust_{device['id']}",
+            )
+        with ca2:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            if st.button("Save", key=f"save_cust_{device['id']}"):
+                new_cid = cust_ids[chosen_idx] or None
+                _, e = client.update_device(device["id"], {"customer_id": new_cid})
+                st.error(f"Failed: {e}") if e else st.success(f"Assigned to {cust_labels[chosen_idx]}")
+                if not e:
+                    st.rerun()
+        with ca3:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            if st.button("🔔 Ping Now", key=f"ping_{device['id']}", use_container_width=True):
+                result, e = client.ping_check_device(device["id"])
+                if e:
+                    st.error(f"Ping failed: {e}")
+                else:
+                    online = (result or {}).get("is_online", False)
+                    if online:
+                        st.success("Device is reachable ✓")
+                    else:
+                        st.warning("No response — device may be offline or blocking ICMP")
+                    st.rerun()
+
+
+# ── Agent device row (original full row) ─────────────────────────────────────
+def _render_agent_row(device: dict):
     status   = device.get("status", "unknown")
     s_color  = STATUS_COLORS.get(status, "#8492A6")
     is_online = device.get("is_online", False)
     dot_color = "#22C55E" if is_online else "#8492A6"
+    platform = device.get("platform", "unknown")
+    icon = PLATFORM_ICON.get(platform, "💻")
     metrics  = device.get("latest_metrics") or {}
     cpu  = metrics.get("cpu_pct",  0) or 0
     ram  = metrics.get("ram_pct",  0) or 0
@@ -115,23 +213,14 @@ for device in devices:
     ram_c  = pct_color(ram)
     disk_c = pct_color(disk)
 
-    label_html = (
-        f'<div style="display:flex;align-items:center;gap:8px">'
-        f'  <div style="width:8px;height:8px;border-radius:50%;background:{dot_color};'
-        f'              box-shadow:0 0 5px {dot_color}88;flex-shrink:0"></div>'
-        f'  <b>{device.get("hostname","—")}</b>'
-        f'  <span style="color:#6B7B6B;font-size:0.8rem;font-weight:400">'
-        f'    {device.get("ip_address","")}</span>'
-        f'</div>'
-    )
+    selected = st.session_state.get("selected_device_id")
 
     with st.expander(
-        f'{"🟢" if is_online else "⚫"}  {device.get("hostname","—")}   '
+        f'{icon} {"🟢" if is_online else "⚫"}  {device.get("hostname","—")}   '
         f'CPU {cpu:.0f}%  ·  RAM {ram:.0f}%  ·  Disk {disk:.0f}%  '
         f'·  {status.upper()}',
         expanded=(device.get("id") == selected),
     ):
-        # Detail columns
         d1, d2, d3 = st.columns(3)
 
         with d1:
@@ -145,7 +234,7 @@ for device in devices:
         <tr><td style="color:#6B7B6B;padding:2px 0">IP</td>
             <td style="color:#1A1A1A">{device.get('ip_address','—')}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">OS</td>
-            <td style="color:#1A1A1A">{(device.get('os_name') or '—')} {device.get('os_version','')}</td></tr>
+            <td style="color:#1A1A1A">{icon} {(device.get('os_name') or '—')} {device.get('os_version','')}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Platform</td>
             <td style="color:#1A1A1A">{device.get('platform','—')}</td></tr>
     </table>
@@ -171,7 +260,6 @@ for device in devices:
 </div>""", unsafe_allow_html=True)
 
         with d3:
-            # Gauge trio
             fig = go.Figure()
             for val, label, clr in [
                 (cpu,  "CPU",  cpu_c),
@@ -205,12 +293,12 @@ for device in devices:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-        # ── Assign to Customer ────────────────────────────────────────────────
+        # Assign to customer
         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
         cust_data, _ = client.list_customers(per_page=200)
         customers = (cust_data or {}).get("items", [])
         cust_options = {c["id"]: c["name"] for c in customers}
-        cust_ids   = [""] + list(cust_options.keys())
+        cust_ids = [""] + list(cust_options.keys())
         cust_labels = ["— Unassigned —"] + list(cust_options.values())
         current_cid = device.get("customer_id") or ""
         current_idx = cust_ids.index(current_cid) if current_cid in cust_ids else 0
@@ -228,11 +316,9 @@ for device in devices:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
             if st.button("Save", key=f"save_cust_{device['id']}"):
                 new_cid = cust_ids[chosen_idx] or None
-                _, err = client.update_device(device["id"], {"customer_id": new_cid})
-                if err:
-                    st.error(f"Failed: {err}")
-                else:
-                    st.success(f"Assigned to {cust_labels[chosen_idx]}")
+                _, e = client.update_device(device["id"], {"customer_id": new_cid})
+                st.error(f"Failed: {e}") if e else st.success(f"Assigned to {cust_labels[chosen_idx]}")
+                if not e:
                     st.rerun()
 
         # Actions
@@ -279,3 +365,39 @@ for device in devices:
                                    font=dict(size=12, color="#6B7B6B")),
                     )
                     st.plotly_chart(fig2, use_container_width=True)
+
+
+# ── Render each tab ───────────────────────────────────────────────────────────
+def _empty_state(tab_name: str):
+    icon = {"Windows": "🪟", "macOS": "🍎", "Linux": "🐧",
+            "Android": "🤖", "iOS": "📱", "Agentless": "📡"}.get(tab_name, "💻")
+    msg = {
+        "Agentless": "No agentless devices yet. Run a <b>Network Discovery</b> scan to detect phones and other devices.",
+    }.get(tab_name, f"No {tab_name} devices registered. Install and run the agent on a {tab_name} machine.")
+    st.markdown(
+        f'<div style="text-align:center;padding:2.5rem;background:#FFF;border-radius:12px;'
+        f'border:1px solid #DDE8DD;color:#6B7B6B;margin-top:0.5rem">'
+        f'<div style="font-size:2rem;margin-bottom:0.5rem">{icon}</div>'
+        f'<div style="font-size:0.95rem;font-weight:600;color:#1A2B1A;margin-bottom:0.3rem">No devices</div>'
+        f'<div style="font-size:0.82rem">{msg}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+for tab, name in zip(tabs, tab_names):
+    with tab:
+        devices = _tab_devices(name)
+        if not devices:
+            _empty_state(name)
+        else:
+            st.markdown(
+                f'<div style="font-size:0.8rem;color:#6B7B6B;margin-bottom:0.6rem;padding:0 0.25rem">'
+                f'Showing {len(devices)} device{"s" if len(devices) != 1 else ""}</div>',
+                unsafe_allow_html=True,
+            )
+            for device in devices:
+                if device.get("is_agentless"):
+                    _render_agentless_row(device)
+                else:
+                    _render_agent_row(device)

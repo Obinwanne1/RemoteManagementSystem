@@ -17,6 +17,7 @@ def make_celery(app=None):
             "tasks.maintenance_tasks",
             "tasks.report_tasks",
             "tasks.automation_tasks",
+            "tasks.network_tasks",
         ],
     )
 
@@ -44,6 +45,10 @@ def make_celery(app=None):
             "sync-patch-status-every-30-min": {
                 "task": "tasks.patch_tasks.sync_patch_status",
                 "schedule": 1800.0,
+            },
+            "ping-agentless-devices-every-5-min": {
+                "task": "tasks.network_tasks.ping_agentless_devices",
+                "schedule": 300.0,
             },
         },
     )

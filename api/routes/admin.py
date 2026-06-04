@@ -135,3 +135,31 @@ def get_org_token():
         return err, code
     token = current_app.config.get("ORG_REGISTRATION_TOKEN", "")
     return jsonify({"org_token": token})
+
+
+@admin_bp.route("/server_ips", methods=["GET"])
+@jwt_required()
+def server_ips():
+    """Return the server's LAN IP addresses for agent setup. Admin-only."""
+    _, err, code = _require_admin()
+    if err:
+        return err, code
+    import socket
+    hostname = socket.gethostname()
+    ips = []
+    try:
+        for info in socket.getaddrinfo(hostname, None):
+            ip = info[4][0]
+            if not ip.startswith("127.") and ":" not in ip and ip not in ips:
+                ips.append(ip)
+    except Exception:
+        pass
+    # Fallback: UDP trick to get the outbound IP
+    if not ips:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                ips = [s.getsockname()[0]]
+        except Exception:
+            ips = []
+    return jsonify({"hostname": hostname, "lan_ips": ips})

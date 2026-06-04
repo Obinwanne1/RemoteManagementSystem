@@ -10,7 +10,7 @@ class Device(db.Model):
     __tablename__ = "devices"
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    customer_id = db.Column(db.String(36), db.ForeignKey("customers.id"), nullable=False, index=True)
+    customer_id = db.Column(db.String(36), db.ForeignKey("customers.id"), nullable=True, index=True)
     group_id = db.Column(db.String(36), db.ForeignKey("device_groups.id"), nullable=True)
     hostname = db.Column(db.String(255), nullable=False)
     display_name = db.Column(db.String(255), nullable=True)
@@ -27,6 +27,9 @@ class Device(db.Model):
     mac_address = db.Column(db.String(100), nullable=True)
     public_ip = db.Column(db.String(45), nullable=True)
     hardware_fingerprint = db.Column(db.String(255), nullable=True)  # SHA-256(hostname+MAC+serial)
+    is_agentless = db.Column(db.Boolean, default=False, nullable=False)
+    device_type = db.Column(db.String(50), default='laptop', nullable=False)  # laptop/desktop/mobile/server/unknown
+    vendor = db.Column(db.String(255), nullable=True)  # OUI-derived e.g. "Apple, Inc."
     agent_version = db.Column(db.String(50), nullable=True)
     last_seen = db.Column(db.DateTime(timezone=True), nullable=True)
     is_online = db.Column(db.Boolean, default=False, nullable=False)
@@ -59,6 +62,9 @@ class Device(db.Model):
             "serial_number": self.serial_number,
             "ip_address": self.ip_address,
             "mac_address": self.mac_address,
+            "is_agentless": self.is_agentless,
+            "device_type": self.device_type,
+            "vendor": self.vendor,
             "agent_version": self.agent_version,
             "last_seen": self.last_seen.isoformat() if self.last_seen else None,
             "is_online": self.is_online,
