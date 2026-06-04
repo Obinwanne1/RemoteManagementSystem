@@ -141,15 +141,15 @@ def _footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(MUTED)
-    # Left: guide title
-    canvas.drawString(MARGIN, 12 * mm, "RMM System — Handover & User Guide")
-    # Right: page number
-    page_text = f"Page {doc.page}"
-    canvas.drawRightString(W - MARGIN, 12 * mm, page_text)
-    # Thin rule above footer
+    # Thin rule above footer text
     canvas.setStrokeColor(BORDER)
     canvas.setLineWidth(0.5)
-    canvas.line(MARGIN, 14 * mm, W - MARGIN, 14 * mm)
+    canvas.line(MARGIN, 15 * mm, W - MARGIN, 15 * mm)
+    # Left: guide title  (6 mm below rule)
+    canvas.drawString(MARGIN, 9 * mm, "RMM System — Handover & User Guide")
+    # Right: page number
+    page_text = f"Page {doc.page}"
+    canvas.drawRightString(W - MARGIN, 9 * mm, page_text)
     canvas.restoreState()
 
 def _first_page(canvas, doc):
@@ -330,15 +330,22 @@ def md_to_flowables(md_text: str) -> list:
                 flowables.append(HRFlowable(width="100%", thickness=2,
                                             color=GREEN, spaceAfter=6))
             elif level == 1:
-                # Chapter heading — keep with next 3 lines
-                flowables.append(Paragraph(text, styles["h1"]))
-                flowables.append(HRFlowable(width="40%", thickness=1,
-                                            color=GREEN_LIGHT, spaceAfter=3))
+                # Chapter heading — ensure enough room for heading + rule + at least one body line
+                flowables.append(CondPageBreak(60 * mm))
+                heading = Paragraph(text, styles["h1"])
+                rule    = HRFlowable(width="40%", thickness=1,
+                                     color=GREEN_LIGHT, spaceAfter=3)
+                from reportlab.platypus import KeepTogether
+                flowables.append(KeepTogether([heading, rule]))
             elif level == 2:
+                # Keep heading + following body together
+                flowables.append(CondPageBreak(50 * mm))
                 flowables.append(Paragraph(text, styles["h2"]))
             elif level == 3:
+                flowables.append(CondPageBreak(40 * mm))
                 flowables.append(Paragraph(text, styles["h3"]))
             else:
+                flowables.append(CondPageBreak(35 * mm))
                 flowables.append(Paragraph(text, styles["h4"]))
             i += 1
             continue
