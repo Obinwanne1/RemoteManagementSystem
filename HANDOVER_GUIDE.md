@@ -2148,60 +2148,135 @@ At the end of each month, you send each client a summary of device health and in
 
 ### What it is
 
-The Billing page allows administrators to generate invoices for clients based on the number of managed devices during a billing period. It tracks invoice status: draft, sent, or paid.
+The Billing page is a full professional invoicing system. Administrators generate branded invoices for clients based on managed devices during a billing period. Each invoice receives a sequential reference number (INV-YYYY-NNNN), can carry a tax rate and custom notes, and can be downloaded as a formatted A4 PDF or emailed directly to the client from within the dashboard.
 
 ### Who uses it
 
-Administrators. This is the financial management section of the system.
+Administrators only. Technicians and viewers cannot create or modify invoices.
 
-### Billing Fields
+### Before You Generate Your First Invoice
+
+Set up your company branding so invoices look professional. Go to **Admin → Org Settings** and fill in:
+- Company name, address, email, and phone number
+- Payment terms (e.g. "Net 30") and bank/payment details
+- Upload your company logo (PNG or JPG, max 400px wide)
+- Optional footer message (e.g. "Thank you for your business!")
+
+These details appear on every generated PDF invoice.
+
+### The Billing Page Layout
+
+**Summary metrics bar (top of page):**
+
+| Metric | What it shows |
+|---|---|
+| Total Invoices | Count of all invoices in the current filter |
+| Revenue (Paid) | Sum of all paid invoice totals |
+| Outstanding | Sum of all draft and sent invoice totals |
+| Overdue | Sum of all overdue invoice totals |
+
+**Invoice list:** Each row shows the invoice number, customer, billing period, device count, rate, total, status badge, and action buttons.
+
+**Generate Invoice form (bottom of page):** Creates a new invoice.
+
+### Generate Invoice — Fields
 
 | Field | Description |
 |---|---|
 | Customer | The client being billed |
-| Period Start | Start date of the billing period |
-| Period End | End date of the billing period |
-| Device Count | Number of managed devices in that period |
-| Per-Device Rate | Monthly rate per device |
+| Period Start | Start date of the billing period (defaults to first day of current month) |
+| Period End | End date of the billing period (defaults to last day of current month) |
+| Rate / Device ($) | Per-device monthly rate (e.g., 25.00) |
+| Tax Rate (%) | Optional tax percentage applied to the subtotal (0 = no tax) |
+| Due Date | Payment due date (defaults to Period End + 30 days) |
+| Notes | Optional per-invoice notes printed on the PDF |
+
+> **NOTE:** Device count is determined automatically from the devices registered to that customer in the system at the time of generation. You do not enter it manually.
 
 ### Step-by-step: Generating an Invoice
 
 1. Click **Billing** in the sidebar.
-2. Find the invoice creation form.
+2. Scroll to the **Generate Invoice** form at the bottom.
 3. Select the **Customer**.
-4. Set **Period Start** and **Period End** dates.
-5. Enter the **Device Count** (verify on the Devices page by filtering by customer).
-6. Enter the **Per-Device Rate** (e.g., 25.00 for $25 per device per month).
-7. Click **Generate Invoice**.
-8. The invoice appears in the list with status "draft".
+4. Confirm or adjust **Period Start** and **Period End**.
+5. Set the **Rate / Device** (your contracted rate with that client).
+6. Optionally set a **Tax Rate** (e.g. 10 for 10%).
+7. Optionally adjust the **Due Date**.
+8. Optionally add **Notes** (e.g. "Please reference invoice number when paying").
+9. Click **Generate Invoice**.
+10. The invoice appears at the top of the list with status "draft" and a sequential invoice number (e.g. `INV-2026-0001`).
 
-### Invoice Status
+### Invoice Status Flow
 
-| Status | Meaning |
+| Status | Meaning | How to reach it |
+|---|---|---|
+| draft | Created, not yet sent | Automatically set on creation |
+| sent | Delivered to client | Click **Send** button, or use Send Email |
+| paid | Client has paid | Click **Paid** button |
+| overdue | Past due date, unpaid | Click **Ovrd** button (from sent status) |
+
+### Invoice Actions
+
+Each invoice row has action buttons:
+
+- **View** — Opens the full Invoice Detail page with A4 preview
+- **Send** — (draft invoices only) Marks as "sent"
+- **Paid** — (sent or overdue invoices) Marks as "paid"
+- **Ovrd** — (sent invoices only) Marks as "overdue"
+- **🗑** — Delete invoice (requires two clicks to confirm)
+
+### The Invoice Detail Page
+
+Click **View** on any invoice to open the full invoice detail view. This page shows:
+
+- A styled A4 invoice preview with your company logo and branding
+- Bill-To section with customer contact details
+- Service period and due date
+- Line items table with device count, rate, subtotal
+- Tax calculation (if applicable) and grand total
+- Payment instructions from your Org Settings bank details
+- Notes and footer message
+
+**Actions on the Invoice Detail page:**
+
+| Button | What it does |
 |---|---|
-| draft | Created, not yet sent |
-| sent | Delivered to the client |
-| paid | Client has paid |
+| ← Billing | Return to the Billing list |
+| ⬇ Download PDF | Downloads a print-ready A4 PDF to your browser |
+| ✉ Send Email | Emails the PDF to the customer's registered email address (requires SMTP configuration) |
+| Status buttons | Same Send/Paid/Ovrd transitions as the list view |
+| 🗑 Delete | Delete the invoice (confirm with second click) |
+
+> **IMPORTANT:** The **Send Email** button requires SMTP to be configured in the server's `.env` file (see `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` in Chapter 4). If SMTP is not configured, clicking Send Email will return an error. Downloading the PDF and attaching it to your own email client always works regardless of SMTP configuration.
+
+### Invoice Numbers
+
+Invoice numbers are automatically assigned in sequential format: `INV-YYYY-NNNN` where YYYY is the current year and NNNN is a four-digit counter that resets each year (e.g. `INV-2026-0001`, `INV-2026-0002`). You cannot manually assign or edit invoice numbers.
 
 ### Billing Summary Metrics
 
 At the top of the Billing page:
-- **Total Invoiced:** Sum of all invoice amounts
-- **Paid:** Sum of "paid" invoices
-- **Outstanding:** Total invoiced minus paid — what clients still owe
+- **Total Invoices:** Count of all invoices in the current customer filter
+- **Revenue (Paid):** Sum of all paid invoice totals
+- **Outstanding:** Sum of all draft and sent invoice totals — what clients still owe
+- **Overdue:** Sum of all overdue invoice totals — requires immediate attention
 
 ### Step-by-step: End-of-Month Billing Run
 
-1. Go to **Billing** at the end of every month.
-2. Check device count for each customer (verify on Devices page).
-3. Create an invoice for each customer using their contracted rate.
-4. Note the invoice amounts.
-5. Email invoices to each client.
-6. Mark each invoice as "sent".
-7. When payment is received, mark as "paid".
-8. The Outstanding metric decreases automatically.
+1. Go to **Admin → Org Settings** — confirm company details and logo are up to date.
+2. Go to **Billing** at the end of every month.
+3. For each active customer, scroll to the Generate Invoice form and create an invoice.
+4. Verify the generated device count is correct (cross-check on the Devices page filtered by customer).
+5. Click **View** on each invoice to preview the PDF before sending.
+6. Click **⬇ Download PDF** to save a local copy for your records.
+7. Click **✉ Send Email** to deliver the invoice directly to the customer (if SMTP configured), OR download and attach the PDF to your own email.
+8. The status automatically moves to "sent" when Send Email is used.
+9. When payment is received, return to Billing and click **Paid** on the relevant invoice.
+10. The Outstanding metric decreases automatically.
 
-> **NOTE:** Device count is entered manually. Always verify the actual number before billing to avoid errors.
+> **TIP:** Use the **Filter by Customer** dropdown at the top of the Billing page to see only one customer's invoices. This is useful when checking whether a specific client has any overdue invoices.
+
+> **NOTE:** If an invoice shows the wrong device count, delete it and regenerate. Device count is pulled live from the database at generation time — it reflects however many devices were registered to that customer when you clicked Generate Invoice.
 
 ---
 
@@ -2209,7 +2284,7 @@ At the top of the Billing page:
 
 ### What it is
 
-The Admin page is restricted to admin role users only. It provides three tabs: System Info, Audit Log, and Users. This is where you check system health, review all user actions, and manage user accounts.
+The Admin page is restricted to admin role users only. It provides four tabs: System Info, Audit Log, Users, and Org Settings. This is where you check system health, review all user actions, manage user accounts, and configure company branding for invoices.
 
 ### Who uses it
 
@@ -2299,6 +2374,47 @@ On the first Monday of each month:
    - Unusual patterns of failed actions
 4. Go to **Users** tab. Verify all listed users are current employees.
 5. Go to **System Info** → Services card. Verify all services are healthy.
+
+### Tab 4: Org Settings
+
+The Org Settings tab controls the company branding and payment details that appear on every generated PDF invoice. Set this up before generating your first invoice.
+
+**Company Details section:**
+
+| Field | Description | Example |
+|---|---|---|
+| Company Name | Your business name, printed at the top of invoices | Acme IT Services Ltd |
+| Company Address | Full postal address (multi-line) | 123 High Street, London, W1A 1AA |
+| Company Email | Contact email shown on invoice | billing@acmeit.com |
+| Company Phone | Contact phone number | +44 20 7946 0958 |
+| Payment Terms | Shown in the footer payment block | Net 30 |
+| Bank / Payment Details | Full bank details or payment instructions | Sort: 12-34-56, Acc: 87654321 |
+| Footer Message | Final line at the bottom of every invoice | Thank you for your business! |
+
+Click **Save Company Settings** to apply changes. Changes take effect on the next invoice generated.
+
+**Company Logo section:**
+
+Your logo appears in the top-left corner of every PDF invoice.
+
+- Click **Browse files** to upload a PNG or JPG image.
+- The system automatically resizes it to a maximum of 400 pixels wide.
+- Click **Upload Logo** to save. A preview appears immediately.
+- Click **Remove Logo** to delete the current logo (invoices will show the company name in text instead).
+
+> **TIP:** A transparent-background PNG logo looks best on the white invoice background.
+
+> **NOTE:** Logo changes apply to new PDF downloads immediately. Previously downloaded PDFs are not retroactively updated.
+
+### Step-by-step: Setting Up Org Branding for the First Time
+
+1. Go to **Admin** → **Org Settings** tab.
+2. Fill in all Company Details fields.
+3. Upload your company logo.
+4. Click **Save Company Settings**.
+5. Navigate to **Billing** and generate a test invoice for any customer.
+6. Click **View** → **⬇ Download PDF** to verify the branding looks correct.
+7. If the logo or details need adjusting, return to Admin → Org Settings and update.
 
 ### The Superadmin Account
 
@@ -2476,7 +2592,8 @@ RemoteManagementSystem/
 | PatchRecord | patch_records | id, device_id, patch_name, kb_id, status |
 | AutomationProfile | automation_profiles | id, name, schedule_type, is_active |
 | Report | reports | id, name, template_type, customer_id, file_path |
-| Invoice | invoices | id, customer_id, period_start, period_end, device_count, total, status |
+| Invoice | invoices | id, invoice_number, customer_id, period_start, period_end, due_date, device_count, per_device_rate, tax_rate, subtotal, tax_amount, total, notes, status |
+| OrgSettings | org_settings | id (always 1), company_name, company_address, company_email, logo_data, payment_terms, bank_details, footer_notes |
 | AuditLog | audit_logs | id, user_id, action, resource_type, ip_address |
 
 ---
@@ -3169,10 +3286,19 @@ Reports → Generate → select template → select customer → set date range 
 - `billing_summary` — invoices and billing totals
 
 **Checking outstanding invoices:**
-Billing → view Outstanding metric at top → find unpaid invoices in the list
+Billing → view Outstanding metric at top → find unpaid/overdue invoices in the list
 
 **Creating an invoice:**
-Billing → create invoice form → select customer → set period dates → enter device count and rate → Generate Invoice
+Billing → Generate Invoice form → select customer → set period dates, rate, optional tax rate and notes → Generate Invoice → invoice assigned INV-YYYY-NNNN automatically
+
+**Downloading a PDF invoice:**
+Billing → View (on any invoice row) → ⬇ Download PDF
+
+**Emailing an invoice to a client:**
+Billing → View → ✉ Send Email (requires SMTP configured in .env)
+
+**Setting up company branding for invoices:**
+Admin → Org Settings tab → fill company details + upload logo → Save
 
 **Understanding the Dashboard for management:**
 - Stat cards: Total Devices, Online, Warning, Critical, Open Tickets
