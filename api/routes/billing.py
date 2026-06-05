@@ -1,20 +1,40 @@
-from datetime import datetime, timezone
-from flask import Blueprint, request, jsonify
+import os
+import io
+import smtplib
+import logging
+from datetime import datetime, timezone, timedelta
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+
+from flask import Blueprint, request, jsonify, Response
 from flask_jwt_extended import jwt_required, get_jwt
 from extensions import db
 from models.billing import Invoice
+from models.customer import Customer
 from models.device import Device
 
+logger = logging.getLogger(__name__)
 billing_bp = Blueprint("billing", __name__)
 
 
 def _require_role(*roles):
     claims = get_jwt()
     if claims.get("role") == "superadmin":
-        return None  # superadmin bypasses all role checks
+        return None
     if claims.get("role") not in roles:
         return jsonify({"error": "Insufficient permissions"}), 403
     return None
+
+
+def _next_invoice_number():
+    """Generate sequential INV-YYYY-NNNN number."""
+    year = datetime.now(timezone.utc).year
+    count = Invoice.query.filter(
+        Invoice.invoice_number.like(f"INV-{year}-%")
+    ).count()
+    return f"INV-{year}-{count + 1:04d}"
 
 
 @billing_bp.route("/invoices", methods=["GET"])
@@ -46,17 +66,43 @@ def generate_invoice():
     tax = subtotal * tax_rate
     total = subtotal + tax
 
+    # Period dates
+    period_start = (
+        datetime.fromisoformat(data["period_start"])
+        if data.get("period_start") else datetime.now(timezone.utc)
+    )
+    period_end = (
+        datetime.fromisoformat(data["period_end"])
+        if data.get("period_end") else datetime.now(timezone.utc)
+    )
+
+    # Due date — default 30 days after period_end
+    due_date_raw = data.get("due_date")
+    if due_date_raw:
+        due_date = datetime.fromisoformat(due_date_raw)
+    else:
+        due_date = period_end + timedelta(days=30)
+
     invoice = Invoice(
+        invoice_number=_next_invoice_number(),
         customer_id=customer_id,
-        period_start=datetime.fromisoformat(data["period_start"]) if data.get("period_start") else datetime.now(timezone.utc),
-        period_end=datetime.fromisoformat(data["period_end"]) if data.get("period_end") else datetime.now(timezone.utc),
+        period_start=period_start,
+        period_end=period_end,
+        due_date=due_date,
         device_count=device_count,
         per_device_rate=per_device_rate,
         subtotal=subtotal,
+        tax_rate=tax_rate,
         tax=tax,
         total=total,
+        notes=data.get("notes") or None,
         line_items=[
-            {"description": f"Managed devices ({device_count} devices)", "amount": subtotal},
+            {
+                "description": f"Managed Devices — Service Period",
+                "quantity": device_count,
+                "rate": per_device_rate,
+                "amount": subtotal,
+            },
         ],
     )
     db.session.add(invoice)
@@ -69,6 +115,103 @@ def generate_invoice():
 def get_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
     return jsonify(invoice.to_dict()), 200
+
+
+@billing_bp.route("/invoices/<invoice_id>/pdf", methods=["GET"])
+@jwt_required()
+def get_invoice_pdf(invoice_id):
+    invoice = Invoice.query.get_or_404(invoice_id)
+    customer = Customer.query.get_or_404(invoice.customer_id)
+
+    from models.org_settings import OrgSettings
+    org = OrgSettings.query.get(1) or OrgSettings(id=1)
+
+    from utils.invoice_pdf import generate_invoice_pdf
+    pdf_bytes = generate_invoice_pdf(invoice, customer, org)
+
+    inv_num = invoice.invoice_number or invoice.id[:8]
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="invoice-{inv_num}.pdf"',
+            "Content-Length": str(len(pdf_bytes)),
+        },
+    )
+
+
+@billing_bp.route("/invoices/<invoice_id>/send-email", methods=["POST"])
+@jwt_required()
+def send_invoice_email(invoice_id):
+    err = _require_role("admin")
+    if err:
+        return err
+
+    invoice = Invoice.query.get_or_404(invoice_id)
+    customer = Customer.query.get_or_404(invoice.customer_id)
+
+    if not customer.email:
+        return jsonify({"error": "Customer has no email address on file"}), 400
+
+    smtp_host = os.getenv("SMTP_HOST", "")
+    if not smtp_host:
+        return jsonify({"error": "SMTP not configured — set SMTP_HOST in .env to enable email delivery"}), 503
+
+    from models.org_settings import OrgSettings
+    org = OrgSettings.query.get(1) or OrgSettings(id=1)
+
+    from utils.invoice_pdf import generate_invoice_pdf
+    pdf_bytes = generate_invoice_pdf(invoice, customer, org)
+
+    inv_num = invoice.invoice_number or invoice.id[:8]
+    company_name = org.company_name or "RMM System"
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASS", "")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user or "billing@localhost")
+
+    subject = f"Invoice {inv_num} from {company_name}"
+    body_html = f"""
+<p>Dear {customer.name},</p>
+<p>Please find attached your invoice <strong>{inv_num}</strong>.</p>
+<table style="border-collapse:collapse;margin:16px 0">
+  <tr><td style="padding:4px 12px 4px 0;color:#6B7B6B">Invoice Number:</td><td><strong>{inv_num}</strong></td></tr>
+  <tr><td style="padding:4px 12px 4px 0;color:#6B7B6B">Amount Due:</td><td><strong>${float(invoice.total):,.2f}</strong></td></tr>
+  <tr><td style="padding:4px 12px 4px 0;color:#6B7B6B">Due Date:</td><td>{invoice.due_date.strftime("%d %B %Y") if invoice.due_date else "—"}</td></tr>
+</table>
+<p>Please do not hesitate to contact us if you have any questions.</p>
+<p style="color:#6B7B6B;font-size:13px">{org.footer_notes or "Thank you for your business!"}</p>
+<p style="color:#6B7B6B;font-size:12px">— {company_name}</p>
+"""
+
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = smtp_from
+        msg["To"] = customer.email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body_html, "html"))
+
+        # Attach PDF
+        part = MIMEBase("application", "pdf")
+        part.set_payload(pdf_bytes)
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f'attachment; filename="invoice-{inv_num}.pdf"')
+        msg.attach(part)
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+            server.ehlo()
+            if smtp_port != 25:
+                server.starttls()
+            if smtp_user:
+                server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, [customer.email], msg.as_string())
+
+        logger.info("Invoice %s emailed to %s", inv_num, customer.email)
+        return jsonify({"message": f"Invoice {inv_num} sent to {customer.email}"}), 200
+
+    except Exception as exc:
+        logger.warning("Failed to email invoice %s: %s", inv_num, exc)
+        return jsonify({"error": f"Email delivery failed: {exc}"}), 500
 
 
 @billing_bp.route("/invoices/<invoice_id>/send", methods=["POST"])

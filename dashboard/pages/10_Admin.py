@@ -40,7 +40,7 @@ API_URL = os.getenv("API_BASE_URL", "http://localhost:5000")
 DASH_URL = "http://localhost:8501"
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab_sysinfo, tab_audit, tab_users = st.tabs(["System Info", "Audit Log", "Users"])
+tab_sysinfo, tab_audit, tab_users, tab_org = st.tabs(["System Info", "Audit Log", "Users", "Org Settings"])
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — System Info
@@ -466,3 +466,122 @@ with tab_users:
                                 st.success("User updated.")
                                 st.session_state.pop(f"edit_open_{uid}", None)
                                 st.rerun()
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — Org Settings
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_org:
+    st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
+
+    import base64 as _b64
+
+    org_data, org_err = client.get_org_settings()
+    if org_err:
+        st.warning(f"Could not load org settings — {org_err}")
+        org_data = {}
+
+    org = org_data or {}
+
+    # ── Company details form ──────────────────────────────────────────────────
+    st.markdown(
+        f'<div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0.75rem">Company Information</div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.form("org_settings_form"):
+        oc1, oc2 = st.columns(2)
+        with oc1:
+            org_name    = st.text_input("Company Name",    value=org.get("company_name", ""))
+            org_email   = st.text_input("Billing Email",   value=org.get("company_email", ""))
+            org_terms   = st.selectbox(
+                "Payment Terms",
+                ["Net 7", "Net 14", "Net 30", "Net 45", "Net 60", "Due on Receipt"],
+                index=["Net 7","Net 14","Net 30","Net 45","Net 60","Due on Receipt"].index(
+                    org.get("payment_terms","Net 30")
+                ) if org.get("payment_terms","Net 30") in ["Net 7","Net 14","Net 30","Net 45","Net 60","Due on Receipt"] else 2,
+            )
+        with oc2:
+            org_phone   = st.text_input("Phone",           value=org.get("company_phone", ""))
+            org_address = st.text_area("Address",          value=org.get("company_address", ""), height=70)
+
+        org_bank    = st.text_area("Bank / Payment Details",
+                                   value=org.get("bank_details", ""),
+                                   height=80,
+                                   placeholder="e.g. Bank: HSBC, Sort: 12-34-56, Account: 87654321\nPayPal: billing@company.com")
+        org_footer  = st.text_input("Invoice Footer Message",
+                                    value=org.get("footer_notes", "Thank you for your business!"))
+
+        save_org = st.form_submit_button("Save Settings", use_container_width=False)
+
+    if save_org:
+        payload = {
+            "company_name":    org_name,
+            "company_email":   org_email,
+            "company_phone":   org_phone,
+            "company_address": org_address,
+            "payment_terms":   org_terms,
+            "bank_details":    org_bank,
+            "footer_notes":    org_footer,
+        }
+        _, serr = client.update_org_settings(payload)
+        if serr:
+            st.error(f"Failed to save: {serr}")
+        else:
+            st.success("Org settings saved.")
+            st.rerun()
+
+    # ── Logo management ───────────────────────────────────────────────────────
+    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0.75rem">Company Logo</div>',
+        unsafe_allow_html=True,
+    )
+
+    logo_col, upload_col = st.columns([1, 2])
+
+    with logo_col:
+        logo_data = org.get("logo_data") or ""
+        if logo_data:
+            try:
+                _, b64_part = logo_data.split(",", 1)
+                logo_bytes = _b64.b64decode(b64_part)
+                st.image(logo_bytes, width=180, caption="Current logo")
+            except Exception:
+                st.info("Logo preview unavailable.")
+        else:
+            st.markdown(
+                '<div style="width:180px;height:70px;border-radius:8px;border:2px dashed #DDE8DD;'
+                'display:flex;align-items:center;justify-content:center;color:#9CA3AF;font-size:0.8rem">'
+                'No logo set</div>',
+                unsafe_allow_html=True,
+            )
+
+    with upload_col:
+        st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
+        logo_file = st.file_uploader(
+            "Upload logo (PNG, JPG — max 2 MB)",
+            type=["png", "jpg", "jpeg", "webp"],
+            key="org_logo_uploader",
+        )
+        lu1, lu2 = st.columns(2)
+        with lu1:
+            if st.button("Save Logo", use_container_width=True, disabled=logo_file is None):
+                if logo_file:
+                    with st.spinner("Uploading..."):
+                        _, lerr = client.upload_org_logo(logo_file.read(), logo_file.type)
+                    if lerr:
+                        st.error(f"Upload failed: {lerr}")
+                    else:
+                        st.success("Logo updated.")
+                        st.rerun()
+        with lu2:
+            if logo_data:
+                if st.button("Remove Logo", use_container_width=True):
+                    _, rerr = client.delete_org_logo()
+                    if rerr:
+                        st.error(f"Remove failed: {rerr}")
+                    else:
+                        st.success("Logo removed.")
+                        st.rerun()
