@@ -203,35 +203,47 @@ else:
             "pending":  BRAND["muted"],
         }
 
-        st.markdown(
-            '<div style="display:grid;grid-template-columns:2fr 2fr 1.5fr 1.5fr 1fr;gap:8px;'
-            'padding:0.4rem 1rem;background:#F4F6F4;border-radius:8px 8px 0 0;'
-            'border:1px solid #DDE8DD;border-bottom:none;'
-            'font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B">'
-            '<div>Profile</div><div>Device</div><div>Started</div><div>Finished</div><div>Status</div></div>',
-            unsafe_allow_html=True
-        )
+        # Bulk action toolbar
+        queued_count = sum(1 for r in runs if (r.get("status") or "").lower() == "queued")
+        tool_col1, tool_col2 = st.columns([6, 1])
+        with tool_col2:
+            if queued_count > 0:
+                if st.button(f"🗑 Clear {queued_count} Queued", key="clear_queued", type="secondary"):
+                    _, cerr = client.clear_queued_runs()
+                    if cerr:
+                        st.error(f"Failed: {cerr}")
+                    else:
+                        st.success(f"Cleared {queued_count} queued run(s).")
+                        st.rerun()
 
-        rows_html = '<div style="border:1px solid #DDE8DD;border-radius:0 0 8px 8px;overflow:hidden">'
-        for i, run in enumerate(runs[:20]):
-            bg = "#FFFFFF" if i % 2 == 0 else "#FAFCFA"
+        # Table header
+        h0, h1, h2, h3, h4, h5 = st.columns([2, 2, 1.5, 1.5, 1, 0.5])
+        for col, label in zip([h0, h1, h2, h3, h4, h5],
+                               ["Profile", "Device", "Started", "Finished", "Status", ""]):
+            col.markdown(
+                f"<div style='font-size:0.72rem;font-weight:700;text-transform:uppercase;"
+                f"letter-spacing:0.07em;color:#6B7B6B;padding:0.3rem 0'>{label}</div>",
+                unsafe_allow_html=True,
+            )
+        st.divider()
+
+        for i, run in enumerate(runs[:50]):
             status_raw = (run.get("status") or "unknown").lower()
-            run_color = STATUS_COLORS_RUN.get(status_raw, BRAND["muted"])
-            run_b = badge(status_raw, run_color)
-            profile_name = run.get("profile_name") or run.get("profile_id") or "—"
-            device_name  = run.get("device_hostname") or run.get("device_id") or "—"
+            run_color  = STATUS_COLORS_RUN.get(status_raw, BRAND["muted"])
+            profile_name = run.get("profile_name") or run.get("profile_id", "")[:8] or "—"
+            device_name  = run.get("device_hostname") or run.get("device_id", "")[:8] or "—"
             started  = fmt_datetime(run.get("started_at") or "")
             finished = fmt_datetime(run.get("finished_at") or "")
-            rows_html += (
-                f'<div style="display:grid;grid-template-columns:2fr 2fr 1.5fr 1.5fr 1fr;gap:8px;'
-                f'padding:0.5rem 1rem;background:{bg};border-bottom:1px solid #EEF2EE;'
-                f'font-size:0.83rem;align-items:center">'
-                f'<div style="font-weight:500;color:#1A1A1A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{profile_name}</div>'
-                f'<div style="color:#4A5A4A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{device_name}</div>'
-                f'<div style="color:#6B7B6B;font-size:0.78rem">{started}</div>'
-                f'<div style="color:#6B7B6B;font-size:0.78rem">{finished}</div>'
-                f'<div>{run_b}</div>'
-                f'</div>'
-            )
-        rows_html += '</div>'
-        st.markdown(rows_html, unsafe_allow_html=True)
+
+            c0, c1, c2, c3, c4, c5 = st.columns([2, 2, 1.5, 1.5, 1, 0.5])
+            c0.markdown(f"<div style='font-size:0.83rem;font-weight:500;color:#1A1A1A'>{profile_name}</div>", unsafe_allow_html=True)
+            c1.markdown(f"<div style='font-size:0.83rem;color:#4A5A4A'>{device_name}</div>", unsafe_allow_html=True)
+            c2.markdown(f"<div style='font-size:0.78rem;color:#6B7B6B'>{started}</div>", unsafe_allow_html=True)
+            c3.markdown(f"<div style='font-size:0.78rem;color:#6B7B6B'>{finished}</div>", unsafe_allow_html=True)
+            c4.markdown(badge(status_raw, run_color), unsafe_allow_html=True)
+            if c5.button("✕", key=f"del_run_{run['id']}_{i}", help="Delete this run"):
+                _, derr = client.delete_run(run["id"])
+                if derr:
+                    st.error(f"Failed: {derr}")
+                else:
+                    st.rerun()

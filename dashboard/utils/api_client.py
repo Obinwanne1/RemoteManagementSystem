@@ -317,6 +317,13 @@ class RMMClient:
     def run_profile_now(self, profile_id: str):
         return self._post(f"/api/automation/profiles/{profile_id}/run")
 
+    def delete_run(self, run_id: str):
+        return self._delete(f"/api/automation/runs/{run_id}")
+
+    def clear_queued_runs(self, profile_id: str = None):
+        params = f"?profile_id={profile_id}" if profile_id else ""
+        return self._request("DELETE", f"/api/automation/runs/clear-queued{params}")
+
     # --- Patches ---
     def list_patches(self, **filters):
         return self._get("/api/patches/", params=filters)
