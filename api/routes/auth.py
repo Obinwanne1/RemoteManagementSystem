@@ -1,3 +1,5 @@
+import base64
+import io
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import (
@@ -257,3 +259,62 @@ def mfa_disable():
     _audit("mfa_disabled", user_id=user.id)
     db.session.commit()
     return jsonify({"message": "MFA disabled"}), 200
+
+
+@auth_bp.route("/me/avatar", methods=["PUT"])
+@jwt_required()
+def upload_avatar():
+    """Upload or replace profile avatar. Accepts multipart/form-data with 'file' field.
+    Resizes to 200x200 PNG, stores as base64 data URI in the database."""
+    from PIL import Image
+
+    identity = get_jwt_identity()
+    user = User.query.get(identity)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    f = request.files["file"]
+    if f.content_type not in ("image/jpeg", "image/png", "image/gif", "image/webp"):
+        return jsonify({"error": "Unsupported image type. Use JPEG, PNG, GIF, or WebP."}), 400
+
+    raw = f.read(2 * 1024 * 1024 + 1)  # read max 2MB + 1 byte
+    if len(raw) > 2 * 1024 * 1024:
+        return jsonify({"error": "Image must be under 2 MB"}), 400
+
+    try:
+        img = Image.open(io.BytesIO(raw)).convert("RGBA")
+        img.thumbnail((200, 200), Image.LANCZOS)
+
+        # Paste onto white background so RGBA → PNG is clean
+        bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+        bg.paste(img, mask=img.split()[3])
+        bg = bg.convert("RGB")
+
+        buf = io.BytesIO()
+        bg.save(buf, format="PNG", optimize=True)
+        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        user.avatar_data = f"data:image/png;base64,{b64}"
+    except Exception as exc:
+        return jsonify({"error": f"Image processing failed: {exc}"}), 422
+
+    _audit("avatar_updated", user_id=user.id)
+    db.session.commit()
+    return jsonify({"message": "Avatar updated", "user": user.to_dict()}), 200
+
+
+@auth_bp.route("/me/avatar", methods=["DELETE"])
+@jwt_required()
+def delete_avatar():
+    """Remove the current user's avatar."""
+    identity = get_jwt_identity()
+    user = User.query.get(identity)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    user.avatar_data = None
+    _audit("avatar_removed", user_id=user.id)
+    db.session.commit()
+    return jsonify({"message": "Avatar removed", "user": user.to_dict()}), 200
