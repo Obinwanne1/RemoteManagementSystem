@@ -59,7 +59,12 @@ with tab1:
                     if run_err:
                         st.error(run_err)
                     else:
-                        st.success(f"Queued on {result.get('device_count', 0)} devices")
+                        msg = result.get("message", "")
+                        if "skipping duplicate" in msg:
+                            st.warning("Run already queued — ignoring duplicate click.")
+                        else:
+                            st.success(f"Profile queued successfully.")
+                        st.rerun()
 
 
 with tab2:

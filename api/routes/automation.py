@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
 from extensions import db
@@ -101,6 +101,16 @@ def run_profile_now(profile_id):
     if err:
         return err
     profile = AutomationProfile.query.get_or_404(profile_id)
+
+    # Idempotency guard — reject duplicate runs within 30 seconds
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
+    recent = ScheduledTaskRun.query.filter(
+        ScheduledTaskRun.profile_id == profile_id,
+        ScheduledTaskRun.status == "queued",
+        ScheduledTaskRun.started_at >= cutoff,
+    ).first()
+    if recent:
+        return jsonify({"message": "Run already queued recently, skipping duplicate"}), 200
 
     # Dispatch to Celery — avoids blocking request on large device sets
     from tasks.automation_tasks import enqueue_profile_run
