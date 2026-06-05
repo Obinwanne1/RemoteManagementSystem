@@ -376,6 +376,12 @@ class RMMClient:
     def generate_invoice(self, data: dict):
         return self._post("/api/billing/invoices/generate", data)
 
+    def update_invoice_status(self, invoice_id: str, status: str):
+        return self._request("PATCH", f"/api/billing/invoices/{invoice_id}/status", json={"status": status})
+
+    def delete_invoice(self, invoice_id: str):
+        return self._delete(f"/api/billing/invoices/{invoice_id}")
+
     # --- Network / Agentless ---
     def get_platform_counts(self):
         return self._get("/api/devices/platform_counts")
