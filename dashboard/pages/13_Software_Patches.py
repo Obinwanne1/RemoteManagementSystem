@@ -58,6 +58,14 @@ with left_col:
         unsafe_allow_html=True
     )
     st.markdown('<div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0.5rem">Online Devices</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div style="font-size:0.78rem;color:#6B7B6B;background:#F5F8F5;border-left:3px solid #407E3C;'
+        'border-radius:4px;padding:0.5rem 0.75rem;margin-bottom:0.75rem">'
+        '⚠️ Only agent-managed devices appear here. Mobile, agentless, and network-discovered devices '
+        '(Android, iOS, etc.) cannot report installed software — they have no local agent to query.'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
     device_map = {d["hostname"]: d for d in online_devices}
     chosen_hostname = st.selectbox("Device", list(device_map.keys()), label_visibility="collapsed")
