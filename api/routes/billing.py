@@ -81,5 +81,38 @@ def send_invoice(invoice_id):
     invoice.status = "sent"
     invoice.sent_at = datetime.now(timezone.utc)
     db.session.commit()
-    # Phase 9: actual email sending
-    return jsonify({"message": "Invoice marked as sent"}), 200
+    return jsonify({"message": "Invoice marked as sent", "invoice": invoice.to_dict()}), 200
+
+
+@billing_bp.route("/invoices/<invoice_id>/status", methods=["PATCH"])
+@jwt_required()
+def update_invoice_status(invoice_id):
+    """Set invoice status to: sent | paid | overdue | draft."""
+    err = _require_role("admin")
+    if err:
+        return err
+    invoice = Invoice.query.get_or_404(invoice_id)
+    data = request.get_json(silent=True) or {}
+    new_status = data.get("status", "").lower()
+    allowed = {"draft", "sent", "paid", "overdue"}
+    if new_status not in allowed:
+        return jsonify({"error": f"status must be one of {sorted(allowed)}"}), 400
+    invoice.status = new_status
+    if new_status == "sent" and not invoice.sent_at:
+        invoice.sent_at = datetime.now(timezone.utc)
+    if new_status == "paid":
+        invoice.paid_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return jsonify({"message": f"Invoice marked as {new_status}", "invoice": invoice.to_dict()}), 200
+
+
+@billing_bp.route("/invoices/<invoice_id>", methods=["DELETE"])
+@jwt_required()
+def delete_invoice(invoice_id):
+    err = _require_role("admin")
+    if err:
+        return err
+    invoice = Invoice.query.get_or_404(invoice_id)
+    db.session.delete(invoice)
+    db.session.commit()
+    return jsonify({"message": "Invoice deleted"}), 200

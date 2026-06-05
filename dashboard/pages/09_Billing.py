@@ -68,50 +68,74 @@ if not invoices:
         unsafe_allow_html=True
     )
 else:
-    # Table header
-    st.markdown(
-        '<div style="display:grid;grid-template-columns:2fr 1.5fr 1.5fr 0.8fr 0.8fr 1fr 0.9fr;gap:8px;'
-        'padding:0.45rem 1rem;background:#F4F6F4;border-radius:8px 8px 0 0;'
-        'border:1px solid #DDE8DD;border-bottom:none;'
-        'font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B">'
-        '<div>Customer</div><div>Period Start</div><div>Period End</div>'
-        '<div style="text-align:right">Devices</div><div style="text-align:right">Rate/Dev</div>'
-        '<div style="text-align:right">Total</div><div>Status</div></div>',
-        unsafe_allow_html=True
-    )
+    # Column header row
+    _HDR = "font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B;padding:0.3rem 0"
+    h0,h1,h2,h3,h4,h5,h6 = st.columns([2.2, 1.2, 1.2, 0.7, 0.8, 0.9, 2.2])
+    for col, lbl in zip([h0,h1,h2,h3,h4,h5,h6],
+                        ["Customer","Period Start","Period End","Devices","Rate/Dev","Total","Actions"]):
+        col.markdown(f"<div style='{_HDR}'>{lbl}</div>", unsafe_allow_html=True)
+    st.divider()
 
-    rows_html = '<div style="border:1px solid #DDE8DD;border-radius:0 0 8px 8px;overflow:hidden">'
     for i, inv in enumerate(invoices):
-        bg = "#FFFFFF" if i % 2 == 0 else "#FAFCFA"
-        status_raw = (inv.get("status") or "unknown").lower()
+        inv_id     = inv["id"]
+        status_raw = (inv.get("status") or "draft").lower()
         status_color = STATUS_BADGE_COLORS.get(status_raw, BRAND["muted"])
-        status_b = badge(status_raw, status_color)
 
-        # Resolve customer name
         cust_id_str = str(inv.get("customer_id") or "")
-        cust_label = next((c["name"] for c in customers if str(c["id"]) == cust_id_str), cust_id_str or "—")
-
-        period_start = fmt_datetime(inv.get("period_start") or "")[:10] if inv.get("period_start") else "—"
-        period_end   = fmt_datetime(inv.get("period_end") or "")[:10] if inv.get("period_end") else "—"
+        cust_label  = next((c["name"] for c in customers if str(c["id"]) == cust_id_str), "—")
+        period_start = (inv.get("period_start") or "")[:10] or "—"
+        period_end   = (inv.get("period_end") or "")[:10] or "—"
         dev_count    = inv.get("device_count") or "—"
-        rate         = f"${float(inv.get('per_device_rate') or 0):.2f}" if inv.get("per_device_rate") is not None else "—"
-        total        = f"${float(inv.get('total') or 0):,.2f}" if inv.get("total") is not None else "—"
+        rate         = f"${float(inv.get('per_device_rate') or 0):.2f}"
+        total        = f"${float(inv.get('total') or 0):,.2f}"
 
-        rows_html += (
-            f'<div style="display:grid;grid-template-columns:2fr 1.5fr 1.5fr 0.8fr 0.8fr 1fr 0.9fr;gap:8px;'
-            f'padding:0.5rem 1rem;background:{bg};border-bottom:1px solid #EEF2EE;'
-            f'font-size:0.83rem;align-items:center">'
-            f'<div style="font-weight:600;color:#1A1A1A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{cust_label}</div>'
-            f'<div style="color:#4A5A4A;font-size:0.8rem">{period_start}</div>'
-            f'<div style="color:#4A5A4A;font-size:0.8rem">{period_end}</div>'
-            f'<div style="color:#6B7B6B;text-align:right">{dev_count}</div>'
-            f'<div style="color:#6B7B6B;text-align:right;font-family:monospace;font-size:0.8rem">{rate}</div>'
-            f'<div style="font-weight:700;color:#1A1A1A;text-align:right;font-family:monospace">{total}</div>'
-            f'<div>{status_b}</div>'
-            f'</div>'
-        )
-    rows_html += '</div>'
-    st.markdown(rows_html, unsafe_allow_html=True)
+        c0,c1,c2,c3,c4,c5,c6 = st.columns([2.2, 1.2, 1.2, 0.7, 0.8, 0.9, 2.2])
+        c0.markdown(f"<div style='font-size:0.83rem;font-weight:600;color:#1A1A1A'>{cust_label}</div>", unsafe_allow_html=True)
+        c1.markdown(f"<div style='font-size:0.8rem;color:#4A5A4A'>{period_start}</div>", unsafe_allow_html=True)
+        c2.markdown(f"<div style='font-size:0.8rem;color:#4A5A4A'>{period_end}</div>", unsafe_allow_html=True)
+        c3.markdown(f"<div style='font-size:0.83rem;color:#6B7B6B;text-align:right'>{dev_count}</div>", unsafe_allow_html=True)
+        c4.markdown(f"<div style='font-size:0.8rem;color:#6B7B6B;font-family:monospace'>{rate}</div>", unsafe_allow_html=True)
+        c5.markdown(f"<div style='font-size:0.83rem;font-weight:700;color:#1A1A1A;font-family:monospace'>{total}</div>", unsafe_allow_html=True)
+
+        # Action buttons — vary by current status
+        with c6:
+            btn_cols = st.columns(3)
+            # Status transitions
+            if status_raw == "draft":
+                if btn_cols[0].button("Send", key=f"send_{inv_id}_{i}", help="Mark as Sent"):
+                    _, e = client.update_invoice_status(inv_id, "sent")
+                    st.rerun() if not e else st.error(e)
+            elif status_raw == "sent":
+                if btn_cols[0].button("Paid", key=f"paid_{inv_id}_{i}", help="Mark as Paid", type="primary"):
+                    _, e = client.update_invoice_status(inv_id, "paid")
+                    st.rerun() if not e else st.error(e)
+                if btn_cols[1].button("Overdue", key=f"ovd_{inv_id}_{i}", help="Mark as Overdue"):
+                    _, e = client.update_invoice_status(inv_id, "overdue")
+                    st.rerun() if not e else st.error(e)
+            elif status_raw == "overdue":
+                if btn_cols[0].button("Paid", key=f"paid_{inv_id}_{i}", help="Mark as Paid", type="primary"):
+                    _, e = client.update_invoice_status(inv_id, "paid")
+                    st.rerun() if not e else st.error(e)
+            else:
+                # paid — show status badge only
+                btn_cols[0].markdown(badge("paid", STATUS_BADGE_COLORS["paid"]), unsafe_allow_html=True)
+
+            # Delete (always available, last slot)
+            if btn_cols[2].button("🗑", key=f"del_inv_{inv_id}_{i}", help="Delete invoice"):
+                if st.session_state.get(f"_del_confirm_{inv_id}"):
+                    _, e = client.delete_invoice(inv_id)
+                    st.session_state.pop(f"_del_confirm_{inv_id}", None)
+                    st.rerun() if not e else st.error(e)
+                else:
+                    st.session_state[f"_del_confirm_{inv_id}"] = True
+                    st.rerun()
+
+            # Confirm prompt (shown on second click)
+            if st.session_state.get(f"_del_confirm_{inv_id}"):
+                st.warning(f"Delete ${float(inv.get('total') or 0):,.2f} invoice? Click 🗑 again to confirm.")
+
+        if i < len(invoices) - 1:
+            st.markdown("<hr style='margin:0.2rem 0;border-color:#EEF2EE'>", unsafe_allow_html=True)
 
 # ── Generate Invoice form ─────────────────────────────────────────────────────
 st.markdown("<div style='height:1.25rem'></div>", unsafe_allow_html=True)
