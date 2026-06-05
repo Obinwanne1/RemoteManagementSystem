@@ -126,6 +126,26 @@ class RMMClient:
     def change_password(self, current_password: str, new_password: str):
         return self._put("/api/auth/me/password", {"current_password": current_password, "new_password": new_password})
 
+    def upload_avatar(self, file_bytes: bytes, content_type: str) -> Tuple[Any, Optional[str]]:
+        """Upload profile avatar image. Bypasses JSON session headers for multipart."""
+        url = f"{self.base}/api/auth/me/avatar"
+        try:
+            resp = requests.put(
+                url,
+                files={"file": ("avatar", file_bytes, content_type)},
+                headers={"Authorization": f"Bearer {self._token}"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json(), None
+        except requests.HTTPError as e:
+            return None, f"HTTP {e.response.status_code}: {e.response.text}"
+        except requests.RequestException as e:
+            return None, str(e)
+
+    def delete_avatar(self) -> Tuple[Any, Optional[str]]:
+        return self._request("DELETE", "/api/auth/me/avatar")
+
     # --- MFA ---
     def mfa_setup(self):
         """Generate provisional TOTP secret. Returns {secret, provisioning_uri}."""

@@ -1,4 +1,4 @@
-"""User Profile — password change + MFA setup/disable."""
+"""User Profile — avatar, password change + MFA setup/disable."""
 import io
 import streamlit as st
 from utils.styles import inject_css, BRAND
@@ -26,10 +26,77 @@ CARD = (
 col_left, col_right = st.columns([1, 1], gap="large")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# LEFT — Account info + change password
+# LEFT — Avatar + Account info + change password
 # ═══════════════════════════════════════════════════════════════════════════════
 with col_left:
-    # Account info card
+
+    # ── Avatar card ─────────────────────────────────────────────────────────
+    st.markdown(f"<div style='{CARD}'>", unsafe_allow_html=True)
+    st.markdown("**Profile Picture**")
+
+    avatar_data = user.get("avatar_data")
+    full_name   = user.get("full_name") or ""
+    initials    = "".join(p[0].upper() for p in full_name.split() if p)[:2] or "?"
+
+    av_col, up_col = st.columns([1, 2], gap="medium")
+
+    with av_col:
+        _initials_html = (
+            f"<div style='width:96px;height:96px;border-radius:50%;"
+            f"background:{BRAND};display:flex;align-items:center;"
+            f"justify-content:center;font-size:2rem;font-weight:700;"
+            f"color:#FFFFFF;letter-spacing:0.05em'>{initials}</div>"
+        )
+        if avatar_data:
+            # Strip the data URI prefix and decode for st.image
+            try:
+                import base64 as _b64
+                b64_part = avatar_data.split(",", 1)[1]
+                img_bytes = _b64.b64decode(b64_part)
+                st.image(img_bytes, width=96)
+            except Exception:
+                st.markdown(_initials_html, unsafe_allow_html=True)
+        else:
+            st.markdown(_initials_html, unsafe_allow_html=True)
+
+    with up_col:
+        uploaded = st.file_uploader(
+            "Upload new photo",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="avatar_uploader",
+            label_visibility="collapsed",
+            help="JPEG, PNG or WebP — max 2 MB. Resized to 200×200.",
+        )
+        st.markdown(
+            "<div style='font-size:0.78rem;color:#6B7B6B;margin-top:0.2rem'>"
+            "JPEG · PNG · WebP &nbsp;·&nbsp; max 2 MB</div>",
+            unsafe_allow_html=True,
+        )
+        if uploaded is not None:
+            if st.button("Save Photo", key="avatar_save", type="primary"):
+                with st.spinner("Uploading…"):
+                    data, err = client.upload_avatar(uploaded.read(), uploaded.type)
+                if err:
+                    st.error(f"Upload failed: {err}")
+                else:
+                    st.session_state["user"] = data["user"]
+                    st.success("Profile photo updated.")
+                    st.rerun()
+
+        if avatar_data:
+            if st.button("Remove Photo", key="avatar_remove"):
+                with st.spinner("Removing…"):
+                    data, err = client.delete_avatar()
+                if err:
+                    st.error(f"Failed: {err}")
+                else:
+                    st.session_state["user"] = data["user"]
+                    st.success("Photo removed.")
+                    st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Account info card ────────────────────────────────────────────────────
     role = user.get("role", "")
     _pill = {
         "superadmin": ("#7C3AED", "#F3F0FF"),
@@ -44,7 +111,7 @@ with col_left:
     st.markdown(
         f"<div style='margin:0.75rem 0'>"
         f"<div style='font-size:0.82rem;color:#6B7B6B;margin-bottom:2px'>Full name</div>"
-        f"<div style='font-weight:600'>{user.get('full_name') or '—'}</div>"
+        f"<div style='font-weight:600'>{full_name or '—'}</div>"
         f"</div>"
         f"<div style='margin:0.75rem 0'>"
         f"<div style='font-size:0.82rem;color:#6B7B6B;margin-bottom:2px'>Email</div>"
@@ -59,7 +126,7 @@ with col_left:
     )
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Change password card
+    # ── Change password card ─────────────────────────────────────────────────
     st.markdown(f"<div style='{CARD}'>", unsafe_allow_html=True)
     st.markdown("**Change Password**")
     with st.form("change_pw_form"):
@@ -115,7 +182,6 @@ with col_right:
                 if err:
                     st.error(f"Failed: {err}")
                 else:
-                    # Refresh user object so mfa_enabled clears
                     udata, _ = client.get_me()
                     if udata:
                         st.session_state["user"] = udata
@@ -153,7 +219,6 @@ with col_right:
             uri    = st.session_state.get("_mfa_setup_uri", "")
             secret = st.session_state.get("_mfa_setup_secret", "")
 
-            # Generate QR code image
             try:
                 import qrcode
                 qr  = qrcode.QRCode(box_size=6, border=2)
@@ -200,7 +265,6 @@ with col_right:
                     else:
                         for k in ("_mfa_setup_step", "_mfa_setup_secret", "_mfa_setup_uri"):
                             st.session_state.pop(k, None)
-                        # Refresh user so mfa_enabled flag updates
                         udata, _ = client.get_me()
                         if udata:
                             st.session_state["user"] = udata

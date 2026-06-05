@@ -16,6 +16,7 @@ class User(db.Model):
     mfa_secret = db.Column(db.String(255), nullable=True)
     mfa_enabled = db.Column(db.Boolean, default=False)
     must_change_password = db.Column(db.Boolean, default=False, nullable=False, server_default="false")
+    avatar_data = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_login = db.Column(db.DateTime(timezone=True), nullable=True)
 
@@ -38,6 +39,7 @@ class User(db.Model):
             "is_active": self.is_active,
             "mfa_enabled": self.mfa_enabled,
             "must_change_password": self.must_change_password,
+            "avatar_data": self.avatar_data,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
         }
