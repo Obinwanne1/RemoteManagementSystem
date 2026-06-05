@@ -44,14 +44,16 @@ def _redirect_to_login() -> None:
 def require_auth() -> RMMClient:
     """Halt page if not authenticated. Redirects to login. Returns client.
 
-    Tokens are restored from URL params once (then stripped from URL) so that
-    they do not persist in browser history or server access logs.
+    Tokens are restored from URL params on every load (F5-safe). The URL
+    params are the only cross-reload persistence in Streamlit — they must
+    be kept in sync with session state so that browser reload never logs
+    the user out.
     """
     _restore_from_query_params()
     client = get_client()
     if not client:
         _redirect_to_login()
-    # Restore user profile if missing (e.g. after page refresh via session state)
+    # Restore user profile if missing (e.g. after page refresh)
     if not st.session_state.get("user"):
         data, err = client.get_me()
         if err or not data:
@@ -59,6 +61,15 @@ def require_auth() -> RMMClient:
             st.session_state.pop("access_token", None)
             _redirect_to_login()
         st.session_state["user"] = data.get("user", data)
+    # Re-stamp tokens to URL so F5 / browser reload restores the session.
+    # Streamlit wipes session state on every full reload — URL params are
+    # the only way to survive it.
+    tok = st.session_state.get("access_token", "")
+    rtok = st.session_state.get("refresh_token", "")
+    if tok:
+        st.query_params["tok"] = tok
+    if rtok:
+        st.query_params["rtok"] = rtok
     return client
 
 
