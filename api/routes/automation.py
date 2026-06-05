@@ -142,3 +142,32 @@ def list_runs():
         "total": paginated.total,
         "page": page,
     }), 200
+
+
+@automation_bp.route("/runs/<run_id>", methods=["DELETE"])
+@jwt_required()
+def delete_run(run_id):
+    err = _require_role("admin", "technician")
+    if err:
+        return err
+    run = ScheduledTaskRun.query.get_or_404(run_id)
+    db.session.delete(run)
+    db.session.commit()
+    return jsonify({"message": "Run deleted"}), 200
+
+
+@automation_bp.route("/runs/clear-queued", methods=["DELETE"])
+@jwt_required()
+def clear_queued_runs():
+    """Delete all QUEUED runs (bulk cleanup of duplicate entries)."""
+    err = _require_role("admin", "technician")
+    if err:
+        return err
+    profile_id = request.args.get("profile_id")
+    query = ScheduledTaskRun.query.filter_by(status="queued")
+    if profile_id:
+        query = query.filter_by(profile_id=profile_id)
+    count = query.count()
+    query.delete(synchronize_session=False)
+    db.session.commit()
+    return jsonify({"message": f"Deleted {count} queued run(s)"}), 200
