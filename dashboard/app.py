@@ -127,8 +127,8 @@ def show_login():
         else:
             from utils.auth import login
             with st.spinner("Authenticating…"):
-                ok = login(email, password)
-            if not ok:
+                result = login(email, password)
+            if result == "error":
                 st.error("Invalid credentials.")
             else:
                 st.rerun()
@@ -273,6 +273,61 @@ def show_dashboard_home():
     """, unsafe_allow_html=True)
 
 
+def show_mfa_step():
+    """Full-screen TOTP entry form shown after password login when MFA is enabled."""
+    st.markdown(_LOGIN_CSS, unsafe_allow_html=True)
+
+    _, col, _ = st.columns([1, 1, 1])
+    with col:
+        st.markdown("<div style='height:10vh'></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="text-align:center;margin-bottom:2rem">
+            <div style="display:inline-flex;align-items:center;justify-content:center;
+                        width:68px;height:68px;margin-bottom:1rem;
+                        background:linear-gradient(135deg,#1A3C18,#2D5C29);
+                        border-radius:18px;font-size:2rem;
+                        box-shadow:0 8px 24px rgba(64,126,60,0.4)">
+                🔐
+            </div>
+            <h1 class="brand-title">Two-Factor Auth</h1>
+            <p style="color:#8EC88E;font-size:0.88rem;margin:6px 0 0;font-weight:500">
+                Enter the 6-digit code from your authenticator app.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+        with st.form("mfa_login_form"):
+            code = st.text_input("Authenticator Code", placeholder="123456", max_chars=6)
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            submitted = st.form_submit_button("Verify →", use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if st.button("← Back to login", key="mfa_back"):
+            st.session_state.pop("mfa_pending_token", None)
+            st.rerun()
+
+    if submitted:
+        if not code or len(code) != 6 or not code.isdigit():
+            st.error("Enter a valid 6-digit code.")
+        else:
+            from utils.api_client import RMMClient
+            mfa_token = st.session_state.get("mfa_pending_token", "")
+            with st.spinner("Verifying…"):
+                data, err = RMMClient.mfa_login(mfa_token, code)
+            if err:
+                st.error("Invalid code or session expired. Try again.")
+            else:
+                st.session_state.pop("mfa_pending_token", None)
+                st.session_state["access_token"] = data["access_token"]
+                st.session_state["refresh_token"] = data.get("refresh_token", "")
+                st.session_state["user"] = data["user"]
+                st.query_params["tok"] = data["access_token"]
+                if data.get("refresh_token"):
+                    st.query_params["rtok"] = data["refresh_token"]
+                st.rerun()
+
+
 def show_force_change_password():
     """Full-screen form shown when must_change_password is True."""
     st.markdown(_LOGIN_CSS, unsafe_allow_html=True)
@@ -337,7 +392,9 @@ rtok = st.query_params.get("rtok", "")
 if rtok and "refresh_token" not in st.session_state:
     st.session_state["refresh_token"] = rtok
 
-if "access_token" not in st.session_state:
+if "mfa_pending_token" in st.session_state:
+    show_mfa_step()
+elif "access_token" not in st.session_state:
     show_login()
 elif st.session_state.get("user", {}).get("must_change_password"):
     show_force_change_password()

@@ -5,6 +5,7 @@ mark devices offline if heartbeat timeout exceeded.
 import logging
 from datetime import datetime, timezone, timedelta
 from tasks.celery_app import celery
+from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +33,26 @@ def evaluate_all_rules(self):
                 else:
                     devices = Device.query.filter_by(is_online=True).all()
 
+                if not devices:
+                    continue
+
+                # Batch-load latest metrics for all devices in one query (eliminates N+1)
+                device_ids = [d.id for d in devices]
+                max_id_subq = (
+                    db.select(func.max(DeviceMetrics.id).label("max_id"))
+                    .where(DeviceMetrics.device_id.in_(device_ids))
+                    .group_by(DeviceMetrics.device_id)
+                    .subquery()
+                )
+                latest_by_device = {
+                    m.device_id: m
+                    for m in DeviceMetrics.query.join(
+                        max_id_subq, DeviceMetrics.id == max_id_subq.c.max_id
+                    ).all()
+                }
+
                 for device in devices:
-                    latest = DeviceMetrics.query.filter_by(device_id=device.id).order_by(
-                        DeviceMetrics.collected_at.desc()
-                    ).first()
+                    latest = latest_by_device.get(device.id)
                     if not latest:
                         continue
 
@@ -129,11 +146,15 @@ def mark_offline_devices(self):
                         rule_id=offline_rule.id,
                     ).first()
                     if not existing:
+                        last_seen_str = (
+                            device.last_seen.strftime("%Y-%m-%d %H:%M UTC")
+                            if device.last_seen else "unknown"
+                        )
                         alert = Alert(
                             rule_id=offline_rule.id,
                             device_id=device.id,
                             severity="critical",
-                            message=f"{device.hostname} has gone offline",
+                            message=f"{device.hostname} has gone offline (last seen: {last_seen_str})",
                         )
                         db.session.add(alert)
 

@@ -20,6 +20,7 @@
 10. [Extension Guide](#10-extension-guide)
 11. [Security Model](#11-security-model)
 12. [Environment Variables Reference](#12-environment-variables-reference)
+13. [Docker Deployment](#13-docker-deployment)
 
 ---
 
@@ -355,15 +356,20 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 ### Auth (`/api/auth/`)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/login` | None | Email+password → access+refresh tokens |
+| POST | `/login` | None | Email+password → access+refresh tokens, OR `{"status": "mfa_required", "mfa_token": "..."}` (HTTP 200) if user has `mfa_enabled=True` |
 | POST | `/refresh` | Refresh token | Rotate access token |
 | POST | `/logout` | JWT | Revoke token |
 | POST | `/me/force-change-password` | JWT | Set new password + clear `must_change_password` flag |
+| PUT  | `/me/password` | JWT | Change password (current + new). Used by Profile page. |
+| POST | `/mfa/setup` | JWT | Generate provisional TOTP secret. Returns `{secret, provisioning_uri}`. Not active until /mfa/enable called. |
+| POST | `/mfa/enable` | JWT | Activate MFA. Body: `{code}`. Requires valid TOTP code. |
+| POST | `/mfa/login` | None | Second login step. Body: `{mfa_token, code}`. Returns full JWT. Rate-limited 10/min. |
+| POST | `/mfa/disable` | JWT | Disable MFA. Body: `{password}`. Requires current password. |
 
 ### Agents (`/api/agents/`)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/register` | None (org_token) | Register new agent, get device_id + agent_token |
+| POST | `/register` | None (org_token) | Register new agent, get device_id + agent_token. Rate-limited: 10/min. |
 | POST | `/<device_id>/heartbeat` | X-Agent-Token | Submit metrics, get queued tasks back |
 | GET | `/<device_id>/tasks` | X-Agent-Token | Poll pending ScriptRun records |
 | POST | `/<device_id>/task_result` | X-Agent-Token | Submit ScriptRun result |
@@ -377,7 +383,7 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 | GET | `/<id>` | JWT | Get device + latest metrics |
 | PUT | `/<id>` | JWT admin/tech | Update display_name, group_id |
 | DELETE | `/<id>` | JWT admin | Remove device |
-| GET | `/<id>/metrics` | JWT | Historical metrics (up to 168h) |
+| GET | `/<id>/metrics` | JWT | Historical metrics (up to 168h). Row cap: `.limit(5000)` prevents unbounded response. |
 | GET | `/<id>/software` | JWT | Installed software list |
 | POST | `/<id>/reboot` | JWT admin/tech | Queue reboot task |
 | POST | `/<id>/shutdown` | JWT admin/tech | Queue shutdown task |
@@ -404,7 +410,7 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/` | JWT | List tickets (filter by status, priority) |
-| POST | `/` | JWT tech/admin | Create ticket |
+| POST | `/` | JWT tech/admin | Create ticket (was unguarded — any JWT; now requires `technician` or `admin` role) |
 | GET | `/<id>` | JWT | Get ticket + comments |
 | PUT | `/<id>` | JWT tech/admin | Update status, priority, assignee_id |
 | DELETE | `/<id>` | JWT admin | Delete ticket |
@@ -502,9 +508,18 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 ### JWT Flow
 
 ```
-Login:
+Login (no MFA):
   POST /api/auth/login  {email, password}
   → {access_token, refresh_token, user: {id, email, role, full_name, must_change_password}}
+
+Login (MFA enabled):
+  POST /api/auth/login  {email, password}
+  → HTTP 200  {status: "mfa_required", mfa_token: "<short-lived JWT>"}
+  mfa_token is a 5-min TTL JWT with claim {purpose: "mfa_pending"}.
+  Cannot be used for any other API call.
+  Client must immediately call:
+  POST /api/auth/mfa/login  {mfa_token, code}
+  → {access_token, refresh_token, user: {...}}
 
 Force password change (if must_change_password=True):
   Dashboard intercepts in app.py before showing any page.
@@ -515,8 +530,10 @@ Dashboard stores:
   st.session_state["access_token"]   = access_token
   st.session_state["refresh_token"]  = refresh_token
   st.session_state["user"]           = user dict
-  st.query_params["tok"]             = access_token   ← persists in URL
-  st.query_params["rtok"]            = refresh_token  ← persists in URL
+  st.query_params["tok"]             = access_token   ← written once at login
+  st.query_params["rtok"]            = refresh_token  ← written once at login
+  (Tokens are stripped from URL by require_auth() after first restore.
+   Session state carries them from that point. Mitigates browser history exposure.)
 
 API call:
   Authorization: Bearer <access_token>
@@ -540,6 +557,42 @@ On page reload (F5) or navigation:
 > any F5 reload logs the user out. Mitigated by short access token TTL (900s default).
 > In production with HTTPS, tokens in URL are not visible in transit but appear in server
 > access logs — rotate `JWT_ACCESS_TOKEN_EXPIRES` to 300s for higher-security environments.
+
+### MFA Flow
+
+```
+Setup:
+  POST /api/auth/mfa/setup
+  → {secret, provisioning_uri}  (provisional -- not active yet)
+
+Enable (after QR scan):
+  POST /api/auth/mfa/enable  {code: "123456"}
+  → {message: "MFA enabled"}  -- sets mfa_enabled=True on User
+
+Login with MFA:
+  POST /api/auth/login  {email, password}
+  → {status: "mfa_required", mfa_token: "<5-min JWT>"}  (HTTP 200)
+  mfa_token JWT claims: {purpose: "mfa_pending", sub: user_id}
+  Cannot be used for any endpoint except /mfa/login.
+
+  POST /api/auth/mfa/login  {mfa_token, code}
+  Rate-limited: 10/min
+  → {access_token, refresh_token, user: {...}}  (full session)
+
+Disable:
+  POST /api/auth/mfa/disable  {password}
+  → {message: "MFA disabled"}  -- requires current password for confirmation
+```
+
+**Dashboard flow:**
+- `login()` in `dashboard/utils/auth.py` returns `"ok"` / `"mfa_required"` / `"error"` (not bool).
+- On `mfa_required`: stores `mfa_token` in `st.session_state["mfa_pending_token"]`.
+- `app.py` route block checks `mfa_pending_token` before `access_token` — shows `show_mfa_step()` full-screen form.
+- Back button clears `mfa_pending_token` and returns to login.
+
+**QR code generation:** `qrcode[pil]==8.0` in `dashboard/requirements.txt`.
+
+---
 
 ### Agent Token Flow
 
@@ -597,10 +650,20 @@ On 401: agent re-registers (full registration flow).
 
 #### `evaluate_all_rules()`
 - Fetches all active alert rules
-- For each rule, queries latest `DeviceMetrics` per device in scope
+- **N+1 fix:** collects all device IDs per rule batch, then loads all latest metrics
+  in a single subquery:
+  ```python
+  max_id_subq = db.select(func.max(DeviceMetrics.id).label("max_id"))\
+      .where(...).group_by(DeviceMetrics.device_id).subquery()
+  latest_by_device = {m.device_id: m for m in DeviceMetrics.query.join(max_id_subq, ...).all()}
+  ```
+  Previously fired one DB query per device per rule (up to 5,000 queries/cycle).
+  Now: 1 query per rule batch regardless of device count.
 - Evaluates `metric operator threshold` (e.g., `cpu_pct > 90`)
 - Respects `cooldown_minutes` — no duplicate alert within cooldown
 - Creates `Alert` record on breach
+- Alert message now includes last-seen timestamp for offline alerts:
+  `"DESKTOP-ABC has gone offline (last seen: 2024-01-15 14:32 UTC)"`
 - Calls `send_alert_notification()` if `notification_channels.email` is set
 
 #### `mark_offline_devices()`
@@ -845,6 +908,11 @@ def _request(self, method, path, **kwargs):
 | `list_customers(per_page)` | GET | `/api/customers/` |
 | `list_users()` | GET | `/api/users/` |
 | `force_change_password(new_password)` | POST | `/api/auth/me/force-change-password` |
+| `change_password(current_password, new_password)` | PUT | `/api/auth/me/password` |
+| `mfa_setup()` | POST | `/api/auth/mfa/setup` |
+| `mfa_enable(code)` | POST | `/api/auth/mfa/enable` |
+| `mfa_disable(password)` | POST | `/api/auth/mfa/disable` |
+| `mfa_login(mfa_token, code)` (static) | POST | `/api/auth/mfa/login` |
 | `list_patches(**filters)` | GET | `/api/patches/` |
 | `approve_patches(patch_ids)` | POST | `/api/patches/approve_bulk` |
 | `list_profiles()` | GET | `/api/automation/profiles` |
@@ -858,6 +926,10 @@ def _request(self, method, path, **kwargs):
 | `get_server_ips()` | GET | `/api/admin/server_ips` |
 | `update_device(device_id, data)` | PUT | `/api/devices/<id>` |
 | `delete_device(device_id)` | DELETE | `/api/devices/<id>` |
+
+### HTTPS Warning
+
+`api_client.py` logs a `WARNING` at import time if `API_BASE_URL` uses `http://` pointing to a non-localhost host. This warns that tokens and data will be transmitted unencrypted.
 
 ### Cache Strategy
 
@@ -875,7 +947,9 @@ def _request(self, method, path, **kwargs):
 
 | Optimization | Location | Detail |
 |-------------|----------|--------|
-| Composite indexes | Alembic migration | `device_metrics(device_id, collected_at)`, `alerts(status, severity)`, etc. |
+| Composite indexes | Direct SQL (post-migration) | 7 new indexes: `ix_device_metrics_device_collected_at`, `ix_devices_customer_online`, `ix_alerts_device_status`, `ix_alerts_status_triggered_at`, `ix_patch_records_device_status`, `ix_tickets_customer_status`, `ix_script_runs_device_status` |
+| N+1 alert evaluation fix | `tasks/alert_tasks.py` | `evaluate_all_rules()` now loads all latest metrics per rule in 1 subquery. Was up to 5,000 queries/cycle (50 rules x 100 devices). |
+| Metrics endpoint row cap | `routes/devices.py` | `GET /api/devices/<id>/metrics` applies `.limit(5000)`. Was unbounded (10,080+ rows for 7-day window). |
 | Batch latest metrics | `routes/devices.py:_batch_latest_metrics()` | Subquery MAX(id) per device — 1 query instead of N |
 | Dashboard aggregation | `routes/dashboard.py` | 4 DB aggregations replace 8 COUNT queries |
 | Health map cap | `routes/dashboard.py` | `.limit(500)` prevents full-table load |
@@ -899,6 +973,7 @@ def _request(self, method, path, **kwargs):
 | `st.cache_data` | TTL caching on list endpoints — prevents repeated API calls on re-renders |
 | `st.spinner` | All data loads wrapped — user sees progress feedback |
 | Graceful degradation | `st.warning` instead of `st.stop()` — page stays interactive on partial failure |
+| Token URL security | `require_auth()` strips `?tok=`/`?rtok=` from URL after first restore. Tokens no longer re-stamped on every page load — reduces browser history exposure. |
 
 ### Metrics History — 7-Day Fallback
 
@@ -1076,8 +1151,10 @@ COLLECTORS = {
 
 | Risk | Mitigation |
 |------|-----------|
-| JWT token theft | Short expiry (900s). HTTPS in production. Token never in URL. |
-| Script injection | Scripts stored as plain text — reviewed before running. Runs as agent service account only. |
+| JWT token theft | Short expiry (900s). HTTPS in production. Tokens written to URL once at login, then stripped by `require_auth()` after first restore — no longer re-stamped on every page load. |
+| Script injection | Scripts stored as plain text — reviewed before running. Agent now uses `-ExecutionPolicy RemoteSigned` instead of `Bypass` — locally created scripts run, remote scripts must be signed. |
+| Error response leakage | 400/422 handlers no longer return `str(e)` to client. Detail logged server-side only; generic message returned to caller. |
+| CORS wildcard | `CORS_ORIGINS` env var (comma-separated) replaces `origins="*"`. Default: `http://localhost:8501`. Set to dashboard URL(s) in production. |
 | Privilege escalation | Role enforced at API level via `get_jwt()` claims check on every mutation endpoint |
 | Celery task injection | Tasks only dispatched by authenticated API endpoints or beat schedule |
 | DB credentials in env | `.env` in `.gitignore`. Never committed. |
@@ -1095,7 +1172,9 @@ COLLECTORS = {
 - [ ] Set up automated PostgreSQL backups
 - [ ] Move `api/reports/` to a dedicated volume outside the project root
 - [ ] Run agent as a dedicated low-privilege Windows service account (not SYSTEM)
-- [ ] Enable MFA for admin accounts (MFA secret generation is wired in the User model)
+- [ ] Enable MFA for all admin accounts (full TOTP implementation: setup, enable, login, disable via Profile page)
+- [ ] Set `CORS_ORIGINS` to dashboard URL (replaces wildcard `origins="*"`)
+- [ ] Set `SUPERADMIN_PASSWORD` in `.env` (now required -- API will not start without it)
 
 ---
 
@@ -1119,7 +1198,9 @@ COLLECTORS = {
 | `SMTP_PASS` | — | — | SMTP login password (use app-specific password) |
 | `SMTP_FROM` | — | `SMTP_USER` | From address for alert emails |
 | `SUPERADMIN_EMAIL` | — | `superadmin@rmm.local` | Email for the auto-seeded superadmin account |
-| `SUPERADMIN_PASSWORD` | — | `SuperAdmin@RMM1` | Password for the auto-seeded superadmin account. Change in production. |
+| `SUPERADMIN_PASSWORD` | ✓ | — | **Now required at startup.** Min 10 chars. API raises `RuntimeError` if missing or too short. |
+| `CORS_ORIGINS` | — | `http://localhost:8501` | Comma-separated allowed CORS origins. Set to dashboard URL(s) in production. |
+| `DB_PASSWORD` | — | `changeme` | PostgreSQL password used in `docker-compose.yml` only. |
 | `FLASK_ENV` | — | `production` | Set to `development` for debug mode |
 | `FLASK_DEBUG` | — | `0` | Set to `1` only in development |
 
@@ -1128,3 +1209,63 @@ Generate secrets:
 python -c "import secrets; print(secrets.token_hex(32))"   # SECRET_KEY, JWT_SECRET_KEY
 python -c "import secrets; print(secrets.token_hex(24))"   # ORG_REGISTRATION_TOKEN
 ```
+
+---
+
+## 13. Docker Deployment
+
+### docker-compose.yml (project root)
+
+6 services:
+
+| Service | Image | Command |
+|---------|-------|---------|
+| `db` | `postgres:16-alpine` | Postgres with health check |
+| `redis` | `redis:7-alpine` | Redis with health check |
+| `api` | Built from `api/Dockerfile` | `flask db upgrade && python app.py` |
+| `celery_worker` | Same as `api` | `celery -A tasks.celery_app worker --pool=solo -l info` |
+| `celery_beat` | Same as `api` | `celery -A tasks.celery_app beat -l info` |
+| `dashboard` | Built from `dashboard/Dockerfile` | `streamlit run app.py` |
+
+### Dockerfiles
+
+- `api/Dockerfile` — `python:3.11-slim` + `libpq-dev gcc` (for psycopg2 compile)
+- `dashboard/Dockerfile` — `python:3.11-slim`
+
+### Usage
+
+```bash
+# Start all services
+docker-compose up -d
+
+# View API logs
+docker-compose logs -f api
+
+# Stop (preserves data volume)
+docker-compose down
+
+# Stop + delete all data
+docker-compose down -v
+
+# Rebuild after code changes
+docker-compose build api dashboard && docker-compose up -d
+```
+
+### Environment note
+
+When using Docker Compose, `DATABASE_URL` must use `@db:5432` (service name), not `@localhost:5432`.
+`REDIS_URL` / `CELERY_BROKER_URL` must use `redis://redis:6379/...`.
+`SUPERADMIN_PASSWORD` is required — API container will exit immediately if missing.
+
+### Security hardening applied at startup (`api/app.py`)
+
+`_validate_env()` runs at import time and raises `RuntimeError` if:
+- `SECRET_KEY` or `JWT_SECRET_KEY` < 32 characters
+- `SUPERADMIN_PASSWORD` unset or < 10 characters
+- `ORG_REGISTRATION_TOKEN` is the placeholder value `"replace-with-a-unique-org-token"`
+
+Additional hardening:
+- `X-Request-ID` header: `before_request` generates UUID if not present; echoed on all responses.
+- Dev mode warning: API logs WARNING on startup if `FLASK_ENV != "production"`.
+- CORS restricted via `CORS_ORIGINS` env var (replaces `origins="*"`).
+- 400/422 error handlers: detail logged server-side only, generic message returned to client.

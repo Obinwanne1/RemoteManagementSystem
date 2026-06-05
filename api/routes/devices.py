@@ -135,7 +135,7 @@ def device_metrics(device_id):
     metrics = DeviceMetrics.query.filter(
         DeviceMetrics.device_id == device_id,
         DeviceMetrics.collected_at >= since,
-    ).order_by(DeviceMetrics.collected_at).all()
+    ).order_by(DeviceMetrics.collected_at).limit(5000).all()
 
     return jsonify([m.to_dict() for m in metrics]), 200
 

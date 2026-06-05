@@ -3,15 +3,21 @@ Ensure the built-in superadmin account exists.
 Called at every app startup. The superadmin cannot be deleted or demoted
 through the API — it is the emergency backdoor for locked-out scenarios.
 
-Credentials (defaults, override via .env):
-  SUPERADMIN_EMAIL    default: superadmin@rmm.local
-  SUPERADMIN_PASSWORD default: SuperAdmin@RMM1 (CHANGE THIS after first login)
+Required env vars:
+  SUPERADMIN_EMAIL    (default: superadmin@rmm.local)
+  SUPERADMIN_PASSWORD (REQUIRED — no default; API will refuse to start without it)
 """
 import os
 
 
 SUPERADMIN_EMAIL = os.getenv("SUPERADMIN_EMAIL", "superadmin@rmm.local")
-SUPERADMIN_PASSWORD = os.getenv("SUPERADMIN_PASSWORD", "SuperAdmin@RMM1")
+_raw_password = os.getenv("SUPERADMIN_PASSWORD", "")
+if not _raw_password:
+    raise RuntimeError(
+        "SUPERADMIN_PASSWORD environment variable must be set. "
+        "Add it to your .env file before starting the API."
+    )
+SUPERADMIN_PASSWORD = _raw_password
 SUPERADMIN_NAME = "Super Administrator"
 
 

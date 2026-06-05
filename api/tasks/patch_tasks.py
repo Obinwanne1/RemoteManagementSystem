@@ -6,6 +6,41 @@ from tasks.celery_app import celery
 logger = logging.getLogger(__name__)
 
 
+def _within_maintenance_window(window: dict | None) -> bool:
+    """Return True if current UTC time falls within the policy's maintenance window.
+
+    Window format: {"day": "sunday", "time": "02:00", "duration_hours": 4}
+    If window is None or incomplete, returns True (no restriction).
+    """
+    if not window:
+        return True
+    day = (window.get("day") or "").lower()
+    start_time = window.get("time", "")  # "HH:MM"
+    duration_h = int(window.get("duration_hours", 4))
+
+    if not day or not start_time:
+        return True
+
+    day_map = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+               "friday": 4, "saturday": 5, "sunday": 6}
+    target_weekday = day_map.get(day)
+    if target_weekday is None:
+        return True
+
+    now = datetime.now(timezone.utc)
+    if now.weekday() != target_weekday:
+        return False
+
+    try:
+        hh, mm = map(int, start_time.split(":"))
+    except ValueError:
+        return True
+
+    window_start = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    window_end = window_start.replace(hour=(hh + duration_h) % 24)
+    return window_start <= now <= window_end
+
+
 @celery.task(name="tasks.patch_tasks.deploy_patches", bind=True, max_retries=3)
 def deploy_patches(self, device_id: str, patch_ids: list):
     """Create a ScriptRun to install approved patches on a device via PSWindowsUpdate."""
@@ -116,6 +151,14 @@ def sync_patch_status(self):
             approved_count = 0
 
             for policy in policies:
+                # Respect maintenance window — skip approval outside the window
+                if not _within_maintenance_window(policy.maintenance_window):
+                    logger.info(
+                        "sync_patch_status: skipping policy %s — outside maintenance window %s",
+                        policy.id, policy.maintenance_window,
+                    )
+                    continue
+
                 query = PatchRecord.query.filter_by(status="pending")
                 if policy.customer_id:
                     dev_ids = [

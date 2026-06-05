@@ -9,7 +9,19 @@ import streamlit as st
 import requests
 from typing import Optional, Tuple, Any
 
+import logging as _logging
+_log = _logging.getLogger(__name__)
+
 API_BASE = os.getenv("API_BASE_URL", "http://localhost:5000")
+
+# Warn if connecting to non-HTTPS API in a non-localhost environment
+_host = API_BASE.split("//")[-1].split("/")[0].split(":")[0]
+if API_BASE.startswith("http://") and _host not in ("localhost", "127.0.0.1", "0.0.0.0"):
+    _log.warning(
+        "API_BASE_URL uses plain HTTP (%s). Tokens and data will be transmitted "
+        "unencrypted. Use HTTPS in any non-local deployment.",
+        API_BASE,
+    )
 
 _RETRY_ON = (requests.ConnectionError, requests.Timeout)
 _BACKOFF = [0.5, 1.0, 2.0]  # seconds between retries
@@ -110,6 +122,38 @@ class RMMClient:
 
     def force_change_password(self, new_password: str):
         return self._post("/api/auth/me/force-change-password", {"new_password": new_password})
+
+    def change_password(self, current_password: str, new_password: str):
+        return self._put("/api/auth/me/password", {"current_password": current_password, "new_password": new_password})
+
+    # --- MFA ---
+    def mfa_setup(self):
+        """Generate provisional TOTP secret. Returns {secret, provisioning_uri}."""
+        return self._post("/api/auth/mfa/setup")
+
+    def mfa_enable(self, code: str):
+        """Activate MFA after scanning QR. Requires valid TOTP code."""
+        return self._post("/api/auth/mfa/enable", {"code": code})
+
+    def mfa_disable(self, password: str):
+        """Disable MFA. Requires current password for confirmation."""
+        return self._post("/api/auth/mfa/disable", {"password": password})
+
+    @staticmethod
+    def mfa_login(mfa_token: str, code: str) -> Tuple[Any, Optional[str]]:
+        """Second MFA login step. Posts mfa_token + TOTP code, returns full JWT."""
+        try:
+            resp = requests.post(
+                f"{API_BASE}/api/auth/mfa/login",
+                json={"mfa_token": mfa_token, "code": code},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            return resp.json(), None
+        except requests.HTTPError as e:
+            return None, f"HTTP {e.response.status_code}: {e.response.text}"
+        except requests.RequestException as e:
+            return None, str(e)
 
     # --- Dashboard ---
     def get_summary(self):

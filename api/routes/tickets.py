@@ -47,6 +47,9 @@ def list_tickets():
 @tickets_bp.route("/", methods=["POST"])
 @jwt_required()
 def create_ticket():
+    err = _require_role("admin", "technician")
+    if err:
+        return err
     data = request.get_json(silent=True) or {}
     if not data.get("title") or not data.get("customer_id"):
         return jsonify({"error": "title and customer_id required"}), 400
