@@ -900,6 +900,17 @@ def _request(self, method, path, **kwargs):
 | `st.spinner` | All data loads wrapped — user sees progress feedback |
 | Graceful degradation | `st.warning` instead of `st.stop()` — page stays interactive on partial failure |
 
+### Metrics History — 7-Day Fallback
+
+`dashboard/pages/04_Devices.py` — `_render_agent_row()` metrics history block.
+
+Default window: 24 hours (`GET /api/devices/<id>/metrics?hours=24`). If the API returns an empty list (agent was offline for >24h), the dashboard retries with `hours=168` (7 days). On fallback:
+- An `st.info` banner shows: *"No data in last 24 h — showing last N readings (oldest ~Xh ago). Agent may be offline."*
+- Chart title changes from `"24-hour usage history"` to `"7-day usage history (agent offline)"`.
+- If the 7-day window is also empty, `st.warning("No metric history available.")` is shown.
+
+The `collected_at` timezone handling: `pd.to_datetime()` preserves tz-aware timestamps; the "hours ago" calculation converts to UTC via `.tz_convert("UTC")` before diffing against `pd.Timestamp.now(tz="UTC")`.
+
 ### Device Health Map — Clickable Cards
 
 Cards in `dashboard/pages/01_Dashboard.py` use `st.button()` + `st.switch_page()` for reliable Streamlit-native navigation. Plain `<a href>` links and `components.html()` with `window.parent.location.href` are intercepted/sandboxed by Streamlit's SPA router and do not work.

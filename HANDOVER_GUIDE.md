@@ -1026,6 +1026,20 @@ A device is **online** if its agent has sent a heartbeat in the last few minutes
    - Agent registration date
    - Uptime
 
+### Metrics History
+
+Each agent-managed device has a **Metrics History** button that renders a line chart of CPU, RAM, and disk usage over time.
+
+- By default the chart shows the **last 24 hours** of readings.
+- If no data exists in the last 24 hours (e.g. the agent was recently restarted or offline for a day), the system automatically falls back to the **last 7 days** of data and displays an information banner:
+
+  > *No data in last 24 h — showing last N readings (oldest ~Xh ago). Agent may be offline.*
+
+- The chart title changes to **"7-day usage history (agent offline)"** when the fallback is active.
+- If there is no data in the last 7 days at all, the message **"No metric history available"** is shown.
+
+> **NOTE:** The metrics history button is only available on agent-managed devices (Windows/macOS/Linux tabs). Agentless devices (phones, tablets, network-only devices) do not report metrics and have no history to display.
+
 ### Step-by-step: Investigating a Device After an Alert
 
 You have received an alert that ACME-SRV01 has high CPU. Here is what to do:
@@ -1615,12 +1629,14 @@ Technicians and administrators.
 ### Page Layout
 
 **Left column:**
-- Device selector (only online devices shown)
+- Device selector (only agent-managed online devices shown)
 - Device info card (hostname, OS, IP)
 - **Check for Updates** button
 
 **Right column:**
 - Searchable table of all installed software packages
+
+> **NOTE:** Mobile devices (Android, iOS), network-discovered agentless devices, and any offline device do not appear in the device selector. Software inventory requires the RMM agent to be installed and running — phones and network-discovered devices have no agent and cannot report installed software. To view or manage those devices, use the **Devices** page instead.
 
 ### What the Software List Shows
 
@@ -1911,13 +1927,18 @@ Administrators and senior technicians. The management team uses reports to prese
 4. Select the **Customer** (or All, if available).
 5. Set the **Date Range** using Start Date and End Date.
 6. Click **Generate**.
-7. The report is created and available for download as PDF or Excel.
+7. The report is queued for generation. Refresh the **History** tab after a few seconds — the Download button will become active once the file is ready.
+
+> **IMPORTANT:** Report generation runs as a background Celery task. If the Celery worker is not running, the report record will be created but the file will never be written — the Download button stays greyed out. Ensure the Celery worker is running before generating reports (see Chapter 5 and the Troubleshooting chapter).
 
 ### Step-by-step: Viewing Report History
 
 1. Click **Reports** in the sidebar.
 2. Click the **History** tab.
-3. Each entry shows: report type, customer, date range, generated timestamp, and a **Download** button.
+3. Each entry shows: report type, customer, generated timestamp, and a **Download** button.
+4. If the Download button is greyed out, the Celery worker was not running when the report was generated. Start the Celery worker, then re-generate the report from the Generate tab.
+
+> **NOTE:** Reports are generated as CSV files stored in `api/reports/`. The Download button reads the file directly — no separate export step is required. Format shown in the UI is "csv".
 
 ### Practical Example: Monthly Client Report Package
 
@@ -2637,6 +2658,37 @@ Reboot: true
     - Open a browser on that device and go to `http://YOUR_SERVER_IP:5000/api/health`
     - If you see a JSON response, the API is reachable
 4. Verify `org_token` matches exactly — find it in the dashboard: **Admin** → **System Info** → **Agent Enrollment Token** → Reveal. Or check `ORG_REGISTRATION_TOKEN` in the API's `.env` file directly.
+
+---
+
+### Problem: Report Download button is greyed out
+
+**Cause:** The Celery worker was not running when the report was generated. Report generation is a background task — if no worker picks it up, the CSV file is never written and `file_path` stays empty in the database.
+
+**Steps:**
+1. Verify the Celery worker is running:
+    ```powershell
+    netstat -ano | findstr :6379
+    ```
+2. If not running, start it (Terminal 2):
+    ```powershell
+    cd C:\RMM\RemoteManagementSystem\api
+    .\venv\Scripts\Activate.ps1
+    celery -A tasks.celery_app worker --pool=solo -l info
+    ```
+3. Return to Reports → Generate tab and re-generate the report.
+4. Wait a few seconds, then refresh Report History — the Download button will be active.
+
+---
+
+### Problem: Metrics History shows "No metric history available" but device is online
+
+**Cause:** The 24-hour window has no data — typically because the agent was restarted recently or was offline for more than a day.
+
+**Steps:**
+1. The dashboard automatically falls back to a 7-day window when the 24-hour window is empty. An info banner will appear: *"No data in last 24 h — showing last N readings."*
+2. If you see "No metric history available" even after the fallback, it means there is no data in the last 7 days at all. The agent has not been running long enough to build history.
+3. Verify the agent is running on the device. Allow at least one heartbeat cycle (60 seconds), then click Metrics History again.
 
 ---
 
