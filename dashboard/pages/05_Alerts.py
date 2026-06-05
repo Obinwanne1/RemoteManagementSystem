@@ -73,7 +73,21 @@ with tab_alerts:
         a for a in all_alerts if a.get("severity") == sev_filter
     ]
 
-    st.caption(f"Showing {len(filtered_alerts)} alert{'s' if len(filtered_alerts) != 1 else ''}")
+    cap_col, exp_col = st.columns([6, 1])
+    with cap_col:
+        st.caption(f"Showing {len(filtered_alerts)} alert{'s' if len(filtered_alerts) != 1 else ''}")
+    with exp_col:
+        if filtered_alerts:
+            import pandas as pd
+            _df = pd.DataFrame([{
+                "ID": a.get("id", ""), "Severity": a.get("severity", ""),
+                "Status": a.get("status", ""), "Device": a.get("device_hostname", ""),
+                "Message": a.get("message", ""), "Triggered": a.get("triggered_at", ""),
+            } for a in filtered_alerts])
+            st.download_button(
+                "Export CSV", data=_df.to_csv(index=False).encode("utf-8"),
+                file_name="alerts.csv", mime="text/csv", use_container_width=True,
+            )
 
     # ── Alert list ────────────────────────────────────────────────────────────
     if not filtered_alerts:

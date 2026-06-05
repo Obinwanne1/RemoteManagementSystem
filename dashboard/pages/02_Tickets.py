@@ -107,8 +107,23 @@ if search_q:
     q = search_q.lower()
     tickets = [t for t in tickets if q in t.get("title", "").lower() or q in (t.get("description") or "").lower()]
 
-# ── Count caption ─────────────────────────────────────────────────────────────
-st.caption(f"Showing {len(tickets)} ticket{'s' if len(tickets) != 1 else ''}")
+# ── Count caption + CSV export ────────────────────────────────────────────────
+cap_col, export_col = st.columns([6, 1])
+with cap_col:
+    st.caption(f"Showing {len(tickets)} ticket{'s' if len(tickets) != 1 else ''}")
+with export_col:
+    if tickets:
+        import pandas as pd, io
+        _df = pd.DataFrame([{
+            "ID": t.get("id", ""), "Title": t.get("title", ""),
+            "Status": t.get("status", ""), "Priority": t.get("priority", ""),
+            "Customer": t.get("customer_name", ""), "Assignee": t.get("assignee_name", ""),
+            "Created": t.get("created_at", ""), "Updated": t.get("updated_at", ""),
+        } for t in tickets])
+        st.download_button(
+            "Export CSV", data=_df.to_csv(index=False).encode("utf-8"),
+            file_name="tickets.csv", mime="text/csv", use_container_width=True,
+        )
 
 # ── Ticket list ───────────────────────────────────────────────────────────────
 if not tickets:

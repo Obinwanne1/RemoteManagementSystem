@@ -242,10 +242,28 @@ with tab_audit:
         if date_to:
             items = [i for i in items if i.get("created_at", "") <= str(date_to) + "T23:59:59"]
 
-        st.markdown(
-            f'<div style="font-size:0.8rem;color:#6B7B6B;margin-bottom:0.6rem"><b>{len(items)}</b> events</div>',
-            unsafe_allow_html=True,
-        )
+        cnt_col, exp_col = st.columns([5, 1])
+        with cnt_col:
+            st.markdown(
+                f'<div style="font-size:0.8rem;color:#6B7B6B;margin-bottom:0.6rem"><b>{len(items)}</b> events</div>',
+                unsafe_allow_html=True,
+            )
+        with exp_col:
+            import pandas as pd
+            _audit_df = pd.DataFrame([{
+                "Timestamp": i.get("created_at", ""),
+                "User": i.get("user_email", ""),
+                "Action": (i.get("action") or "").upper(),
+                "Resource": i.get("resource_type", ""),
+                "Resource ID": i.get("resource_id", ""),
+                "IP": i.get("ip_address", ""),
+            } for i in items])
+            st.download_button(
+                "Export CSV",
+                data=_audit_df.to_csv(index=False).encode("utf-8"),
+                file_name="audit_log.csv", mime="text/csv",
+                use_container_width=True,
+            )
 
         # ── Render as HTML table for performance ──
         rows_html = ""

@@ -77,7 +77,7 @@ def _build_command(script_path: str, file_type: str) -> list | None:
         return [
             "powershell.exe",
             "-NonInteractive",
-            "-ExecutionPolicy", "Bypass",
+            "-ExecutionPolicy", "RemoteSigned",
             "-File", script_path,
         ]
     elif file_type == "py":

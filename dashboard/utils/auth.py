@@ -15,13 +15,21 @@ def get_client() -> RMMClient | None:
 
 
 def _restore_from_query_params() -> None:
-    """Restore access + refresh tokens from URL params."""
+    """Restore access + refresh tokens from URL params, then remove them from URL."""
     tok = st.query_params.get("tok", "")
+    rtok = st.query_params.get("rtok", "")
+    restored = False
     if tok:
         st.session_state["access_token"] = tok
-    rtok = st.query_params.get("rtok", "")
+        restored = True
     if rtok:
         st.session_state["refresh_token"] = rtok
+        restored = True
+    if restored:
+        # Remove tokens from URL so they don't persist in browser history or server logs.
+        # Session state carries the tokens from this point forward.
+        st.query_params.pop("tok", None)
+        st.query_params.pop("rtok", None)
 
 
 def _redirect_to_login() -> None:
@@ -34,43 +42,48 @@ def _redirect_to_login() -> None:
 
 
 def require_auth() -> RMMClient:
-    """Halt page if not authenticated. Redirects to login. Returns client."""
+    """Halt page if not authenticated. Redirects to login. Returns client.
+
+    Tokens are restored from URL params once (then stripped from URL) so that
+    they do not persist in browser history or server access logs.
+    """
     _restore_from_query_params()
     client = get_client()
     if not client:
         _redirect_to_login()
-    # Re-stamp tokens into URL on every authenticated page load so F5 reload
-    # always has ?tok= and ?rtok= available regardless of which page the user is on.
-    token = st.session_state.get("access_token", "")
-    if token and st.query_params.get("tok", "") != token:
-        st.query_params["tok"] = token
-    rtoken = st.session_state.get("refresh_token", "")
-    if rtoken and st.query_params.get("rtok", "") != rtoken:
-        st.query_params["rtok"] = rtoken
-    # Restore user profile if missing (e.g. after page refresh)
+    # Restore user profile if missing (e.g. after page refresh via session state)
     if not st.session_state.get("user"):
         data, err = client.get_me()
         if err or not data:
             # Token is invalid/expired — clear and redirect
             st.session_state.pop("access_token", None)
-            st.query_params.clear()
             _redirect_to_login()
         st.session_state["user"] = data.get("user", data)
     return client
 
 
-def login(email: str, password: str) -> bool:
-    """Attempt login, store tokens in session state and URL param. Returns success."""
+def login(email: str, password: str) -> str:
+    """Attempt login. Returns 'ok', 'mfa_required', or 'error'.
+
+    On success tokens are stored in session state and written to URL once for
+    F5 handoff. On MFA required, mfa_pending_token is stored in session state.
+    require_auth() strips URL tokens after the first successful restore."""
     data, err = RMMClient.login(email, password)
     if err:
         st.error(f"Login failed: {err}")
-        return False
+        return "error"
+    if data.get("status") == "mfa_required":
+        st.session_state["mfa_pending_token"] = data["mfa_token"]
+        return "mfa_required"
     st.session_state["access_token"] = data["access_token"]
     st.session_state["refresh_token"] = data.get("refresh_token", "")
     st.session_state["user"] = data["user"]
-    # Persist token in URL so page refresh restores session
+    # Write once to URL for the initial page-reload handoff only.
+    # require_auth() will clear these params after the first successful restore.
     st.query_params["tok"] = data["access_token"]
-    return True
+    if data.get("refresh_token"):
+        st.query_params["rtok"] = data["refresh_token"]
+    return "ok"
 
 
 def logout():

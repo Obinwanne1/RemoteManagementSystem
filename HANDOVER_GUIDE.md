@@ -52,10 +52,13 @@ This document is written in plain language. Technical jargon is explained when f
 - Chapter 5: Starting All Services
 - Chapter 6: Deploying the Agent on Managed Machines
 - Chapter 7: First-Time Setup Walkthrough
+- Chapter 7a: Docker Deployment (Alternative Installation)
 
 **PART II — GETTING STARTED**
 - Chapter 8: What is the RMM System?
 - Chapter 9: Logging In and Navigation
+- Chapter 9a: Multi-Factor Authentication (MFA)
+- Chapter 9b: My Profile Page
 - Chapter 10: Your Role and What You Can Access
 
 **PART III — MONITORING**
@@ -315,6 +318,9 @@ The API requires a configuration file called `.env` inside the `api\` directory.
     REDIS_URL=redis://localhost:6379/0
     CELERY_BROKER_URL=redis://localhost:6379/0
     CELERY_RESULT_BACKEND=redis://localhost:6379/1
+    SUPERADMIN_PASSWORD=YourSuperAdminPassword123
+    SUPERADMIN_EMAIL=superadmin@rmm.local
+    CORS_ORIGINS=http://localhost:8501
     SMTP_HOST=smtp.gmail.com
     SMTP_PORT=587
     SMTP_USER=
@@ -330,6 +336,7 @@ The API requires a configuration file called `.env` inside the `api\` directory.
     | `your_secure_password_here` | The PostgreSQL password you set in Chapter 2, Step 2 |
     | `replace-with-another-long-random-string-at-least-32-chars` | A different random string of 32+ characters |
     | `replace-with-a-unique-org-token-for-agent-registration` | A unique token agents use to register (e.g., `rmm-prod-2026-companyname-abc123`) |
+    | `YourSuperAdminPassword123` | A strong password (min 10 chars) for the built-in superadmin account. **Required** — the API will refuse to start without this set. |
 
 > **IMPORTANT:** The `ORG_REGISTRATION_TOKEN` is what prevents unauthorized agents from registering with your RMM server. Use a long, unique, hard-to-guess value. You will need this same token when configuring the agent's `config.ini` file in Chapter 6.
 
@@ -454,8 +461,8 @@ You should see lines for each port, confirming all services are listening.
 ### Quick Health Check via Browser
 
 1. Open: **http://localhost:5000/api/health**
-2. You should see a JSON response like: `{"status": "ok", "database": "connected", "redis": "connected"}`
-3. If any service shows "disconnected", check that respective service is running.
+2. You should see a JSON response like: `{"status": "ok", "db": true, "redis": true, "version": "1.0.0"}`. A `"status": "degraded"` response means PostgreSQL or Redis is unreachable — the health endpoint now tests actual connectivity.
+3. If `db` or `redis` is `false`, check that the respective service is running.
 
 ---
 
@@ -689,6 +696,90 @@ The system is now fully operational. The following parts of this handbook cover 
 
 ---
 
+## Chapter 7a: Docker Deployment (Alternative Installation)
+
+### What it is
+
+Docker Compose is an alternative to the manual installation in Chapters 2–6. It starts all six services (PostgreSQL, Redis, Flask API, Celery worker, Celery beat, and Streamlit dashboard) with a single command. This is the recommended method for production deployments.
+
+### What you need
+
+- **Docker Desktop** installed on the server. Download from docker.com/products/docker-desktop.
+- The RMM project folder on the server (e.g. `C:\RMM\RemoteManagementSystem\`).
+
+> **NOTE:** Docker includes PostgreSQL, Redis, and Python inside containers. No separate installation of those is required.
+
+### Step 1: Create the API Environment File
+
+Create `api\.env` as described in Chapter 4. When using Docker, the database host must be `db` (the service name), not `localhost`:
+
+```
+SECRET_KEY=replace-with-32-char-random-string
+DATABASE_URL=postgresql://rmm_app:changeme@db:5432/rmmdb
+JWT_SECRET_KEY=replace-with-another-32-char-string
+ORG_REGISTRATION_TOKEN=replace-with-unique-token
+SUPERADMIN_PASSWORD=YourSuperAdminPassword123
+SUPERADMIN_EMAIL=superadmin@rmm.local
+CORS_ORIGINS=http://localhost:8501
+REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/1
+```
+
+> **IMPORTANT:** Use `@db:5432` not `@localhost:5432` in `DATABASE_URL`.
+
+### Step 2: Start All Services
+
+```powershell
+Set-Location C:\RMM\RemoteManagementSystem
+docker-compose up -d
+```
+
+Wait 15–20 seconds, then verify all containers are running:
+
+```powershell
+docker-compose ps
+```
+
+All six services should show status `Up`.
+
+### Step 3: Verify
+
+Open **http://localhost:8501** — the login page should appear.
+
+Health check: `http://localhost:5000/api/health` should return `{"db": true, "redis": true, "status": "ok", "version": "1.0.0"}`.
+
+### Useful Commands
+
+```powershell
+# View logs
+docker-compose logs -f api
+docker-compose logs -f celery_worker
+
+# Stop all services (data preserved)
+docker-compose down
+
+# Stop and delete all data (IRREVERSIBLE)
+docker-compose down -v
+
+# Rebuild after code changes
+docker-compose build api dashboard
+docker-compose up -d
+```
+
+> **WARNING:** `docker-compose down -v` permanently deletes the database. All devices, tickets, users, and reports are lost.
+
+### Docker vs Manual Installation
+
+| Situation | Recommended method |
+|---|---|
+| Production server | Docker (Chapter 7a) |
+| Clean lab / demo | Docker (Chapter 7a) |
+| Local dev with debugger | Manual (Chapters 2–6) |
+| Reusing existing PostgreSQL/Redis | Manual (Chapters 2–6) |
+
+---
+
 # PART II — GETTING STARTED
 
 ---
@@ -751,10 +842,11 @@ Everyone. This is the entry point to every page in the system.
 4. In the **Email address** field, type your full email address.
 5. In the **Password** field, type your password. Characters appear as dots.
 6. Click the green **Sign In →** button.
-7. Correct credentials take you to the RMM Dashboard.
-8. "Invalid credentials" means wrong email or password. Check Caps Lock.
+7. If your account has **Multi-Factor Authentication (MFA)** enabled, you will see a second screen asking for a 6-digit code from your authenticator app. Enter the code and click **Verify →**. See Chapter 9a for full MFA details.
+8. Correct credentials (and MFA code if required) take you to the RMM Dashboard.
+9. "Invalid credentials" means wrong email or password. Check Caps Lock.
 
-> **NOTE:** Your session token is stored in browser memory only — it is not in the URL. If you share a page URL, the recipient must log in with their own credentials.
+> **NOTE:** Your session is maintained in browser memory. If you share a page URL, the recipient must log in with their own credentials.
 
 > **WARNING:** There is no "forgot password" link. If locked out, contact your system administrator to reset your password.
 
@@ -801,6 +893,85 @@ Sarah is a new junior technician. It is her first day.
 4. She clicks **Sign In →**.
 5. She sees the RMM Dashboard with "Sarah" displayed at the top of the sidebar alongside a yellow TECHNICIAN badge.
 6. She clicks **Devices** to see all managed machines.
+
+---
+
+## Chapter 9a: Multi-Factor Authentication (MFA)
+
+### What it is
+
+Multi-Factor Authentication (MFA) adds a second verification step to the login process. After entering your email and password, you are asked for a 6-digit time-based code from an authenticator app on your phone (such as Google Authenticator, Authy, or Microsoft Authenticator). Even if someone knows your password, they cannot log in without the code.
+
+### Who uses it
+
+Any user can enable MFA on their own account. Administrators are strongly encouraged to enable it.
+
+### Logging In with MFA Enabled
+
+1. Enter your email and password on the login page and click **Sign In →**.
+2. A new screen appears: **Two-Factor Authentication Required**.
+3. Open your authenticator app and find the RMM entry.
+4. Enter the current 6-digit code shown in the app.
+5. Click **Verify →**.
+6. You are taken to the RMM dashboard.
+
+The 6-digit code refreshes every 30 seconds — use the current code shown in the app. If you click **Back**, you return to the login screen.
+
+> **NOTE:** If you lose access to your authenticator app, contact your system administrator. They can disable MFA on your account via Admin → Users → Edit.
+
+### Setting Up MFA on Your Account
+
+1. Log in to the RMM dashboard.
+2. Click **My Profile** in the sidebar (under ACCOUNT at the bottom).
+3. On the right side of the page, find the **Multi-Factor Authentication** section.
+4. The badge shows **DISABLED** in red if MFA is not yet set up.
+5. Click **Enable MFA**.
+6. A QR code appears along with a text backup key.
+7. Open your authenticator app on your phone and scan the QR code.
+8. The app will show a 6-digit code for "RMM System".
+9. Enter that 6-digit code in the **Verify Code** field and click **Activate MFA**.
+10. The badge changes to **ENABLED** in green. MFA is now active on your account.
+
+> **TIP:** Copy the text key shown under the QR code and store it securely. This is your backup key if you need to add the account to a new phone.
+
+### Disabling MFA on Your Account
+
+1. Go to **My Profile** in the sidebar.
+2. In the MFA section, the badge shows **ENABLED**.
+3. Enter your current password in the confirmation field.
+4. Click **Disable MFA**.
+5. The badge changes to **DISABLED**.
+
+> **WARNING:** Disabling MFA reduces your account security. Only do this if you are replacing your authenticator app or device — set MFA up again immediately after.
+
+### Administrator: Disabling MFA for a Locked-Out User
+
+If a user loses their authenticator app and cannot log in:
+
+1. Go to **Admin** → **Users** tab.
+2. Find the user and click **Edit**.
+3. Uncheck **MFA Enabled** and save.
+4. The user can now log in with just their password and re-enroll MFA from My Profile.
+
+---
+
+## Chapter 9b: My Profile Page
+
+### What it is
+
+The My Profile page is a personal settings page accessible to every logged-in user. It allows you to view your account details, change your password, and manage MFA — all without requiring admin assistance.
+
+### Accessing My Profile
+
+Look for **My Profile** in the sidebar under the **ACCOUNT** section at the bottom. Click it to open the page.
+
+### Left Column — Account Details and Password
+
+Shows your full name, email address, and role badge. Below that, the **Change Password** form lets you enter your current password and set a new one (minimum 8 characters). Click **Update Password** to save. The change takes effect immediately.
+
+### Right Column — MFA Management
+
+Shows the current MFA status badge (green ENABLED or red DISABLED) and the appropriate action form. See **Chapter 9a** for step-by-step MFA instructions.
 
 ---
 
@@ -984,6 +1155,10 @@ The Devices page is divided into seven tabs, each showing a count badge:
 
 > **NOTE:** Agentless devices do not report CPU, RAM, or disk metrics. They are presence-monitored only — the system confirms they are reachable on the network, nothing more.
 
+### Delete Confirmation
+
+Deleting a device is a two-step process to prevent accidental removal. The first click on **Delete** changes the button to **Sure? Confirm / Cancel**. You must click **Confirm** within the same page load to proceed. Navigating away or clicking **Cancel** abandons the deletion. This applies to both agent-managed and agentless devices.
+
 ### What You See (Agent Devices)
 
 | Column | Description |
@@ -1039,6 +1214,10 @@ Each agent-managed device has a **Metrics History** button that renders a line c
 - If there is no data in the last 7 days at all, the message **"No metric history available"** is shown.
 
 > **NOTE:** The metrics history button is only available on agent-managed devices (Windows/macOS/Linux tabs). Agentless devices (phones, tablets, network-only devices) do not report metrics and have no history to display.
+
+### Exporting Devices to CSV
+
+A **Download CSV** button at the top of the Devices page exports all currently-filtered devices to a CSV file. The export includes: hostname, IP address, platform, online status, CPU%, RAM%, Disk%, and last seen timestamp. The active OS tab and search box filter apply before export.
 
 ### Step-by-step: Investigating a Device After an Alert
 
@@ -1114,6 +1293,10 @@ All roles can view alerts. Technicians and administrators can acknowledge, resol
 | open | New alert, not yet seen |
 | acknowledged | A technician has seen it and is dealing with it |
 | resolved | The underlying issue has been fixed |
+
+### Exporting Alerts to CSV
+
+A **Download CSV** button at the top of the Active Alerts tab exports all currently-filtered alerts to a CSV file with: device, rule name, severity, status, and triggered date.
 
 ### Step-by-step: Acknowledging an Alert
 
@@ -1369,6 +1552,10 @@ IT support staff, technicians, and administrators. Viewers can see tickets but c
    - **Status dropdown:** Select open, in_progress, resolved, or closed. Select "All" for everything.
    - **Priority dropdown:** Filter by urgency level.
 3. The caption below filters shows how many tickets match.
+
+### Exporting Tickets to CSV
+
+A **Download CSV** button at the top of the Tickets page exports all currently-filtered tickets to a CSV file with: ID, title, customer, priority, status, and created date.
 
 ### Step-by-step: Updating a Ticket Status
 
@@ -2068,6 +2255,8 @@ Each entry shows: action type, resource type and ID, timestamp, IP address, and 
 
 **Filtering:** Use the Action type dropdown and date range pickers to narrow results.
 
+**Export to CSV:** A **Download CSV** button exports the currently-filtered audit log entries (timestamp, user, action, resource type, resource ID, IP address) to a CSV file.
+
 ### Step-by-step: Investigating a Suspicious Action
 
 1. Go to **Admin** → **Audit Log** tab.
@@ -2122,9 +2311,9 @@ On the first Monday of each month:
 - It has a purple role badge in the sidebar.
 - It has full access to every feature in the system.
 
-**Default credentials** (change these immediately after installation):
-- Email: `superadmin@rmm.local`
-- Password: `SuperAdmin@RMM1`
+**Credentials** are set via environment variables in `.env`:
+- Email: `SUPERADMIN_EMAIL` (default: `superadmin@rmm.local`)
+- Password: `SUPERADMIN_PASSWORD` — **this is now required**. The API will refuse to start if `SUPERADMIN_PASSWORD` is not set in `.env`. There is no built-in default password.
 
 **Changing the superadmin email or password via environment variables:**
 
@@ -2134,6 +2323,8 @@ SUPERADMIN_EMAIL=your-preferred-email@company.com
 SUPERADMIN_PASSWORD=YourNewStrongPassword123
 ```
 Then restart the Flask API. The account will be updated on next startup.
+
+> **IMPORTANT:** `SUPERADMIN_PASSWORD` must be set before starting the API. If it is missing or blank, the API will raise a `RuntimeError` and refuse to start. Minimum length is 10 characters.
 
 **Emergency password reset (when locked out of the web interface):**
 
@@ -2724,6 +2915,29 @@ Reboot: true
 
 ---
 
+### Problem: MFA code rejected — "Invalid or expired code"
+
+**Cause:** Code entered after it expired, or phone and server clocks are out of sync.
+
+**Steps:**
+1. Wait for the code to refresh in your authenticator app (timer resets to full).
+2. Enter the fresh code immediately.
+3. If still failing, set your phone time to automatic/network time — TOTP requires synchronized clocks.
+4. If locked out permanently (lost phone), contact an administrator to disable MFA on your account.
+
+---
+
+### Problem: API refuses to start — RuntimeError about SUPERADMIN_PASSWORD
+
+**Cause:** `SUPERADMIN_PASSWORD` is missing from `api\.env` or is less than 10 characters.
+
+**Steps:**
+1. Open `api\.env` in a text editor.
+2. Add: `SUPERADMIN_PASSWORD=YourStrongPassword123` (min 10 characters).
+3. Restart the API.
+
+---
+
 ### Problem: Cannot access Admin page — "Admin access required"
 
 This is intentional. Admin page is restricted to admin role only.
@@ -2742,6 +2956,18 @@ UPDATE users SET role = 'admin' WHERE email = 'your@email.com';
 **Steps:**
 1. Go to http://localhost:8501.
 2. If you see the login screen, log in again.
+
+---
+
+### Problem: Docker container 'api' exits immediately
+
+**Cause:** Missing or invalid `api\.env`, or `SUPERADMIN_PASSWORD` not set.
+
+**Steps:**
+1. Run `docker-compose logs api` and look for a `RuntimeError` message.
+2. Verify `api\.env` exists with all required variables (see Chapter 7a).
+3. Ensure `DATABASE_URL` uses `@db:5432`, not `@localhost:5432`.
+4. After fixing `.env`, run `docker-compose up -d api` to restart the API container.
 
 ---
 
@@ -2798,6 +3024,7 @@ python rmm_agent.py
 | Cooldown | Minimum time before an alert rule can fire again for the same device. Prevents alert flooding. |
 | Critical | Highest alert severity. Immediate action required. |
 | Dashboard | The Streamlit web interface at port 8501. Also specifically refers to the Overview page. |
+| Docker | Container platform. Used for one-command deployment via `docker-compose up -d`. See Chapter 7a. |
 | Defragmentation | Disk maintenance for HDDs that reorganizes fragmented files. Never run on SSDs. |
 | Device | A managed machine with the RMM agent installed. |
 | Exit Code | Number returned by a script when it finishes. 0 = success; non-zero = error. |
@@ -2809,6 +3036,7 @@ python rmm_agent.py
 | JWT | JSON Web Token. The authentication token used by this system. |
 | KB | Knowledge Base number. Unique identifier for Windows patches (e.g., KB5034441). |
 | Last Seen | Timestamp of the most recent heartbeat from a device's agent. |
+| MFA | Multi-Factor Authentication. A second login step requiring a 6-digit code from an authenticator app. Enabled per user from the My Profile page. |
 | Memurai | Windows-native Redis-compatible server. Used as the Redis implementation on Windows. |
 | Offline | A device whose agent has not sent a heartbeat recently. |
 | Online | A device whose agent is actively sending heartbeats. |
@@ -2984,9 +3212,10 @@ UPDATE users SET role = 'admin' WHERE email = 'user@company.com';
 ```
 
 **Monthly security checklist:**
-- [ ] Review Audit Log for unexpected DELETE events
+- [ ] Review Audit Log for unexpected DELETE events (use CSV export for records)
 - [ ] Review Audit Log for unusual LOGIN IP addresses
 - [ ] Verify all Users are current employees
+- [ ] Confirm all admin accounts have MFA enabled (My Profile → MFA section)
 - [ ] Check System Info → Services card for health
 - [ ] Review Outstanding invoices in Billing
 - [ ] Check Compliance % in OS Patches

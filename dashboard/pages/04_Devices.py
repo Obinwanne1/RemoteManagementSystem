@@ -51,7 +51,7 @@ if _linked_device_id:
         st.info(f"Showing device: **{_linked_hostname}**")
 
 # ── Shared search + status filter (apply inside each tab) ─────────────────────
-sf1, sf2, sf3 = st.columns([2, 1.2, 1.2])
+sf1, sf2, sf3, sf4 = st.columns([2, 1.2, 1.2, 0.9])
 with sf1:
     _default_search = _linked_hostname if _linked_device_id and _linked_hostname else ""
     search = st.text_input("🔍  Search hostname / IP", value=_default_search, placeholder="e.g. DESKTOP- or 192.168.", label_visibility="collapsed")
@@ -61,6 +61,8 @@ with sf2:
 with sf3:
     online_filter = st.selectbox("Online", ["All devices", "Online only", "Offline only"],
                                   label_visibility="collapsed")
+with sf4:
+    _export_placeholder = st.empty()  # filled after _apply_filters is defined
 
 
 def _apply_filters(devices: list) -> list:
@@ -90,6 +92,23 @@ def _tab_devices(tab_name: str) -> list:
     p = platform_map.get(tab_name)
     return _apply_filters([d for d in all_devices if d.get("platform") == p])
 
+
+# ── CSV export (all devices matching current filters) ─────────────────────────
+_filtered_all = _apply_filters(all_devices)
+if _filtered_all:
+    _export_df = pd.DataFrame([{
+        "Hostname": d.get("hostname", ""), "IP": d.get("ip_address", ""),
+        "Platform": d.get("platform", ""), "Status": d.get("status", ""),
+        "Online": d.get("is_online", False), "Customer": d.get("customer_name", ""),
+        "CPU%": (d.get("latest_metrics") or {}).get("cpu_pct", ""),
+        "RAM%": (d.get("latest_metrics") or {}).get("ram_pct", ""),
+        "Disk%": (d.get("latest_metrics") or {}).get("disk_pct", ""),
+        "Last Seen": d.get("last_seen", ""),
+    } for d in _filtered_all])
+    _export_placeholder.download_button(
+        "Export CSV", data=_export_df.to_csv(index=False).encode("utf-8"),
+        file_name="devices.csv", mime="text/csv", use_container_width=True,
+    )
 
 # ── OS Tabs ───────────────────────────────────────────────────────────────────
 tab_labels = [
@@ -212,9 +231,23 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
                     st.rerun()
         with ca5:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("🗑", key=f"del_{tab_key}_{device['id']}", use_container_width=True):
-                _, e = client.delete_device(device["id"])
-                st.error(f"Delete failed: {e}") if e else st.rerun()
+            _confirm_key = f"del_confirm_{tab_key}_{device['id']}"
+            if st.session_state.get(_confirm_key):
+                st.warning("Sure?")
+                cc1, cc2 = st.columns(2)
+                with cc1:
+                    if st.button("Yes", key=f"del_yes_{tab_key}_{device['id']}", use_container_width=True):
+                        st.session_state.pop(_confirm_key, None)
+                        _, e = client.delete_device(device["id"])
+                        st.error(f"Delete failed: {e}") if e else st.rerun()
+                with cc2:
+                    if st.button("No", key=f"del_no_{tab_key}_{device['id']}", use_container_width=True):
+                        st.session_state.pop(_confirm_key, None)
+                        st.rerun()
+            else:
+                if st.button("🗑", key=f"del_{tab_key}_{device['id']}", use_container_width=True):
+                    st.session_state[_confirm_key] = True
+                    st.rerun()
 
         # Edit form
         if st.session_state.get(f"ag_edit_{device['id']}"):

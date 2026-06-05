@@ -85,6 +85,9 @@ def render_sidebar() -> None:
             st.page_link("pages/08_Reports.py",      label="Reports",           icon="📈")
             st.page_link("pages/09_Billing.py",      label="Billing",           icon="💰")
 
+        nav_section("ACCOUNT")
+        st.page_link("pages/17_Profile.py", label="My Profile", icon="👤")
+
         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
         if st.button("⎋  Sign Out", use_container_width=True, key="sidebar_signout"):
             logout()

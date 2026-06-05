@@ -1,5 +1,6 @@
 import os
 import time
+import uuid
 from flask import Flask, request, g
 from dotenv import load_dotenv
 
@@ -9,7 +10,32 @@ from extensions import db, migrate, jwt, cors, limiter
 load_dotenv()
 
 
+def _validate_env():
+    """Abort startup if critical env vars are missing or insecure."""
+    errors = []
+    secret_key = os.getenv("SECRET_KEY", "")
+    jwt_key = os.getenv("JWT_SECRET_KEY", "")
+    sa_password = os.getenv("SUPERADMIN_PASSWORD", "")
+    org_token = os.getenv("ORG_REGISTRATION_TOKEN", "")
+
+    if len(secret_key) < 32:
+        errors.append("SECRET_KEY must be at least 32 characters")
+    if len(jwt_key) < 32:
+        errors.append("JWT_SECRET_KEY must be at least 32 characters")
+    if not sa_password:
+        errors.append("SUPERADMIN_PASSWORD must be set")
+    if len(sa_password) < 10:
+        errors.append("SUPERADMIN_PASSWORD must be at least 10 characters")
+    if not org_token or org_token in ("change-this-to-a-secure-random-token", ""):
+        errors.append("ORG_REGISTRATION_TOKEN must be set to a unique random value")
+
+    if errors:
+        raise RuntimeError("Environment configuration errors:\n  - " + "\n  - ".join(errors))
+
+
 def create_app(config_name=None):
+    _validate_env()
+
     if config_name is None:
         config_name = os.getenv("FLASK_ENV", "development")
 
@@ -20,8 +46,18 @@ def create_app(config_name=None):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
+
+    allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:8501").split(",")
+    cors.init_app(app, resources={r"/api/*": {"origins": [o.strip() for o in allowed_origins]}})
     limiter.init_app(app)
+
+    # Warn when running in insecure development mode
+    if config_name != "production":
+        app.logger.warning(
+            "Running in '%s' mode — JWT cookies are NOT secure. "
+            "Set FLASK_ENV=production for HTTPS deployments.",
+            config_name,
+        )
 
     # Import models so Alembic detects them
     with app.app_context():
@@ -70,17 +106,39 @@ def create_app(config_name=None):
 
     @app.route("/api/health")
     def health():
-        return {"status": "ok", "version": "1.0.0"}
+        from sqlalchemy import text
+        import redis as redis_lib
+        checks: dict = {"version": "1.0.0", "db": False, "redis": False}
+        try:
+            db.session.execute(text("SELECT 1"))
+            checks["db"] = True
+        except Exception:
+            pass
+        try:
+            r = redis_lib.from_url(app.config.get("REDIS_URL", "redis://localhost:6379/0"))
+            r.ping()
+            checks["redis"] = True
+        except Exception:
+            pass
+        checks["status"] = "ok" if checks["db"] and checks["redis"] else "degraded"
+        from flask import jsonify as _j
+        return _j(checks), (200 if checks["status"] == "ok" else 503)
 
-    # Request timing
+    # Request timing + correlation ID
     @app.before_request
     def _start_timer():
         g._start_time = time.monotonic()
+        g.request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
 
     @app.after_request
     def _log_request(response):
         duration_ms = (time.monotonic() - getattr(g, "_start_time", time.monotonic())) * 1000
-        app.logger.info("%s %s %s %.1fms", request.method, request.path, response.status_code, duration_ms)
+        rid = getattr(g, "request_id", "-")
+        app.logger.info(
+            "[%s] %s %s %s %.1fms",
+            rid, request.method, request.path, response.status_code, duration_ms,
+        )
+        response.headers["X-Request-ID"] = rid
         return response
 
     _register_error_handlers(app)
@@ -89,10 +147,20 @@ def create_app(config_name=None):
 
 def _register_error_handlers(app):
     from sqlalchemy.exc import IntegrityError, OperationalError
+    from flask_limiter.errors import RateLimitExceeded
+
+    @app.errorhandler(RateLimitExceeded)
+    def rate_limit_exceeded(e):
+        return {"error": "Too many requests. Please slow down."}, 429
+
+    @app.errorhandler(429)
+    def too_many_requests(e):
+        return {"error": "Too many requests. Please slow down."}, 429
 
     @app.errorhandler(400)
     def bad_request(e):
-        return {"error": "Bad request", "detail": str(e)}, 400
+        app.logger.warning("Bad request: %s", e)
+        return {"error": "Bad request"}, 400
 
     @app.errorhandler(404)
     def not_found(e):
@@ -104,7 +172,8 @@ def _register_error_handlers(app):
 
     @app.errorhandler(422)
     def unprocessable(e):
-        return {"error": "Validation error", "detail": str(e)}, 422
+        app.logger.warning("Validation error: %s", e)
+        return {"error": "Validation error"}, 422
 
     @app.errorhandler(IntegrityError)
     def db_integrity(e):

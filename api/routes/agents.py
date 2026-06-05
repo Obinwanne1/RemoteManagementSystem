@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token
 
-from extensions import db
+from extensions import db, limiter
 from models.device import Device, DeviceMetrics, InstalledSoftware
 from models.audit import AgentToken
 from models.customer import Customer
@@ -38,6 +38,7 @@ def _get_device_by_token(device_id: str):
 
 
 @agents_bp.route("/register", methods=["POST"])
+@limiter.limit("10 per minute")
 def register():
     """Agent first-time registration. Returns device_id + agent_token."""
     data = request.get_json(silent=True) or {}

@@ -4,9 +4,13 @@ from flask_jwt_extended import (
     create_access_token, create_refresh_token,
     jwt_required, get_jwt_identity, get_jwt
 )
+import pyotp
 from extensions import db, limiter
 from models.user import User
 from models.audit import AuditLog
+
+# Short-lived JWT purpose claim used for the MFA pending step
+_MFA_PENDING = "mfa_pending"
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -38,6 +42,15 @@ def login():
         _audit("login_failed", payload={"email": email})
         db.session.commit()
         return jsonify({"error": "Invalid credentials"}), 401
+
+    # If MFA is enabled, issue a short-lived pending token — full JWT comes after TOTP
+    if user.mfa_enabled and user.mfa_secret:
+        mfa_token = create_access_token(
+            identity=user.id,
+            additional_claims={"purpose": _MFA_PENDING},
+            expires_delta=__import__("datetime").timedelta(minutes=5),
+        )
+        return jsonify({"status": "mfa_required", "mfa_token": mfa_token}), 200
 
     user.last_login = datetime.now(timezone.utc)
     _audit("login_success", user_id=user.id)
@@ -121,3 +134,126 @@ def force_change_password():
     _audit("force_password_changed", user_id=user.id)
     db.session.commit()
     return jsonify({"message": "Password updated"}), 200
+
+
+# ── MFA endpoints ────────────────────────────────────────────────────────────
+
+@auth_bp.route("/mfa/setup", methods=["POST"])
+@jwt_required()
+def mfa_setup():
+    """Generate a new TOTP secret for the current user. Returns QR code URI.
+    User must call /mfa/enable with a valid code to activate MFA."""
+    identity = get_jwt_identity()
+    user = User.query.get(identity)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    secret = pyotp.random_base32()
+    # Store provisionally — not active until verified
+    user.mfa_secret = secret
+    db.session.commit()
+
+    totp = pyotp.TOTP(secret)
+    provisioning_uri = totp.provisioning_uri(
+        name=user.email, issuer_name="RMM System"
+    )
+    return jsonify({
+        "secret": secret,
+        "provisioning_uri": provisioning_uri,
+        "message": "Scan the QR code with your authenticator app, then call /mfa/enable with a valid code.",
+    }), 200
+
+
+@auth_bp.route("/mfa/enable", methods=["POST"])
+@jwt_required()
+def mfa_enable():
+    """Verify TOTP code and activate MFA on the account."""
+    identity = get_jwt_identity()
+    user = User.query.get(identity)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    code = str(data.get("code", "")).strip()
+    if not code:
+        return jsonify({"error": "TOTP code required"}), 400
+
+    if not user.mfa_secret:
+        return jsonify({"error": "Call /mfa/setup first"}), 400
+
+    totp = pyotp.TOTP(user.mfa_secret)
+    if not totp.verify(code, valid_window=1):
+        return jsonify({"error": "Invalid or expired TOTP code"}), 401
+
+    user.mfa_enabled = True
+    _audit("mfa_enabled", user_id=user.id)
+    db.session.commit()
+    return jsonify({"message": "MFA enabled successfully"}), 200
+
+
+@auth_bp.route("/mfa/login", methods=["POST"])
+@limiter.limit("10 per minute")
+def mfa_login():
+    """Second step of MFA login. Accepts mfa_token + TOTP code, returns full JWT."""
+    data = request.get_json(silent=True) or {}
+    mfa_token = data.get("mfa_token", "")
+    code = str(data.get("code", "")).strip()
+
+    if not mfa_token or not code:
+        return jsonify({"error": "mfa_token and code required"}), 400
+
+    # Validate the pending MFA token
+    from flask_jwt_extended import decode_token
+    try:
+        decoded = decode_token(mfa_token)
+    except Exception:
+        return jsonify({"error": "Invalid or expired MFA token"}), 401
+
+    if decoded.get("purpose") != _MFA_PENDING:
+        return jsonify({"error": "Invalid token type"}), 401
+
+    user_id = decoded.get("sub")
+    user = User.query.get(user_id)
+    if not user or not user.is_active or not user.mfa_secret:
+        return jsonify({"error": "User not found or MFA not configured"}), 401
+
+    totp = pyotp.TOTP(user.mfa_secret)
+    if not totp.verify(code, valid_window=1):
+        _audit("mfa_failed", user_id=user.id)
+        db.session.commit()
+        return jsonify({"error": "Invalid or expired TOTP code"}), 401
+
+    user.last_login = datetime.now(timezone.utc)
+    _audit("login_success", user_id=user.id)
+    db.session.commit()
+
+    access_token = create_access_token(
+        identity=user.id,
+        additional_claims={"role": user.role, "email": user.email}
+    )
+    refresh_token = create_refresh_token(identity=user.id)
+    return jsonify({
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "user": user.to_dict(),
+    }), 200
+
+
+@auth_bp.route("/mfa/disable", methods=["POST"])
+@jwt_required()
+def mfa_disable():
+    """Disable MFA. Requires current password for confirmation."""
+    identity = get_jwt_identity()
+    user = User.query.get(identity)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    if not user.check_password(data.get("password", "")):
+        return jsonify({"error": "Password confirmation required"}), 401
+
+    user.mfa_enabled = False
+    user.mfa_secret = None
+    _audit("mfa_disabled", user_id=user.id)
+    db.session.commit()
+    return jsonify({"message": "MFA disabled"}), 200
