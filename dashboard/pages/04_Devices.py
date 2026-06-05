@@ -386,6 +386,12 @@ def _render_agent_row(device: dict, tab_key: str = ""):
         if show_hist:
             st.session_state["selected_device_id"] = device["id"]
             mdata, merr = client.get_device_metrics(device["id"], hours=24)
+            fallback_hours = None
+            if not merr and not mdata:
+                # 24h window empty — try 7 days
+                mdata, merr = client.get_device_metrics(device["id"], hours=168)
+                if mdata:
+                    fallback_hours = 168
             if merr or not mdata:
                 st.warning("No metric history available.")
             else:
@@ -394,6 +400,11 @@ def _render_agent_row(device: dict, tab_key: str = ""):
                     st.info("No metrics recorded yet.")
                 else:
                     df["collected_at"] = pd.to_datetime(df["collected_at"])
+                    if fallback_hours:
+                        oldest = df["collected_at"].min()
+                        hours_ago = int((pd.Timestamp.now(tz="UTC") - oldest.tz_convert("UTC")).total_seconds() / 3600)
+                        st.info(f"No data in last 24 h — showing last {len(df)} readings (oldest ~{hours_ago}h ago). Agent may be offline.")
+                    title_text = "7-day usage history (agent offline)" if fallback_hours else "24-hour usage history"
                     fig2 = px.line(
                         df, x="collected_at",
                         y=["cpu_pct", "ram_pct", "disk_pct"],
@@ -409,7 +420,7 @@ def _render_agent_row(device: dict, tab_key: str = ""):
                     plotly_layout(fig2, height=280)
                     fig2.update_layout(
                         paper_bgcolor="#FFF",
-                        title=dict(text="24-hour usage history",
+                        title=dict(text=title_text,
                                    font=dict(size=12, color="#6B7B6B")),
                     )
                     st.plotly_chart(fig2, use_container_width=True, key=f"history_{tab_key}_{device.get('id')}")
