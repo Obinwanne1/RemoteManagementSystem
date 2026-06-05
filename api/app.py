@@ -62,6 +62,7 @@ def create_app(config_name=None):
     # Import models so Alembic detects them
     with app.app_context():
         from models import user, device, customer, alert, ticket, patch, script, automation, report, billing, audit  # noqa
+        from models import org_settings  # noqa
         try:
             from utils.builtin_scripts import ensure_builtin_scripts
             ensure_builtin_scripts()
@@ -72,6 +73,11 @@ def create_app(config_name=None):
             ensure_superadmin()
         except Exception:
             app.logger.warning("Could not ensure superadmin (DB may not be ready yet)")
+        try:
+            from models.org_settings import ensure_org_settings
+            ensure_org_settings()
+        except Exception:
+            app.logger.warning("Could not ensure org settings (DB may not be ready yet)")
 
     # Register blueprints
     from routes.auth import auth_bp
@@ -88,6 +94,7 @@ def create_app(config_name=None):
     from routes.network import network_bp
     from routes.dashboard import dashboard_bp
     from routes.admin import admin_bp
+    from routes.org_settings import org_settings_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(agents_bp, url_prefix="/api/agents")
@@ -103,6 +110,7 @@ def create_app(config_name=None):
     app.register_blueprint(network_bp, url_prefix="/api/network")
     app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
+    app.register_blueprint(org_settings_bp, url_prefix="/api/admin")
 
     @app.route("/api/health")
     def health():

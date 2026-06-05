@@ -373,6 +373,9 @@ class RMMClient:
         params = {"customer_id": customer_id} if customer_id else {}
         return self._get("/api/billing/invoices", params=params)
 
+    def get_invoice(self, invoice_id: str):
+        return self._get(f"/api/billing/invoices/{invoice_id}")
+
     def generate_invoice(self, data: dict):
         return self._post("/api/billing/invoices/generate", data)
 
@@ -381,6 +384,52 @@ class RMMClient:
 
     def delete_invoice(self, invoice_id: str):
         return self._delete(f"/api/billing/invoices/{invoice_id}")
+
+    def get_invoice_pdf_bytes(self, invoice_id: str) -> Tuple[Optional[bytes], Optional[str]]:
+        """Download invoice PDF. Returns (bytes, None) or (None, error_str)."""
+        url = f"{self.base}/api/billing/invoices/{invoice_id}/pdf"
+        try:
+            resp = self.session.get(url, timeout=30)
+            if resp.status_code == 401:
+                if self._try_refresh():
+                    resp = self.session.get(url, timeout=30)
+                    if resp.ok:
+                        return resp.content, None
+                return None, "SESSION_EXPIRED"
+            resp.raise_for_status()
+            return resp.content, None
+        except Exception as e:
+            return None, str(e)
+
+    def send_invoice_email(self, invoice_id: str):
+        return self._post(f"/api/billing/invoices/{invoice_id}/send-email")
+
+    # --- Org Settings ---
+    def get_org_settings(self):
+        return self._get("/api/admin/org-settings")
+
+    def update_org_settings(self, data: dict):
+        return self._put("/api/admin/org-settings", data)
+
+    def upload_org_logo(self, file_bytes: bytes, content_type: str) -> Tuple[Any, Optional[str]]:
+        """Upload org logo. Bypasses JSON session headers for multipart."""
+        url = f"{self.base}/api/admin/org-settings/logo"
+        try:
+            resp = requests.put(
+                url,
+                files={"file": ("logo", file_bytes, content_type)},
+                headers={"Authorization": f"Bearer {self._token}"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json(), None
+        except requests.HTTPError as e:
+            return None, f"HTTP {e.response.status_code}: {e.response.text}"
+        except requests.RequestException as e:
+            return None, str(e)
+
+    def delete_org_logo(self):
+        return self._request("DELETE", "/api/admin/org-settings/logo")
 
     # --- Network / Agentless ---
     def get_platform_counts(self):

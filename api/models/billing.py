@@ -17,6 +17,10 @@ class Invoice(db.Model):
     total = db.Column(db.Numeric(10, 2), default=0)
     status = db.Column(db.String(20), default="draft")  # draft/sent/paid/overdue
     line_items = db.Column(db.JSON, default=list)
+    invoice_number = db.Column(db.String(20), unique=True, nullable=True, index=True)
+    due_date = db.Column(db.DateTime(timezone=True), nullable=True)
+    tax_rate = db.Column(db.Numeric(5, 4), default=0.0)
+    notes = db.Column(db.Text, nullable=True)
     sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
     paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -25,15 +29,19 @@ class Invoice(db.Model):
         return {
             "id": self.id,
             "customer_id": self.customer_id,
+            "invoice_number": self.invoice_number,
             "period_start": self.period_start.isoformat() if self.period_start else None,
             "period_end": self.period_end.isoformat() if self.period_end else None,
+            "due_date": self.due_date.isoformat() if self.due_date else None,
             "device_count": self.device_count,
             "per_device_rate": float(self.per_device_rate),
             "subtotal": float(self.subtotal),
             "tax": float(self.tax),
+            "tax_rate": float(self.tax_rate) if self.tax_rate is not None else 0.0,
             "total": float(self.total),
             "status": self.status,
             "line_items": self.line_items,
+            "notes": self.notes,
             "sent_at": self.sent_at.isoformat() if self.sent_at else None,
             "paid_at": self.paid_at.isoformat() if self.paid_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
