@@ -28,9 +28,15 @@ def ensure_superadmin():
 
     existing = User.query.filter_by(email=SUPERADMIN_EMAIL).first()
     if existing:
-        # Ensure role hasn't been downgraded somehow
+        changed = False
         if existing.role != "superadmin":
             existing.role = "superadmin"
+            changed = True
+        # Sync password if env var changed (check_password is cheap — bcrypt verify)
+        if not existing.check_password(SUPERADMIN_PASSWORD):
+            existing.set_password(SUPERADMIN_PASSWORD)
+            changed = True
+        if changed:
             db.session.commit()
         return
 
