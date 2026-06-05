@@ -42,9 +42,10 @@
 │  Flask API  http://localhost:5000                                 │
 │  api/app.py  (application factory)                               │
 │  api/routes/*.py   (13 blueprints)                               │
-│  api/models/*.py   (11 SQLAlchemy models, 21 tables)             │
+│  api/models/*.py   (13 SQLAlchemy models, 23 tables)             │
 │  api/utils/builtin_scripts.py   (7 built-in PS1 scripts)         │
 │  api/utils/notifications.py     (SMTP email, opt-in)             │
+│  api/utils/invoice_pdf.py       (ReportLab A4 PDF generator)     │
 │  api/utils/oui.py               (MAC vendor lookup, 500+ entries)│
 │  api/tasks/network_tasks.py     (ICMP scan + agentless ping beat) │
 └──────┬──────────────┬───────────────────┬────────────────────────┘
@@ -347,6 +348,51 @@ created_at    DateTime
 # IMPORTANT: to_dict() must include "file_path" for dashboard download to work
 ```
 
+#### `Invoice` (`invoices`)
+```python
+id             String/UUID PK
+customer_id    FK → customers
+invoice_number String(20) UNIQUE nullable index   # INV-YYYY-NNNN, auto-generated on create
+period_start   DateTime(timezone=True) NOT NULL
+period_end     DateTime(timezone=True) NOT NULL
+due_date       DateTime(timezone=True) nullable    # defaults to period_end + 30 days
+device_count   Integer
+per_device_rate Numeric(10,2) NOT NULL
+tax_rate       Numeric(5,4) default 0.0            # stored as decimal: 0.20 = 20%
+notes          Text nullable                        # per-invoice custom notes
+subtotal       Numeric(10,2)                        # device_count × per_device_rate
+tax_amount     Numeric(10,2)                        # subtotal × tax_rate
+total          Numeric(10,2)                        # subtotal + tax_amount
+status         String(20) default 'draft'           # draft | sent | paid | overdue
+sent_at        DateTime nullable
+paid_at        DateTime nullable
+created_at     DateTime
+```
+
+Sequential invoice number generation (`api/routes/billing.py:_next_invoice_number()`):
+```python
+year = datetime.now(timezone.utc).year
+count = Invoice.query.filter(Invoice.invoice_number.like(f"INV-{year}-%")).count()
+return f"INV-{year}-{count + 1:04d}"
+```
+
+#### `OrgSettings` (`org_settings`)
+Singleton model — always `id=1`. Seeded at API startup by `ensure_org_settings()`.
+```python
+id              Integer PK default 1
+company_name    String(255) default ""
+company_address Text default ""
+company_email   String(255) default ""
+company_phone   String(50) default ""
+logo_data       Text nullable            # base64 data URI (same pattern as user avatar)
+payment_terms   String(100) default "Net 30"
+bank_details    Text default ""
+footer_notes    Text default "Thank you for your business!"
+```
+
+`logo_bytes()` method decodes the base64 data URI and returns raw bytes for use in PDF generation.
+`ensure_org_settings()` is called from `create_app()` — safe to call multiple times (no-op if row exists).
+
 ---
 
 ## 3. API Endpoints
@@ -457,9 +503,21 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 ### Billing (`/api/billing/`)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/invoices` | JWT | List invoices |
-| POST | `/invoices` | JWT admin | Create invoice |
-| PUT | `/invoices/<id>` | JWT admin | Update invoice status |
+| GET | `/invoices` | JWT | List invoices (optional `?customer_id=`) |
+| POST | `/invoices` | JWT admin | Generate invoice — auto-assigns `invoice_number` (INV-YYYY-NNNN), accepts `tax_rate`, `due_date`, `notes` |
+| GET | `/invoices/<id>` | JWT | Get single invoice |
+| PUT | `/invoices/<id>/status` | JWT admin | Update invoice status (draft→sent→paid/overdue) |
+| DELETE | `/invoices/<id>` | JWT admin | Delete invoice |
+| GET | `/invoices/<id>/pdf` | JWT | Generate and stream A4 PDF (Content-Disposition: attachment) |
+| POST | `/invoices/<id>/send-email` | JWT admin | Email PDF to customer via SMTP. Returns 503 if `SMTP_HOST` not configured. |
+
+### Org Settings (`/api/admin/`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/org-settings` | JWT admin | Return OrgSettings singleton (includes `logo_data` base64 URI) |
+| PUT | `/org-settings` | JWT admin | Update text fields (company name, address, email, phone, payment terms, bank details, footer notes) |
+| PUT | `/org-settings/logo` | JWT admin | Upload logo — multipart file upload, Pillow-resized to max 400px wide, stored as base64 |
+| DELETE | `/org-settings/logo` | JWT admin | Remove logo (sets `logo_data = null`) |
 
 ### Customers (`/api/customers/`)
 | Method | Path | Auth | Description |
@@ -926,6 +984,17 @@ def _request(self, method, path, **kwargs):
 | `get_server_ips()` | GET | `/api/admin/server_ips` |
 | `update_device(device_id, data)` | PUT | `/api/devices/<id>` |
 | `delete_device(device_id)` | DELETE | `/api/devices/<id>` |
+| `list_invoices(customer_id=None)` | GET | `/api/billing/invoices` |
+| `get_invoice(invoice_id)` | GET | `/api/billing/invoices/<id>` |
+| `generate_invoice(data)` | POST | `/api/billing/invoices` |
+| `update_invoice_status(invoice_id, status)` | PUT | `/api/billing/invoices/<id>/status` |
+| `delete_invoice(invoice_id)` | DELETE | `/api/billing/invoices/<id>` |
+| `get_invoice_pdf_bytes(invoice_id)` | GET | `/api/billing/invoices/<id>/pdf` — returns `(bytes, error)`, bypasses JSON parsing |
+| `send_invoice_email(invoice_id)` | POST | `/api/billing/invoices/<id>/send-email` |
+| `get_org_settings()` | GET | `/api/admin/org-settings` |
+| `update_org_settings(data)` | PUT | `/api/admin/org-settings` |
+| `upload_org_logo(file_bytes, content_type)` | PUT | `/api/admin/org-settings/logo` — uses `requests.put(files=)`, bypasses JSON headers |
+| `delete_org_logo()` | DELETE | `/api/admin/org-settings/logo` |
 
 ### HTTPS Warning
 
