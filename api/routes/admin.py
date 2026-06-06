@@ -38,7 +38,7 @@ def list_users():
     if err:
         return err, code
 
-    users = User.query.order_by(User.created_at.desc()).all()
+    users = User.query.filter_by(is_active=True).order_by(User.created_at.desc()).all()
     return jsonify({"users": [u.to_dict() for u in users], "total": len(users)})
 
 
