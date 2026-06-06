@@ -1,0 +1,1 @@
+"#### `sync_patch_status()`\n- Iterates all active `PatchPolicy` records\n- For each policy's scope (customer or global):\n  - Auto-approves `PatchRecord` rows where `status='pending'` matching policy flags\n  - Respects `excluded_software` name patterns\n\n#### `deploy_patches(device_id, patch_ids)`\n- Loo"
