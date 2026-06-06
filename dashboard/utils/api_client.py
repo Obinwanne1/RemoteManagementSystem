@@ -373,8 +373,9 @@ class RMMClient:
         return self._get("/api/patches/summary")
 
     # --- Admin / Users ---
-    def list_users(self):
-        return self._get("/api/admin/users")
+    def list_users(self, include_inactive: bool = False):
+        url = "/api/admin/users?include_inactive=true" if include_inactive else "/api/admin/users"
+        return self._get(url)
 
     def create_user(self, data: dict):
         return self._post("/api/admin/users", data)
@@ -387,6 +388,12 @@ class RMMClient:
 
     def unlock_user(self, user_id: str):
         return self._post(f"/api/admin/users/{user_id}/unlock")
+
+    def deactivate_user(self, user_id: str):
+        return self._post(f"/api/admin/users/{user_id}/deactivate")
+
+    def reactivate_user(self, user_id: str):
+        return self._post(f"/api/admin/users/{user_id}/reactivate")
 
     def get_org_token(self):
         return self._get("/api/admin/org-token")

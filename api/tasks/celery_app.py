@@ -61,6 +61,14 @@ def make_celery(app=None):
                 "task": "tasks.alert_tasks.unlock_expired_accounts",
                 "schedule": 60.0,
             },
+            "deactivate-dormant-accounts-daily": {
+                "task": "tasks.alert_tasks.deactivate_dormant_accounts",
+                "schedule": 86400.0,
+            },
+            "check-password-expiry-daily": {
+                "task": "tasks.alert_tasks.check_password_expiry",
+                "schedule": 86400.0,
+            },
         },
     )
 

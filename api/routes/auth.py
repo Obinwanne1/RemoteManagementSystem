@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import io
 import os
 from datetime import datetime, timezone, timedelta
@@ -11,10 +12,16 @@ import pyotp
 from extensions import db, limiter
 from models.user import User
 from models.audit import AuditLog
-from utils.notifications import send_account_locked_email, send_password_reset_email
+from utils.notifications import (
+    send_account_locked_email, send_password_reset_email,
+    send_login_anomaly_alert,
+)
+from utils.password import password_error_response
 
-# Short-lived JWT purpose claim used for the MFA pending step
+# Short-lived JWT purpose claims
 _MFA_PENDING = "mfa_pending"
+_PASSWORD_RESET = "password_reset"
+_PASSWORD_EXPIRY_DAYS = 90
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -29,6 +36,51 @@ def _audit(action, user_id=None, payload=None):
         payload=payload,
     )
     db.session.add(log)
+
+
+def _device_fp() -> str:
+    """Deterministic device fingerprint from User-Agent + Accept-Language."""
+    ua = request.headers.get("User-Agent", "")
+    lang = request.headers.get("Accept-Language", "")
+    return hashlib.sha256(f"{ua}|{lang}".encode()).hexdigest()[:32]
+
+
+def _track_session(user, refresh_token: str):
+    """Upsert one session record per user+device. Invalidates previous session on same device."""
+    from models.user_session import UserSession
+    fp = _device_fp()
+    try:
+        jti = decode_token(refresh_token)["jti"]
+    except Exception:
+        return
+    UserSession.query.filter_by(user_id=user.id, device_fp=fp).delete()
+    db.session.add(UserSession(user_id=user.id, device_fp=fp, refresh_jti=jti))
+
+
+def _check_new_ip(user):
+    """Record login IP. Alert admin + user if IP is unrecognised (not first login)."""
+    ip = request.remote_addr or ""
+    if not ip:
+        return
+    known = list(user.known_ips or [])
+    if ip not in known:
+        if known:  # skip alert on very first login
+            admin_emails = [
+                u.email for u in User.query.filter(
+                    User.role == "admin", User.is_active == True
+                ).all()
+            ]
+            send_login_anomaly_alert(user.email, ip, admin_emails)
+        known = ([ip] + known)[:10]
+        user.known_ips = known
+
+
+def _check_password_expiry(user):
+    """Flag must_change_password if password is 90+ days old."""
+    if user.password_changed_at and user.role != "superadmin":
+        age = datetime.now(timezone.utc) - user.password_changed_at
+        if age.days >= _PASSWORD_EXPIRY_DAYS:
+            user.must_change_password = True
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -90,6 +142,9 @@ def login():
     user.is_locked = False
     user.locked_until = None
 
+    # Check password expiry (superadmin exempt)
+    _check_password_expiry(user)
+
     # If MFA is enabled, issue a short-lived pending token — full JWT comes after TOTP
     if user.mfa_enabled and user.mfa_secret:
         db.session.commit()
@@ -102,13 +157,16 @@ def login():
 
     user.last_login = datetime.now(timezone.utc)
     _audit("login_success", user_id=user.id)
-    db.session.commit()
 
     access_token = create_access_token(
         identity=user.id,
         additional_claims={"role": user.role, "email": user.email}
     )
     refresh_token = create_refresh_token(identity=user.id)
+
+    _check_new_ip(user)
+    _track_session(user, refresh_token)
+    db.session.commit()
 
     return jsonify({
         "access_token": access_token,
@@ -125,11 +183,31 @@ def refresh():
     if not user or not user.is_active:
         return jsonify({"error": "User not found"}), 401
 
+    # Per-device session validation
+    from models.user_session import UserSession
+    jti = get_jwt()["jti"]
+    fp = _device_fp()
+    session = UserSession.query.filter_by(user_id=identity, device_fp=fp).first()
+    if session and session.refresh_jti != jti:
+        return jsonify({"error": "Session invalidated — please log in again"}), 401
+
     access_token = create_access_token(
         identity=user.id,
         additional_claims={"role": user.role, "email": user.email}
     )
     return jsonify({"access_token": access_token}), 200
+
+
+@auth_bp.route("/logout", methods=["POST"])
+@jwt_required()
+def logout():
+    """Invalidate the current device session."""
+    from models.user_session import UserSession
+    identity = get_jwt_identity()
+    fp = _device_fp()
+    UserSession.query.filter_by(user_id=identity, device_fp=fp).delete()
+    db.session.commit()
+    return jsonify({"message": "Logged out"}), 200
 
 
 @auth_bp.route("/me", methods=["GET"])
@@ -153,11 +231,13 @@ def change_password():
         return jsonify({"error": "Current password incorrect"}), 400
 
     new_pw = data.get("new_password", "")
-    if len(new_pw) < 8:
-        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    errors, msg = password_error_response(new_pw)
+    if errors:
+        return jsonify({"error": msg}), 400
 
     user.set_password(new_pw)
     user.must_change_password = False
+    user.password_changed_at = datetime.now(timezone.utc)
     _audit("password_changed", user_id=user.id)
     db.session.commit()
     return jsonify({"message": "Password updated"}), 200
@@ -174,11 +254,13 @@ def force_change_password():
 
     data = request.get_json(silent=True) or {}
     new_pw = data.get("new_password", "")
-    if len(new_pw) < 8:
-        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    errors, msg = password_error_response(new_pw)
+    if errors:
+        return jsonify({"error": msg}), 400
 
     user.set_password(new_pw)
     user.must_change_password = False
+    user.password_changed_at = datetime.now(timezone.utc)
     _audit("force_password_changed", user_id=user.id)
     db.session.commit()
     return jsonify({"message": "Password updated"}), 200
@@ -197,7 +279,6 @@ def mfa_setup():
         return jsonify({"error": "User not found"}), 404
 
     secret = pyotp.random_base32()
-    # Store provisionally — not active until verified
     user.mfa_secret = secret
     db.session.commit()
 
@@ -250,8 +331,6 @@ def mfa_login():
     if not mfa_token or not code:
         return jsonify({"error": "mfa_token and code required"}), 400
 
-    # Validate the pending MFA token
-    from flask_jwt_extended import decode_token
     try:
         decoded = decode_token(mfa_token)
     except Exception:
@@ -272,14 +351,19 @@ def mfa_login():
         return jsonify({"error": "Invalid or expired TOTP code"}), 401
 
     user.last_login = datetime.now(timezone.utc)
+    _check_password_expiry(user)
     _audit("login_success", user_id=user.id)
-    db.session.commit()
 
     access_token = create_access_token(
         identity=user.id,
         additional_claims={"role": user.role, "email": user.email}
     )
     refresh_token = create_refresh_token(identity=user.id)
+
+    _check_new_ip(user)
+    _track_session(user, refresh_token)
+    db.session.commit()
+
     return jsonify({
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -310,8 +394,7 @@ def mfa_disable():
 @auth_bp.route("/me/avatar", methods=["PUT"])
 @jwt_required()
 def upload_avatar():
-    """Upload or replace profile avatar. Accepts multipart/form-data with 'file' field.
-    Resizes to 200x200 PNG, stores as base64 data URI in the database."""
+    """Upload or replace profile avatar. Accepts multipart/form-data with 'file' field."""
     from PIL import Image
 
     identity = get_jwt_identity()
@@ -326,19 +409,16 @@ def upload_avatar():
     if f.content_type not in ("image/jpeg", "image/png", "image/gif", "image/webp"):
         return jsonify({"error": "Unsupported image type. Use JPEG, PNG, GIF, or WebP."}), 400
 
-    raw = f.read(2 * 1024 * 1024 + 1)  # read max 2MB + 1 byte
+    raw = f.read(2 * 1024 * 1024 + 1)
     if len(raw) > 2 * 1024 * 1024:
         return jsonify({"error": "Image must be under 2 MB"}), 400
 
     try:
         img = Image.open(io.BytesIO(raw)).convert("RGBA")
         img.thumbnail((200, 200), Image.LANCZOS)
-
-        # Paste onto white background so RGBA → PNG is clean
         bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
         bg.paste(img, mask=img.split()[3])
         bg = bg.convert("RGB")
-
         buf = io.BytesIO()
         bg.save(buf, format="PNG", optimize=True)
         b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
@@ -367,9 +447,6 @@ def delete_avatar():
 
 
 # ── Password reset endpoints ──────────────────────────────────────────────────
-
-_PASSWORD_RESET = "password_reset"
-
 
 @auth_bp.route("/password-reset/request", methods=["POST"])
 @limiter.limit("5 per minute")
@@ -406,8 +483,9 @@ def password_reset_confirm():
     if not token or not new_password:
         return jsonify({"error": "token and new_password are required"}), 400
 
-    if len(new_password) < 8:
-        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    errors, msg = password_error_response(new_password)
+    if errors:
+        return jsonify({"error": msg}), 400
 
     try:
         decoded = decode_token(token)
@@ -424,7 +502,7 @@ def password_reset_confirm():
 
     user.set_password(new_password)
     user.must_change_password = False
-    # Clear any lockout state so the user can log in immediately
+    user.password_changed_at = datetime.now(timezone.utc)
     user.is_locked = False
     user.locked_until = None
     user.failed_login_attempts = 0
