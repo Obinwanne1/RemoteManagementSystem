@@ -110,10 +110,45 @@ class RMMClient:
                 json={"email": email, "password": password},
                 timeout=15,
             )
+            if resp.status_code == 423:
+                return resp.json(), None  # account_locked — caller inspects data["error"]
             resp.raise_for_status()
             return resp.json(), None
         except requests.HTTPError as e:
             return None, f"Login failed: {e.response.text}"
+        except requests.RequestException as e:
+            return None, str(e)
+
+    @staticmethod
+    def request_password_reset(email: str) -> Tuple[Any, Optional[str]]:
+        try:
+            resp = requests.post(
+                f"{API_BASE}/api/auth/password-reset/request",
+                json={"email": email},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            return resp.json(), None
+        except requests.HTTPError as e:
+            return None, f"Request failed: {e.response.text}"
+        except requests.RequestException as e:
+            return None, str(e)
+
+    @staticmethod
+    def confirm_password_reset(token: str, new_password: str) -> Tuple[Any, Optional[str]]:
+        try:
+            resp = requests.post(
+                f"{API_BASE}/api/auth/password-reset/confirm",
+                json={"token": token, "new_password": new_password},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            return resp.json(), None
+        except requests.HTTPError as e:
+            try:
+                return None, requests.get(e.response.url).json().get("error", e.response.text)
+            except Exception:
+                return None, e.response.text
         except requests.RequestException as e:
             return None, str(e)
 
@@ -349,6 +384,9 @@ class RMMClient:
 
     def delete_user(self, user_id: str):
         return self._delete(f"/api/admin/users/{user_id}")
+
+    def unlock_user(self, user_id: str):
+        return self._post(f"/api/admin/users/{user_id}/unlock")
 
     def get_org_token(self):
         return self._get("/api/admin/org-token")

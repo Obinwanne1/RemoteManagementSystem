@@ -16,6 +16,9 @@ class User(db.Model):
     mfa_secret = db.Column(db.String(255), nullable=True)
     mfa_enabled = db.Column(db.Boolean, default=False)
     must_change_password = db.Column(db.Boolean, default=False, nullable=False, server_default="false")
+    failed_login_attempts = db.Column(db.Integer, nullable=False, server_default="0", default=0)
+    is_locked = db.Column(db.Boolean, nullable=False, server_default="false", default=False)
+    locked_until = db.Column(db.DateTime(timezone=True), nullable=True)
     avatar_data = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_login = db.Column(db.DateTime(timezone=True), nullable=True)
@@ -42,4 +45,7 @@ class User(db.Model):
             "avatar_data": self.avatar_data,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
+            "failed_login_attempts": self.failed_login_attempts,
+            "is_locked": self.is_locked,
+            "locked_until": self.locked_until.isoformat() if self.locked_until else None,
         }
