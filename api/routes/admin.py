@@ -6,6 +6,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
 from models.user import User
 from models.audit import AuditLog
+from utils.password import password_error_response
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -38,7 +39,11 @@ def list_users():
     if err:
         return err, code
 
-    users = User.query.filter_by(is_active=True).order_by(User.created_at.desc()).all()
+    include_inactive = request.args.get("include_inactive", "false").lower() == "true"
+    query = User.query if include_inactive else User.query.filter_by(is_active=True)
+    # Always exclude hard-deleted (scrambled email)
+    query = query.filter(~User.email.like("__deleted__%"))
+    users = query.order_by(User.created_at.desc()).all()
     return jsonify({"users": [u.to_dict() for u in users], "total": len(users)})
 
 
@@ -59,8 +64,9 @@ def create_user():
         return jsonify({"error": "email, full_name, and password are required"}), 400
     if role not in ("admin", "technician", "viewer"):
         return jsonify({"error": "role must be admin, technician, or viewer"}), 400
-    if len(password) < 8:
-        return jsonify({"error": "password must be at least 8 characters"}), 400
+    errors, msg = password_error_response(password)
+    if errors:
+        return jsonify({"error": msg}), 400
     if User.query.filter_by(email=email).first():
         return jsonify({"error": "Email already in use"}), 409
 
@@ -97,8 +103,9 @@ def update_user(user_id):
     if "is_active" in data:
         user.is_active = bool(data["is_active"])
     if data.get("password"):
-        if len(data["password"]) < 8:
-            return jsonify({"error": "password must be at least 8 characters"}), 400
+        errors, msg = password_error_response(data["password"])
+        if errors:
+            return jsonify({"error": msg}), 400
         user.set_password(data["password"])
     if "must_change_password" in data:
         user.must_change_password = bool(data["must_change_password"])
@@ -129,6 +136,51 @@ def delete_user(user_id):
     user.email = f"__deleted__{user.id}@rmm.local"
     db.session.commit()
     return jsonify({"message": "User deleted"})
+
+
+@admin_bp.route("/users/<user_id>/deactivate", methods=["POST"])
+@jwt_required()
+def deactivate_user(user_id):
+    admin, err, code = _require_admin()
+    if err:
+        return err, code
+
+    if user_id == admin.id:
+        return jsonify({"error": "Cannot deactivate your own account"}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    if user.role == "superadmin":
+        return jsonify({"error": "Superadmin account cannot be deactivated"}), 403
+    if not user.is_active:
+        return jsonify({"error": "Account is already inactive"}), 400
+
+    user.is_active = False
+    _audit("DEACTIVATE", admin.id, resource_id=user_id, payload={"email": user.email})
+    db.session.commit()
+    return jsonify({"message": "Account deactivated", "user": user.to_dict()})
+
+
+@admin_bp.route("/users/<user_id>/reactivate", methods=["POST"])
+@jwt_required()
+def reactivate_user(user_id):
+    admin, err, code = _require_admin()
+    if err:
+        return err, code
+
+    user = User.query.filter_by(id=user_id).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    if user.role == "superadmin":
+        return jsonify({"error": "Superadmin account cannot be modified via the API"}), 403
+    if user.is_active:
+        return jsonify({"error": "Account is already active"}), 400
+
+    user.is_active = True
+    _audit("REACTIVATE", admin.id, resource_id=user_id, payload={"email": user.email})
+    db.session.commit()
+    return jsonify({"message": "Account reactivated", "user": user.to_dict()})
 
 
 @admin_bp.route("/users/<user_id>/unlock", methods=["POST"])

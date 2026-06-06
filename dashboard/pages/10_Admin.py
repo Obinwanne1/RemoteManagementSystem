@@ -362,15 +362,23 @@ with tab_users:
 
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
+    # ── Toggle: show inactive ─────────────────────────────────────────────────
+    show_inactive = st.checkbox("Show inactive accounts", value=False, key="users_show_inactive")
+
     # ── User list ─────────────────────────────────────────────────────────────
-    users_data, users_err = client.list_users()
+    users_data, users_err = client.list_users(include_inactive=show_inactive)
     if users_err:
         st.warning(f"Could not load users — {users_err}")
     else:
         user_list = users_data.get("users", []) if isinstance(users_data, dict) else users_data
 
+        active_count = sum(1 for u in user_list if u.get("is_active", True))
+        inactive_count = len(user_list) - active_count
+        count_label = f"<b>{active_count}</b> active"
+        if show_inactive and inactive_count:
+            count_label += f" · <b>{inactive_count}</b> inactive"
         st.markdown(
-            f'<div style="font-size:0.8rem;color:#6B7B6B;margin-bottom:0.6rem"><b>{len(user_list)}</b> user(s)</div>',
+            f'<div style="font-size:0.8rem;color:#6B7B6B;margin-bottom:0.6rem">{count_label}</div>',
             unsafe_allow_html=True,
         )
 
@@ -397,14 +405,16 @@ with tab_users:
             elif u_attempts > 0:
                 extra_badges += f'<span style="background:#F59E0B20;color:#B45309;padding:2px 8px;border-radius:5px;font-size:0.68rem;font-weight:700;border:1px solid #F59E0B33;margin-left:4px">⚠ {u_attempts} attempt(s)</span>'
 
+            border_color = "#FECACA" if u_locked else ("#E5E7EB" if not uactive else "#DDE8DD")
+
             with st.container():
                 col_info, col_actions = st.columns([4, 2])
                 with col_info:
                     st.markdown(
-                        f'<div style="background:#FFFFFF;border:1px solid {"#FECACA" if u_locked else "#DDE8DD"};border-radius:10px;'
+                        f'<div style="background:#FFFFFF;border:1px solid {border_color};border-radius:10px;'
                         f'padding:0.75rem 1rem;margin-bottom:0.5rem">'
                         f'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
-                        f'<div style="font-weight:600;color:#1A1A1A;font-size:0.88rem">{uname}</div>'
+                        f'<div style="font-weight:600;color:{"#9CA3AF" if not uactive else "#1A1A1A"};font-size:0.88rem">{uname}</div>'
                         f'<span style="background:{rc}1A;color:{rc};padding:2px 8px;border-radius:5px;font-size:0.68rem;font-weight:700;border:1px solid {rc}33">{urole.upper()}</span>'
                         + extra_badges
                         + f'</div>'
@@ -420,6 +430,15 @@ with tab_users:
                             'border:1px solid #7C3AED33">Protected — use CLI</div>',
                             unsafe_allow_html=True,
                         )
+                    elif not uactive:
+                        # Inactive user — only show Reactivate
+                        if st.button("Reactivate", key=f"react_btn_{uid}", use_container_width=True, type="primary"):
+                            _, rerr = client.reactivate_user(uid)
+                            if rerr:
+                                st.error(f"Reactivate failed: {rerr}")
+                            else:
+                                st.success(f"{uname}'s account reactivated.")
+                                st.rerun()
                     else:
                         if u_locked:
                             if st.button("Unlock Account", key=f"unlock_btn_{uid}", use_container_width=True, type="primary"):
@@ -429,18 +448,40 @@ with tab_users:
                                 else:
                                     st.success(f"{uname}'s account unlocked.")
                                     st.rerun()
-                        ea, da = st.columns(2)
+                        ea, da, dda = st.columns(3)
                         with ea:
                             if st.button("Edit", key=f"edit_btn_{uid}", use_container_width=True):
                                 st.session_state[f"edit_open_{uid}"] = not st.session_state.get(f"edit_open_{uid}", False)
                         with da:
                             if not is_self:
-                                if st.button("Delete", key=f"del_btn_{uid}", use_container_width=True, type="primary"):
+                                if st.button("Deactivate", key=f"deact_btn_{uid}", use_container_width=True):
+                                    st.session_state[f"deact_confirm_{uid}"] = True
+                        with dda:
+                            if not is_self:
+                                if st.button("Delete", key=f"del_btn_{uid}", use_container_width=True):
                                     st.session_state[f"del_confirm_{uid}"] = True
+
+                # Deactivate confirmation
+                if st.session_state.get(f"deact_confirm_{uid}"):
+                    st.warning(f"Deactivate **{uname}** ({uemail})? They won't be able to log in. Reversible.")
+                    cy, cn = st.columns(2)
+                    with cy:
+                        if st.button("Yes, deactivate", key=f"deact_yes_{uid}", use_container_width=True):
+                            _, derr = client.deactivate_user(uid)
+                            if derr:
+                                st.error(f"Failed: {derr}")
+                            else:
+                                st.success("Account deactivated.")
+                                st.session_state.pop(f"deact_confirm_{uid}", None)
+                                st.rerun()
+                    with cn:
+                        if st.button("Cancel", key=f"deact_no_{uid}", use_container_width=True):
+                            st.session_state.pop(f"deact_confirm_{uid}", None)
+                            st.rerun()
 
                 # Delete confirmation
                 if st.session_state.get(f"del_confirm_{uid}"):
-                    st.warning(f"Delete **{uname}** ({uemail})? This cannot be undone.")
+                    st.warning(f"Permanently delete **{uname}** ({uemail})? This cannot be undone.")
                     cy, cn = st.columns(2)
                     with cy:
                         if st.button("Yes, delete", key=f"del_yes_{uid}", use_container_width=True):
@@ -465,8 +506,8 @@ with tab_users:
                             e_role = st.selectbox("Role", ["technician", "viewer", "admin"],
                                                   index=["technician","viewer","admin"].index(urole) if urole in ["technician","viewer","admin"] else 0)
                         with ec2:
-                            e_active = st.checkbox("Active", value=uactive)
-                            e_pass   = st.text_input("New Password (leave blank to keep)", type="password")
+                            e_pass = st.text_input("New Password (leave blank to keep)", type="password",
+                                                   help="Min 8 chars · 1 uppercase · 1 number · 1 special char")
                         e_must_change = st.checkbox(
                             "Require password change on next login",
                             value=u.get("must_change_password", False),
@@ -474,7 +515,7 @@ with tab_users:
                         )
                         save = st.form_submit_button("Save Changes", use_container_width=True)
                         if save:
-                            payload = {"full_name": e_name, "role": e_role, "is_active": e_active,
+                            payload = {"full_name": e_name, "role": e_role,
                                        "must_change_password": e_must_change}
                             if e_pass:
                                 payload["password"] = e_pass

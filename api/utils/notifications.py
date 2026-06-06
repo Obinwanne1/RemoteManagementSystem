@@ -145,3 +145,176 @@ def send_password_reset_email(to_email: str, reset_url: str) -> bool:
     except Exception as exc:
         logger.warning("Failed to send password reset email to '%s': %s", to_email, exc)
         return False
+
+
+def send_login_anomaly_alert(user_email: str, ip: str, admin_emails: list) -> bool:
+    """Alert user + admins when login occurs from an unrecognised IP address."""
+    smtp_host = os.getenv("SMTP_HOST", "")
+    if not smtp_host:
+        return False
+
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASSWORD", "")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user or "rmm@localhost")
+
+    subject = f"[RMM Security] New login location detected: {user_email}"
+    body = (
+        f"RMM Security Alert\n\n"
+        f"A login to account {user_email} was detected from a new IP address:\n\n"
+        f"  IP Address: {ip}\n\n"
+        f"If this was you, no action is needed.\n"
+        f"If this was NOT you, contact your admin immediately to secure your account.\n\n"
+        f"---\nThis is an automated security notification from RMM System.\n"
+    )
+
+    recipients = list({user_email} | set(admin_emails))
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = smtp_from
+        msg["To"] = ", ".join(recipients)
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.ehlo()
+            if smtp_port != 25:
+                server.starttls()
+            if smtp_user:
+                server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, recipients, msg.as_string())
+
+        logger.info("Login anomaly alert sent for '%s' from IP %s", user_email, ip)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to send login anomaly alert for '%s': %s", user_email, exc)
+        return False
+
+
+def send_account_deactivated_email(to_email: str) -> bool:
+    """Notify user their account was auto-deactivated due to 30 days inactivity."""
+    smtp_host = os.getenv("SMTP_HOST", "")
+    if not smtp_host:
+        return False
+
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASSWORD", "")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user or "rmm@localhost")
+
+    subject = "[RMM] Your account has been deactivated"
+    body = (
+        f"RMM Account Notice\n\n"
+        f"Your account ({to_email}) has been automatically deactivated due to\n"
+        f"30 days of inactivity.\n\n"
+        f"To regain access, contact your system administrator to reactivate your account.\n\n"
+        f"---\nThis is an automated notification from RMM System.\n"
+    )
+
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = smtp_from
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.ehlo()
+            if smtp_port != 25:
+                server.starttls()
+            if smtp_user:
+                server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, [to_email], msg.as_string())
+
+        logger.info("Account deactivated notification sent to '%s'", to_email)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to send deactivation email to '%s': %s", to_email, exc)
+        return False
+
+
+def send_dormant_admin_alert(deactivated_emails: list, admin_emails: list) -> bool:
+    """Notify admins that dormant accounts were auto-deactivated."""
+    if not admin_emails:
+        return True
+    smtp_host = os.getenv("SMTP_HOST", "")
+    if not smtp_host:
+        return False
+
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASSWORD", "")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user or "rmm@localhost")
+
+    subject = f"[RMM] {len(deactivated_emails)} dormant account(s) deactivated"
+    account_list = "\n".join(f"  - {e}" for e in deactivated_emails)
+    body = (
+        f"RMM System Notice\n\n"
+        f"The following account(s) were automatically deactivated due to 30+ days of inactivity:\n\n"
+        f"{account_list}\n\n"
+        f"To reactivate an account: Admin Panel → Users → Show inactive → Reactivate.\n\n"
+        f"---\nThis is an automated notification from RMM System.\n"
+    )
+
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = smtp_from
+        msg["To"] = ", ".join(admin_emails)
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.ehlo()
+            if smtp_port != 25:
+                server.starttls()
+            if smtp_user:
+                server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, admin_emails, msg.as_string())
+
+        logger.info("Dormant admin alert sent: %d account(s) deactivated", len(deactivated_emails))
+        return True
+    except Exception as exc:
+        logger.warning("Failed to send dormant admin alert: %s", exc)
+        return False
+
+
+def send_password_expiry_warning(to_email: str, days_left: int) -> bool:
+    """Warn user their password expires in N days."""
+    smtp_host = os.getenv("SMTP_HOST", "")
+    if not smtp_host:
+        return False
+
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASSWORD", "")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user or "rmm@localhost")
+
+    subject = f"[RMM] Your password expires in {days_left} day(s)"
+    body = (
+        f"RMM Password Expiry Notice\n\n"
+        f"Your password for account {to_email} will expire in {days_left} day(s).\n\n"
+        f"Please log in and change your password before it expires to avoid being locked out.\n"
+        f"Go to: My Profile → Change Password\n\n"
+        f"---\nThis is an automated notification from RMM System.\n"
+    )
+
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = smtp_from
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.ehlo()
+            if smtp_port != 25:
+                server.starttls()
+            if smtp_user:
+                server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, [to_email], msg.as_string())
+
+        logger.info("Password expiry warning sent to '%s' (%d days left)", to_email, days_left)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to send expiry warning to '%s': %s", to_email, exc)
+        return False

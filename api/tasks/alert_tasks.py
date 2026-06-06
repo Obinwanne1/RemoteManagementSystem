@@ -234,3 +234,96 @@ def unlock_expired_accounts(self):
             db.session.rollback()
             logger.exception("unlock_expired_accounts failed")
             raise
+
+
+@celery.task(name="tasks.alert_tasks.deactivate_dormant_accounts", bind=True, max_retries=3)
+def deactivate_dormant_accounts(self):
+    """Daily: deactivate accounts with no login for 30+ days. Emails user + admins."""
+    from app import create_app
+    from extensions import db
+    from models.user import User
+    from sqlalchemy.exc import OperationalError
+    from utils.notifications import send_account_deactivated_email, send_dormant_admin_alert
+
+    app = create_app()
+    with app.app_context():
+        try:
+            now = datetime.now(timezone.utc)
+            threshold = now - timedelta(days=30)
+
+            dormant = User.query.filter(
+                User.is_active == True,
+                User.role != "superadmin",
+                db.or_(
+                    User.last_login < threshold,
+                    db.and_(User.last_login == None, User.created_at < threshold),
+                ),
+            ).all()
+
+            deactivated = []
+            for user in dormant:
+                user.is_active = False
+                send_account_deactivated_email(user.email)
+                deactivated.append(user.email)
+                logger.info("Auto-deactivated dormant account: %s", user.email)
+
+            if deactivated:
+                admin_emails = [
+                    u.email for u in User.query.filter(
+                        User.role == "admin", User.is_active == True
+                    ).all()
+                ]
+                send_dormant_admin_alert(deactivated, admin_emails)
+                db.session.commit()
+                logger.info("deactivate_dormant_accounts: deactivated %d account(s)", len(deactivated))
+
+            return len(deactivated)
+
+        except OperationalError as exc:
+            db.session.rollback()
+            raise self.retry(exc=exc, countdown=60)
+        except Exception:
+            db.session.rollback()
+            logger.exception("deactivate_dormant_accounts failed")
+            raise
+
+
+@celery.task(name="tasks.alert_tasks.check_password_expiry", bind=True, max_retries=3)
+def check_password_expiry(self):
+    """Daily: send 7-day expiry warning to users whose password is 83-89 days old."""
+    from app import create_app
+    from extensions import db
+    from models.user import User
+    from sqlalchemy.exc import OperationalError
+    from utils.notifications import send_password_expiry_warning
+
+    app = create_app()
+    with app.app_context():
+        try:
+            now = datetime.now(timezone.utc)
+            warning_floor = now - timedelta(days=89)   # 89 days old → 1 day left
+            warning_ceil  = now - timedelta(days=83)   # 83 days old → 7 days left
+
+            warning_users = User.query.filter(
+                User.is_active == True,
+                User.role != "superadmin",
+                User.password_changed_at != None,
+                User.password_changed_at <= warning_ceil,
+                User.password_changed_at >= warning_floor,
+                User.must_change_password == False,
+            ).all()
+
+            for user in warning_users:
+                days_left = 90 - (now - user.password_changed_at).days
+                send_password_expiry_warning(user.email, max(1, days_left))
+                logger.info("Password expiry warning sent: %s (%d days left)", user.email, days_left)
+
+            return len(warning_users)
+
+        except OperationalError as exc:
+            db.session.rollback()
+            raise self.retry(exc=exc, countdown=60)
+        except Exception:
+            db.session.rollback()
+            logger.exception("check_password_expiry failed")
+            raise

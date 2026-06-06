@@ -22,6 +22,8 @@ class User(db.Model):
     avatar_data = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_login = db.Column(db.DateTime(timezone=True), nullable=True)
+    password_changed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    known_ips = db.Column(db.JSON, nullable=True, default=list)
 
     def set_password(self, password: str):
         self.password_hash = bcrypt.hashpw(
@@ -48,4 +50,5 @@ class User(db.Model):
             "failed_login_attempts": self.failed_login_attempts,
             "is_locked": self.is_locked,
             "locked_until": self.locked_until.isoformat() if self.locked_until else None,
+            "password_changed_at": self.password_changed_at.isoformat() if self.password_changed_at else None,
         }
