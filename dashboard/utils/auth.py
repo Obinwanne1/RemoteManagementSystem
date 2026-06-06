@@ -74,18 +74,23 @@ def require_auth() -> RMMClient:
 
 
 def login(email: str, password: str) -> str:
-    """Attempt login. Returns 'ok', 'mfa_required', or 'error'.
+    """Attempt login. Returns 'ok', 'mfa_required', 'locked', or 'error'.
 
     On success tokens are stored in session state and written to URL once for
     F5 handoff. On MFA required, mfa_pending_token is stored in session state.
+    On account locked, login_locked_until is stored in session state.
     require_auth() strips URL tokens after the first successful restore."""
     data, err = RMMClient.login(email, password)
     if err:
-        st.error(f"Login failed: {err}")
         return "error"
+    if data.get("error") == "account_locked":
+        st.session_state["login_locked_until"] = data.get("locked_until", "")
+        return "locked"
     if data.get("status") == "mfa_required":
         st.session_state["mfa_pending_token"] = data["mfa_token"]
+        st.session_state.pop("login_locked_until", None)
         return "mfa_required"
+    st.session_state.pop("login_locked_until", None)
     st.session_state["access_token"] = data["access_token"]
     st.session_state["refresh_token"] = data.get("refresh_token", "")
     st.session_state["user"] = data["user"]

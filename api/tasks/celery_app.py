@@ -57,6 +57,10 @@ def make_celery(app=None):
                 "task": "tasks.network_tasks.ping_agentless_devices",
                 "schedule": 300.0,
             },
+            "unlock-expired-accounts-every-minute": {
+                "task": "tasks.alert_tasks.unlock_expired_accounts",
+                "schedule": 60.0,
+            },
         },
     )
 

@@ -2,7 +2,7 @@
 import time
 import streamlit as st
 
-from utils.auth import require_auth
+from utils.auth import require_auth, current_user
 from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, BRAND
 from utils.formatters import fmt_datetime
@@ -12,6 +12,8 @@ inject_css()
 
 client = require_auth()
 render_sidebar()
+_role = (current_user() or {}).get("role", "viewer")
+_can_scan = _role in ("admin", "superadmin", "technician")
 
 st.markdown(
     '<h1 style="margin:0">Network Discovery</h1>'
@@ -42,33 +44,38 @@ for key, default in [
 
 # ── Scan controls ─────────────────────────────────────────────────────────────
 st.markdown(f'<div style="{CARD}">', unsafe_allow_html=True)
-ctrl1, ctrl2, ctrl3 = st.columns([2.5, 1.5, 1])
 
-with ctrl1:
-    scan_range = st.text_input(
-        "Subnet (CIDR)",
-        value="192.168.1.0/24",
-        placeholder="e.g. 192.168.0.0/24",
-        help="Supports /24 or smaller ranges (max 254 hosts).",
-        label_visibility="visible",
-    )
+if _can_scan:
+    ctrl1, ctrl2, ctrl3 = st.columns([2.5, 1.5, 1])
 
-# Load customers for selector
-cust_data, _ = client.list_customers(per_page=200)
-customers = (cust_data or {}).get("items", [])
-cust_map = {c["name"]: c["id"] for c in customers}
+    with ctrl1:
+        scan_range = st.text_input(
+            "Subnet (CIDR)",
+            value="192.168.1.0/24",
+            placeholder="e.g. 192.168.0.0/24",
+            help="Supports /24 or smaller ranges (max 254 hosts).",
+            label_visibility="visible",
+        )
 
-with ctrl2:
-    cust_name = st.selectbox(
-        "Assign discovered devices to",
-        ["— None —"] + list(cust_map.keys()),
-        label_visibility="visible",
-    )
-    selected_cust_id = cust_map.get(cust_name) if cust_name != "— None —" else None
+    # Load customers for selector
+    cust_data, _ = client.list_customers(per_page=200)
+    customers = (cust_data or {}).get("items", [])
+    cust_map = {c["name"]: c["id"] for c in customers}
 
-with ctrl3:
-    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    run_scan = st.button("🔍 Scan Network", use_container_width=True, type="primary")
+    with ctrl2:
+        cust_name = st.selectbox(
+            "Assign discovered devices to",
+            ["— None —"] + list(cust_map.keys()),
+            label_visibility="visible",
+        )
+        selected_cust_id = cust_map.get(cust_name) if cust_name != "— None —" else None
+
+    with ctrl3:
+        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+        run_scan = st.button("🔍 Scan Network", use_container_width=True, type="primary")
+else:
+    st.info("You have view-only access. Contact an admin or technician to run a network scan.")
+    run_scan = False
 
 st.markdown("</div>", unsafe_allow_html=True)
 

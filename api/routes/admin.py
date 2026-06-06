@@ -130,6 +130,27 @@ def delete_user(user_id):
     return jsonify({"message": "User deleted"})
 
 
+@admin_bp.route("/users/<user_id>/unlock", methods=["POST"])
+@jwt_required()
+def unlock_user(user_id):
+    admin, err, code = _require_admin()
+    if err:
+        return err, code
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    if user.role == "superadmin":
+        return jsonify({"error": "Superadmin account cannot be modified via the API"}), 403
+
+    user.is_locked = False
+    user.locked_until = None
+    user.failed_login_attempts = 0
+    _audit("UNLOCK", admin.id, resource_id=user_id, payload={"email": user.email})
+    db.session.commit()
+    return jsonify({"message": "Account unlocked", "user": user.to_dict()})
+
+
 @admin_bp.route("/org-token", methods=["GET"])
 @jwt_required()
 def get_org_token():

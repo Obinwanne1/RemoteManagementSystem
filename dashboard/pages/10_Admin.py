@@ -382,20 +382,31 @@ with tab_users:
             uemail = u.get("email", "—")
             urole = (u.get("role") or "viewer").lower()
             uactive = u.get("is_active", True)
+            u_locked = u.get("is_locked", False)
+            u_attempts = u.get("failed_login_attempts", 0)
             rc = ROLE_COLORS.get(urole, "#6B7B6B")
             created = fmt_datetime(u.get("created_at", ""))
             is_self = uid == current_uid
+
+            # Build extra status badges HTML
+            extra_badges = ""
+            if not uactive:
+                extra_badges += '<span style="background:#EF444415;color:#EF4444;padding:2px 8px;border-radius:5px;font-size:0.68rem;font-weight:700;border:1px solid #EF444433;margin-left:4px">INACTIVE</span>'
+            if u_locked:
+                extra_badges += '<span style="background:#EF444420;color:#DC2626;padding:2px 8px;border-radius:5px;font-size:0.68rem;font-weight:700;border:1px solid #DC262640;margin-left:4px">LOCKED</span>'
+            elif u_attempts > 0:
+                extra_badges += f'<span style="background:#F59E0B20;color:#B45309;padding:2px 8px;border-radius:5px;font-size:0.68rem;font-weight:700;border:1px solid #F59E0B33;margin-left:4px">⚠ {u_attempts} attempt(s)</span>'
 
             with st.container():
                 col_info, col_actions = st.columns([4, 2])
                 with col_info:
                     st.markdown(
-                        f'<div style="background:#FFFFFF;border:1px solid #DDE8DD;border-radius:10px;'
+                        f'<div style="background:#FFFFFF;border:1px solid {"#FECACA" if u_locked else "#DDE8DD"};border-radius:10px;'
                         f'padding:0.75rem 1rem;margin-bottom:0.5rem">'
-                        f'<div style="display:flex;align-items:center;gap:10px">'
+                        f'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
                         f'<div style="font-weight:600;color:#1A1A1A;font-size:0.88rem">{uname}</div>'
                         f'<span style="background:{rc}1A;color:{rc};padding:2px 8px;border-radius:5px;font-size:0.68rem;font-weight:700;border:1px solid {rc}33">{urole.upper()}</span>'
-                        + ('' if uactive else '<span style="background:#EF444415;color:#EF4444;padding:2px 8px;border-radius:5px;font-size:0.68rem;font-weight:700;border:1px solid #EF444433;margin-left:4px">INACTIVE</span>')
+                        + extra_badges
                         + f'</div>'
                         f'<div style="font-size:0.78rem;color:#6B7B6B;margin-top:2px">{uemail} · Created {created}</div>'
                         f'</div>',
@@ -410,6 +421,14 @@ with tab_users:
                             unsafe_allow_html=True,
                         )
                     else:
+                        if u_locked:
+                            if st.button("Unlock Account", key=f"unlock_btn_{uid}", use_container_width=True, type="primary"):
+                                _, uerr = client.unlock_user(uid)
+                                if uerr:
+                                    st.error(f"Unlock failed: {uerr}")
+                                else:
+                                    st.success(f"{uname}'s account unlocked.")
+                                    st.rerun()
                         ea, da = st.columns(2)
                         with ea:
                             if st.button("Edit", key=f"edit_btn_{uid}", use_container_width=True):

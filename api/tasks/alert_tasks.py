@@ -191,3 +191,46 @@ def _evaluate(value, operator: str, threshold: float) -> bool:
         "eq": abs(value - threshold) < 0.01,
     }
     return ops.get(operator, False)
+
+
+@celery.task(name="tasks.alert_tasks.unlock_expired_accounts", bind=True, max_retries=3)
+def unlock_expired_accounts(self):
+    """Proactively unlock accounts whose lockout window has expired.
+
+    Runs every 60 seconds. Finds all users where is_locked=True and
+    locked_until <= now(), resets their lockout state.
+    """
+    from app import create_app
+    from extensions import db
+    from models.user import User
+    from sqlalchemy.exc import OperationalError
+
+    app = create_app()
+    with app.app_context():
+        try:
+            now = datetime.now(timezone.utc)
+            expired = User.query.filter(
+                User.is_locked == True,
+                User.locked_until != None,
+                User.locked_until <= now,
+            ).all()
+
+            for user in expired:
+                user.is_locked = False
+                user.locked_until = None
+                user.failed_login_attempts = 0
+                logger.info("Auto-unlocked account: %s (lockout expired)", user.email)
+
+            if expired:
+                db.session.commit()
+                logger.info("unlock_expired_accounts: unlocked %d account(s)", len(expired))
+
+            return len(expired)
+
+        except OperationalError as exc:
+            db.session.rollback()
+            raise self.retry(exc=exc, countdown=30)
+        except Exception:
+            db.session.rollback()
+            logger.exception("unlock_expired_accounts failed")
+            raise

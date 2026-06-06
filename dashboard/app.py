@@ -115,6 +115,30 @@ def show_login():
 
         st.markdown("</div>", unsafe_allow_html=True)
 
+        # Forgot password link
+        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+        if st.button("Forgot your password?", use_container_width=True, key="forgot_pw_btn"):
+            st.session_state["show_forgot_pw"] = not st.session_state.get("show_forgot_pw", False)
+            st.rerun()
+
+        # Forgot password form
+        if st.session_state.get("show_forgot_pw"):
+            st.markdown('<div class="login-card" style="margin-top:0.75rem">', unsafe_allow_html=True)
+            st.markdown("<p style='color:#8EC88E;font-size:0.85rem;margin:0 0 0.75rem'>Enter your email and we'll send a reset link (valid 1 hour).</p>", unsafe_allow_html=True)
+            with st.form("forgot_pw_form"):
+                reset_email = st.text_input("Email address", placeholder="your@email.com", key="reset_email_input")
+                sent = st.form_submit_button("Send Reset Link →", use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            if sent:
+                if not reset_email:
+                    st.error("Enter your email address.")
+                else:
+                    from utils.api_client import RMMClient
+                    RMMClient.request_password_reset(reset_email)
+                    st.success("If that email is registered, a reset link has been sent.")
+                    st.session_state["show_forgot_pw"] = False
+
         st.markdown("""
         <div style="text-align:center;margin-top:1.25rem;color:#1E3A1E;font-size:0.75rem">
             RMM System v1.0 · Authorized access only
@@ -128,7 +152,16 @@ def show_login():
             from utils.auth import login
             with st.spinner("Authenticating…"):
                 result = login(email, password)
-            if result == "error":
+            if result == "locked":
+                locked_until = st.session_state.get("login_locked_until", "")
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(locked_until)
+                    time_str = dt.strftime("%H:%M:%S")
+                    st.error(f"Account locked after too many failed attempts. Auto-unlocks at {time_str}. Contact your admin to unlock early.")
+                except Exception:
+                    st.error("Account locked after too many failed attempts. Contact your admin or wait 5 minutes.")
+            elif result == "error":
                 st.error("Invalid credentials.")
             else:
                 st.rerun()
@@ -382,6 +415,53 @@ def show_force_change_password():
                 st.rerun()
 
 
+def show_reset_password_form(reset_token: str):
+    """Full-screen password reset form shown when ?reset_token= is in URL."""
+    st.markdown(_LOGIN_CSS, unsafe_allow_html=True)
+
+    _, col, _ = st.columns([1, 1, 1])
+    with col:
+        st.markdown("<div style='height:10vh'></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="text-align:center;margin-bottom:2rem">
+            <div style="display:inline-flex;align-items:center;justify-content:center;
+                        width:68px;height:68px;margin-bottom:1rem;
+                        background:linear-gradient(135deg,#1A3C18,#2D5C29);
+                        border-radius:18px;font-size:2rem;
+                        box-shadow:0 8px 24px rgba(64,126,60,0.4)">
+                🔑
+            </div>
+            <h1 class="brand-title">Reset Password</h1>
+            <p style="color:#8EC88E;font-size:0.88rem;margin:6px 0 0;font-weight:500">
+                Enter a new password for your account.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+        with st.form("reset_pw_form"):
+            new_pw  = st.text_input("New Password", type="password", placeholder="Min 8 characters")
+            conf_pw = st.text_input("Confirm Password", type="password", placeholder="Repeat password")
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            submitted = st.form_submit_button("Set New Password →", use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if submitted:
+        if len(new_pw) < 8:
+            st.error("Password must be at least 8 characters.")
+        elif new_pw != conf_pw:
+            st.error("Passwords do not match.")
+        else:
+            from utils.api_client import RMMClient
+            _, err = RMMClient.confirm_password_reset(reset_token, new_pw)
+            if err:
+                st.error(f"Reset failed: {err}. The link may have expired — request a new one.")
+            else:
+                st.query_params.pop("reset_token", None)
+                st.session_state["reset_pw_success"] = True
+                st.rerun()
+
+
 # ── Route ─────────────────────────────────────────────────────────────────────
 # Restore token from ?tok= URL param before checking session state.
 # Without this, browser reload always wipes the session and shows login.
@@ -392,9 +472,15 @@ rtok = st.query_params.get("rtok", "")
 if rtok and "refresh_token" not in st.session_state:
     st.session_state["refresh_token"] = rtok
 
-if "mfa_pending_token" in st.session_state:
+reset_token_param = st.query_params.get("reset_token", "")
+
+if reset_token_param and "access_token" not in st.session_state:
+    show_reset_password_form(reset_token_param)
+elif "mfa_pending_token" in st.session_state:
     show_mfa_step()
 elif "access_token" not in st.session_state:
+    if st.session_state.pop("reset_pw_success", False):
+        st.success("Password reset successful. You can now sign in.")
     show_login()
 elif st.session_state.get("user", {}).get("must_change_password"):
     show_force_change_password()
