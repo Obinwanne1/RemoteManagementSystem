@@ -1,0 +1,6 @@
+=== LOGIN AREA ===
+'Correct credentials take you to the RMM Dashboard.\n8. "Invalid credentials" means wrong email or password. Check Caps Lock.\n\n> **NOTE:** Your session token is stored in browser memory only — it is not in the URL. If you share a page URL, the recipient must log in with their own credentials.\n\n> **WAR'
+=== ACKNOWLEDGING ===
+'erlying issue has been fixed |\n\n### Step-by-step: Acknowledging an Alert\n\nAcknowledging means "I have seen this and I am dealing with it." It does not mean the problem is fixed.\n\n1. Click **Alerts** in the sidebar.\n2. Find the alert. Critical alerts '
+=== SUPERADMIN RESTART ===
+'The account will be updated on next startup.\n\n**Emergency password reset (when locked out of the web interface):**\n\nIf you cannot log in as superadmin and need to reset the password without a web session:\n\n1. Open a terminal on the RMM server.\n2. Navigate to the `api` folder:\n   ```powershell\n   Set'

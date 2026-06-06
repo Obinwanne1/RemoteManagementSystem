@@ -1,0 +1,2 @@
+hostname,ip_address,status,os_name,cpu_pct,ram_pct,disk_pct,last_seen
+DESKTOP-0NSDM8E,127.0.0.1,warning,Windows,27.0,86.9,79.7,2026-06-05T10:56:30.711845+02:00
