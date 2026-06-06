@@ -91,12 +91,14 @@ st.markdown(
 
 # Confirmation gate for destructive actions
 confirm_key = f"maint_confirm_{selected['id']}"
-if confirm_key not in st.session_state:
-    st.session_state[confirm_key] = False
+confirm_state_key = f"maint_confirm_state_{selected['id']}"
+if confirm_state_key not in st.session_state:
+    st.session_state[confirm_state_key] = False
 
 confirm_checked = st.checkbox(
     "I confirm this action on the selected device",
-    key=confirm_key
+    key=confirm_key,
+    value=st.session_state[confirm_state_key],
 )
 
 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
@@ -130,7 +132,7 @@ if reboot_btn:
             st.error(f"Reboot failed: {action_err}")
         else:
             st.success(f"Reboot command sent to {selected['hostname']}.")
-            st.session_state[confirm_key] = False
+            st.session_state[confirm_state_key] = False
 
 if shutdown_btn:
     if not confirm_checked:
@@ -142,7 +144,7 @@ if shutdown_btn:
             st.error(f"Shutdown failed: {action_err}")
         else:
             st.success(f"Shutdown command sent to {selected['hostname']}.")
-            st.session_state[confirm_key] = False
+            st.session_state[confirm_state_key] = False
 
 def _queue(task_type: str, label: str):
     if not confirm_checked:
@@ -154,7 +156,7 @@ def _queue(task_type: str, label: str):
         st.error(f"Failed to queue {label}: {err}")
     else:
         st.success(f"{label} queued. Agent will execute on next poll.")
-        st.session_state[confirm_key] = False
+        st.session_state[confirm_state_key] = False
 
 if restore_btn:
     _queue("restore_point", "Create Restore Point")
