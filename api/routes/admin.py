@@ -125,7 +125,8 @@ def delete_user(user_id):
         return jsonify({"error": "Superadmin account cannot be deleted"}), 403
 
     _audit("DELETE", admin.id, resource_id=user_id, payload={"email": user.email})
-    db.session.delete(user)
+    user.is_active = False
+    user.email = f"__deleted__{user.id}@rmm.local"
     db.session.commit()
     return jsonify({"message": "User deleted"})
 
