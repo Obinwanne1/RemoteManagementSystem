@@ -58,6 +58,8 @@ styles = {
                      textColor=MUTED, alignment=TA_CENTER, spaceAfter=4),
     "cover_ver":   S("cover_ver", fontSize=10, fontName="Helvetica",
                      textColor=MUTED, alignment=TA_CENTER),
+    "cover_client": S("cover_client", fontSize=14, fontName="Helvetica-Bold",
+                      textColor=GREEN_DARK, alignment=TA_CENTER, spaceAfter=2),
 
     # Part / chapter
     "part":        S("part", fontSize=22, fontName="Helvetica-Bold",
@@ -146,7 +148,7 @@ def _footer(canvas, doc):
     canvas.setLineWidth(0.5)
     canvas.line(MARGIN, 15 * mm, W - MARGIN, 15 * mm)
     # Left: guide title  (6 mm below rule)
-    canvas.drawString(MARGIN, 9 * mm, "RMM System — Handover & User Guide")
+    canvas.drawString(MARGIN, 9 * mm, "Faiyke RMM System — Handover & User Guide")
     # Right: page number
     page_text = f"Page {doc.page}"
     canvas.drawRightString(W - MARGIN, 9 * mm, page_text)
@@ -163,7 +165,7 @@ def _first_page(canvas, doc):
     canvas.rect(0, 0, W, 18 * mm, fill=1, stroke=0)
     canvas.setFont("Helvetica", 9)
     canvas.setFillColor(colors.white)
-    canvas.drawCentredString(W / 2, 7 * mm, "Confidential — Internal Use Only · v1.0")
+    canvas.drawCentredString(W / 2, 7 * mm, "Prepared for Faiyke-AI Agency · Confidential · v1.0")
     canvas.restoreState()
 
 # ── Markdown → Flowable parser ────────────────────────────────────────────────
@@ -338,9 +340,39 @@ def md_to_flowables(md_text: str) -> list:
                 from reportlab.platypus import KeepTogether
                 flowables.append(KeepTogether([heading, rule]))
             elif level == 2:
-                # Keep heading + following body together
-                flowables.append(CondPageBreak(50 * mm))
-                flowables.append(Paragraph(text, styles["h2"]))
+                # Chapter-level headings always start on a new page;
+                # other level-2 headings use a conditional break.
+                raw_text = hm.group(2).strip()
+                if raw_text.lower().startswith("chapter"):
+                    flowables.append(PageBreak())
+                    # Peek ahead to collect the next 1-2 body paragraphs so
+                    # the heading is never orphaned from its opening text.
+                    from reportlab.platypus import KeepTogether
+                    heading_para = Paragraph(text, styles["h2"])
+                    # Collect up to 3 non-blank, non-heading lines after this one
+                    peek = i + 1
+                    body_paras = []
+                    collected = 0
+                    while peek < n and collected < 3:
+                        nxt = lines[peek].strip()
+                        if not nxt or nxt.startswith("#") or nxt.startswith("|") \
+                                or nxt.startswith("```") or nxt.startswith(">") \
+                                or re.match(r'^[-*+]\s+', nxt) \
+                                or re.match(r'^\d+\.\s+', nxt) \
+                                or re.match(r'^[-*_]{3,}\s*$', nxt):
+                            break
+                        body_paras.append(Paragraph(inline_fmt(nxt), styles["body"]))
+                        collected += 1
+                        peek += 1
+                    if body_paras:
+                        flowables.append(KeepTogether([heading_para] + body_paras))
+                        # Advance past the lines we peeked and consumed
+                        i = peek
+                    else:
+                        flowables.append(heading_para)
+                else:
+                    flowables.append(CondPageBreak(50 * mm))
+                    flowables.append(Paragraph(text, styles["h2"]))
             elif level == 3:
                 flowables.append(CondPageBreak(40 * mm))
                 flowables.append(Paragraph(text, styles["h3"]))
@@ -449,7 +481,7 @@ def md_to_flowables(md_text: str) -> list:
 def cover_page() -> list:
     return [
         Spacer(1, 62 * mm),   # below green header band
-        Paragraph("RMM System", styles["cover_title"]),
+        Paragraph("Faiyke RMM System", styles["cover_title"]),
         Paragraph("Handover &amp; User Guide", styles["cover_sub"]),
         Spacer(1, 4 * mm),
         HRFlowable(width="50%", thickness=2, color=GREEN,
@@ -459,6 +491,13 @@ def cover_page() -> list:
                   styles["cover_sub"]),
         Spacer(1, 6 * mm),
         Paragraph("Version 1.0 · June 2026", styles["cover_ver"]),
+        Spacer(1, 8 * mm),
+        HRFlowable(width="30%", thickness=0.5, color=MUTED,
+                   hAlign='CENTER', spaceAfter=4),
+        Spacer(1, 4 * mm),
+        Paragraph("Prepared for", styles["cover_ver"]),
+        Spacer(1, 2 * mm),
+        Paragraph("Faiyke-AI Agency", styles["cover_client"]),
         PageBreak(),
     ]
 
@@ -479,9 +518,9 @@ def build(src: Path, dst: Path):
         rightMargin=MARGIN,
         topMargin=MARGIN,
         bottomMargin=22 * mm,   # leave room for footer
-        title="RMM System — Handover & User Guide",
-        author="RMM System",
-        subject="Staff handover and user guide",
+        title="Faiyke RMM System — Handover & User Guide",
+        author="Faiyke-AI Agency",
+        subject="Faiyke RMM System — Staff handover and user guide",
     )
 
     story = cover_page()

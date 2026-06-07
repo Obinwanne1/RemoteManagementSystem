@@ -1,11 +1,11 @@
-# RMM System — Complete Handbook
+# Faiyke RMM System — Complete Handbook
 
 **Remote Monitoring and Management Platform**
-Version 1.0 — NinjaOne-style, built in-house
+Version 1.0 — Built exclusively for Faiyke-AI Agency
 
 ---
 
-**Prepared for:** All staff — new joiners, IT support, technicians, administrators, managers, and developers
+**Prepared for:** Faiyke-AI Agency
 **System URL:** http://localhost:8501
 **API URL:** http://localhost:5000
 **Document version:** 2.0 (comprehensive edition)
@@ -57,6 +57,8 @@ This document is written in plain language. Technical jargon is explained when f
 **PART II — GETTING STARTED**
 - Chapter 8: What is the RMM System?
 - Chapter 9: Logging In and Navigation
+  - Account Lockout and Failed Login Protection
+  - Forgot Your Password — Self-Service Reset
 - Chapter 9a: Multi-Factor Authentication (MFA)
 - Chapter 9b: My Profile Page
 - Chapter 10: Your Role and What You Can Access
@@ -86,6 +88,9 @@ This document is written in plain language. Technical jargon is explained when f
 - Chapter 24: Reports
 - Chapter 25: Billing
 - Chapter 26: Administration
+  - Account Lockout and Unlock
+  - Deactivating, Reactivating, and Deleting Users
+  - Account Security Policies (Lockout, Password Expiry, Dormant Accounts, Login Anomaly Detection)
 
 **PART VIII — TECHNICAL REFERENCE**
 - Chapter 27: System Architecture
@@ -848,7 +853,7 @@ Everyone. This is the entry point to every page in the system.
 
 > **NOTE:** Your session is maintained in browser memory. If you share a page URL, the recipient must log in with their own credentials.
 
-> **WARNING:** There is no "forgot password" link. If locked out, contact your system administrator to reset your password.
+> **NOTE:** If you have forgotten your password, use the **"Forgot your password?"** link on the login page. See the subsection below for details.
 
 ### First Login — Forced Password Change
 
@@ -893,6 +898,49 @@ Sarah is a new junior technician. It is her first day.
 4. She clicks **Sign In →**.
 5. She sees the RMM Dashboard with "Sarah" displayed at the top of the sidebar alongside a yellow TECHNICIAN badge.
 6. She clicks **Devices** to see all managed machines.
+
+### Account Lockout — What Happens When Too Many Failed Attempts Occur
+
+The system automatically locks an account after **3 consecutive failed login attempts**. This protects against password-guessing attacks.
+
+**What you will see:**
+
+- On the 3rd failed attempt, the login page shows a red error message:
+  `"Account locked. Try again after HH:MM:SS"` — the remaining lockout time is displayed.
+- The lockout lasts **5 minutes** from the last failed attempt.
+- After 5 minutes, the lockout clears automatically. Try logging in again normally.
+- If your account is locked, contact your system administrator. They can unlock it immediately from the Admin panel without waiting for the 5 minutes to expire.
+- All admin users receive an email notification when any account is locked, so administrators are alerted even if you do not contact them.
+
+> **NOTE:** The superadmin account is exempt from the lockout policy and can never be locked out.
+
+> **NOTE:** The login page is rate-limited: a maximum of 10 login attempts per minute per IP address is enforced, regardless of which account is being targeted.
+
+### Forgot Your Password? — Self-Service Password Reset
+
+If you have forgotten your password, you can reset it yourself without contacting an administrator, provided your email address is valid in the system.
+
+#### Step-by-step: Resetting a Forgotten Password
+
+1. Go to the RMM login page (http://localhost:8501).
+2. Click the **"Forgot your password?"** button below the Sign In button.
+3. A text field appears — enter your email address and click **Send Reset Link**.
+4. The system always shows the same success message regardless of whether the email is recognised. This is intentional — it prevents attackers from discovering which email addresses are registered.
+5. If your email matches an active account, you will receive an email within a few minutes containing a password reset link.
+6. Click the link in the email. It opens the RMM dashboard with a full-screen **Reset Password** form.
+7. Enter your new password (see password strength requirements below).
+8. Confirm the new password and click **Reset Password →**.
+9. Your password is updated. You are redirected to the login page. Log in with your new password.
+
+> **IMPORTANT:** The reset link expires after **1 hour**. If you do not use it in time, repeat the process.
+
+> **NOTE:** Password reset requires SMTP email to be configured on the server. If you do not receive the email, check your spam folder. If still not received, ask your administrator whether SMTP is configured.
+
+**Password strength requirements** (applies to all password changes system-wide):
+- Minimum 8 characters
+- At least 1 uppercase letter (A–Z)
+- At least 1 number (0–9)
+- At least 1 special character (`!@#$%^&*` and similar)
 
 ---
 
@@ -2342,25 +2390,98 @@ Each entry shows: action type, resource type and ID, timestamp, IP address, and 
 
 ### Tab 3: Users
 
-Shows a table of all registered users. Columns: Full Name, Email, Role, Created Date.
+Shows a card list of all registered users. By default, only **active** accounts are shown.
+
+#### Account Status Badges
+
+Each user card may display one or more coloured status badges:
+
+| Badge | Colour | Meaning |
+|---|---|---|
+| LOCKED | Red | Account is temporarily locked due to too many failed login attempts. The user cannot log in until the lockout expires or an admin unlocks it. |
+| INACTIVE | Grey | Account has been deactivated. The user cannot log in. |
+| ⚠ N attempt(s) | Amber | The user has had 1 or 2 failed login attempts but is not yet locked. A warning indicator only. |
+
+A **locked** account card also has a red border so it stands out visually in the list.
+
+#### Available Actions Per User
+
+| User State | Available Buttons |
+|---|---|
+| Active, not locked | Edit, Deactivate, Delete |
+| Active, locked | **Unlock Account** (prominent), Edit, Deactivate, Delete |
+| Inactive | Reactivate only |
+| Superadmin | "Protected — use CLI" (no buttons) |
+
+#### Creating a New User
 
 Available actions in the Users tab:
 - **Create** new users (name, email, password, role) — includes **"Require password change on first login"** checkbox (checked by default). When enabled, the user must set a new password before accessing the dashboard.
 - **Edit** existing users (change role, update name/email) — includes **"Require password change on next login"** checkbox to force a reset on an existing account.
-- **Deactivate** users to block login without deleting records
 - **Reset passwords** by editing and setting a new password
 
-### Step-by-step: Deactivating a Departed Employee
+#### Showing Inactive Accounts
+
+Inactive (deactivated) users are hidden by default. To see them:
+
+1. Tick the **"Show inactive accounts"** checkbox at the top of the Users tab.
+2. Inactive users appear with a grey **INACTIVE** badge and greyed-out name.
+3. Only the **Reactivate** button is shown for inactive users — they cannot be edited or deleted while inactive.
+
+#### Step-by-step: Unlocking a Locked Account
+
+When a user is locked out, an administrator can unlock them immediately without waiting for the 5-minute timer.
+
+1. Go to **Admin** → **Users** tab.
+2. Find the locked user — their card has a red border and a red **LOCKED** badge.
+3. Click the **Unlock Account** button (displayed prominently on the locked card).
+4. The account is immediately unlocked. The failed attempt counter is reset to zero.
+5. Notify the user they can now log in.
+
+> **NOTE:** The lockout also clears automatically after 5 minutes without any admin action. Admin unlock is only needed if the user cannot wait.
+
+#### Step-by-step: Deactivating a Departed Employee
 
 When someone leaves, deactivate their account immediately.
 
 1. Go to **Admin** → **Users** tab.
-2. Find the employee.
-3. Click **Edit** or expand their row.
-4. Click **Deactivate** and save.
-5. Verify: check the Audit Log for any LOGIN events from that email after the deactivation date.
+2. Find the employee's card.
+3. Click **Deactivate**.
+4. A confirmation dialog appears: confirm the action.
+5. The account is set to inactive. The user is immediately blocked from logging in.
+6. Verify: check the Audit Log for any LOGIN events from that email after the deactivation date.
 
-> **WARNING:** JWT tokens have an expiry time. After deactivating an account, the user may retain access until their current token expires. For immediate lockout, rotate the `JWT_SECRET_KEY` in the `.env` file and restart the API.
+> **WARNING:** JWT tokens have an expiry time. After deactivating an account, the user may retain access until their current token expires (typically minutes). For immediate lockout, rotate the `JWT_SECRET_KEY` in the `.env` file and restart the API.
+
+#### Step-by-step: Reactivating an Inactive Account
+
+1. Go to **Admin** → **Users** tab.
+2. Tick **"Show inactive accounts"** to reveal inactive users.
+3. Find the user's card (grey INACTIVE badge).
+4. Click **Reactivate**.
+5. The account is restored to active status. The user can log in again with their existing password.
+
+#### Step-by-step: Permanently Deleting a User
+
+> **WARNING:** Deletion is permanent and cannot be undone. Use **Deactivate** instead if there is any chance you may need to restore the account.
+
+Deactivation and deletion are different:
+
+| Action | Effect | Reversible? |
+|---|---|---|
+| Deactivate | Blocks login; all records remain; account hidden unless "Show inactive" is ticked | Yes — Reactivate restores full access |
+| Delete | Permanently removes login access; email is scrambled so the address can be reused; user disappears from all lists permanently | No |
+
+To permanently delete a user:
+
+1. Go to **Admin** → **Users** tab.
+2. Find the user's card.
+3. Click **Delete**.
+4. A confirmation dialog appears: `"Permanently delete [Name] ([email])? This cannot be undone."` Read it carefully.
+5. Confirm the deletion.
+6. The account is permanently removed from all user lists.
+
+> **NOTE:** You cannot delete your own account. You cannot delete the superadmin account.
 
 ### Step-by-step: Monthly Admin Security Review
 
@@ -2374,6 +2495,104 @@ On the first Monday of each month:
    - Unusual patterns of failed actions
 4. Go to **Users** tab. Verify all listed users are current employees.
 5. Go to **System Info** → Services card. Verify all services are healthy.
+
+### Account Security Policies
+
+This section describes the automated security policies that apply to all user accounts. These run in the background without requiring any manual configuration beyond the initial `.env` setup.
+
+#### Login Lockout Policy
+
+| Setting | Value |
+|---|---|
+| Failed attempts before lockout | 3 consecutive failures |
+| Lockout duration | 5 minutes (auto-clears on next login attempt after expiry) |
+| Rate limit | 10 login attempts per minute per IP address |
+| Admin unlock | Available immediately via Admin → Users → Unlock Account |
+| Superadmin exemption | Superadmin account is never locked |
+
+When an account is locked:
+- The user sees the remaining wait time on the login screen.
+- All admin users receive an email notification.
+- The lockout clears automatically after 5 minutes, or immediately when an admin clicks Unlock Account.
+
+#### Password Expiry Policy
+
+Passwords expire after **90 days**.
+
+| Event | What happens |
+|---|---|
+| Password 14, 7, 3, or 1 day(s) before expiry | Warning email sent to the user |
+| Password reaches 90 days old | On next login, `must_change_password` is set automatically |
+| User logs in with expired password | Full-screen forced password change form appears before dashboard access |
+| Admin forces password change manually | Edit user → check "Require password change on next login" |
+| Superadmin exemption | Superadmin password never expires |
+
+The warning emails are sent by a Celery beat task that runs once daily. The task checks every active account's `password_changed_at` timestamp and sends warnings at the 14, 7, 3, and 1-day thresholds.
+
+#### Dormant Account Auto-Deactivation Policy
+
+Accounts that have not been used for **30 or more days** are automatically deactivated.
+
+- A Celery beat task runs daily and checks the `last_login` timestamp for all active accounts.
+- Any account inactive for 30+ days is set to `is_active = False`.
+- The affected user receives an email notification explaining their account has been deactivated.
+- All admin users receive a summary email listing all accounts deactivated in that run.
+- The superadmin account is exempt from auto-deactivation.
+- Reactivation: an administrator can reactivate the account via Admin → Users → Show inactive accounts → Reactivate.
+
+> **TIP:** If a user will be absent (e.g. long-term leave), administrators can manually deactivate their account and reactivate it on return, which resets the 30-day counter.
+
+#### Login Anomaly Detection (New IP Alerts)
+
+The system records up to **10 known login IP addresses** per user account. When a user logs in from an IP address not previously seen on their account:
+
+- An alert email is sent to **both the user and all admin users**.
+- Subject line: `[RMM Security] New login location detected: user@email.com`
+- The email includes the new IP address and timestamp.
+- The new IP is automatically added to the user's known list.
+- No alert is sent on the very first login ever (no known IPs to compare against yet).
+
+> **NOTE:** This feature detects logins from new locations, not necessarily unauthorised access. Legitimate causes include a user logging in from a new device, a new office, or working from home for the first time. Admins should investigate the alert but treat it as informational rather than an alarm.
+
+#### Per-Device Session Management
+
+The system creates **one active session per device per user**. Sessions are tracked by a device fingerprint derived from the browser's User-Agent and Accept-Language headers.
+
+| Behaviour | Detail |
+|---|---|
+| Logging in from the same device again | Invalidates the previous session on that device (no duplicate sessions) |
+| Logging in from a different device | Creates a new session; existing sessions on other devices remain active |
+| Logging out | Only the current device session is invalidated; all other device sessions remain active |
+
+This means a user can be logged in on multiple devices simultaneously, but each device can only hold one active session at a time.
+
+#### Email Notifications Summary
+
+The following events trigger automatic email notifications. SMTP must be configured in `.env` for any emails to be sent.
+
+| Event | Recipients |
+|---|---|
+| Account locked (3 failed attempts) | All admin users |
+| Password expiry warning (14/7/3/1 days) | The affected user |
+| Dormant account auto-deactivated | The deactivated user + all admin users |
+| Login from new/unknown IP address | The affected user + all admin users |
+| Password reset link requested | The requesting user (reset link) |
+
+#### SMTP Configuration
+
+Email notifications require SMTP to be configured in the `.env` file on the RMM server:
+
+```
+SMTP_HOST=smtp.yourmailprovider.com
+SMTP_PORT=587
+SMTP_USER=your-smtp-username
+SMTP_PASSWORD=your-smtp-password
+SMTP_FROM=noreply@yourcompany.com
+```
+
+If `SMTP_HOST` is not set, all email notifications silently do nothing — the system continues operating normally, but no emails are sent. Set up SMTP before going live to ensure security alerts reach administrators.
+
+> **TIP:** For testing, services such as Mailtrap or a Gmail app password (with less-secure app access or an app-specific password) work well as the SMTP provider.
 
 ### Tab 4: Org Settings
 
