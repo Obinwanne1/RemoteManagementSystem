@@ -137,7 +137,17 @@
       "Bash(\"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\api\\\\venv\\\\Scripts\\\\python.exe\" generate_pdf_temp.py)",
       "Bash(C:/Users/rigwe/Desktop/RemoteManagementSystem/api/venv/Scripts/python.exe:*)",
       "Bash(\"C:/Users/rigwe/Desktop/RemoteManagementSystem/api/venv/Scripts/python.exe\" generate_pdf_temp.py)",
-      "Bash(api/venv/Scripts/python.exe generate_pdf_temp.py)"
+      "Bash(api/venv/Scripts/python.exe generate_pdf_temp.py)",
+      "Bash(npx kill-port:*)",
+      "Bash(findstr \"8424\")",
+      "Bash(tasklist /FI \"IMAGENAME eq python.exe\" /FO LIST)",
+      "Bash(findstr /i \"PID\\\\|Command\")",
+      "Bash(tasklist:*)",
+      "Bash(echo \"Worker PID: $!\")",
+      "Bash(findstr -i celery)",
+      "Bash(grep -n \"dormant\\\\|30.*day\\\\|inactive.*auto\\\\|auto.*deactivat\\\\|password_expiry\\\\|expiry_warning\" /c/Users/rigwe/Desktop/RemoteManagementSystem/api/tasks/*.py)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(echo \"EXIT:$?\")"
     ]
   }
 }
