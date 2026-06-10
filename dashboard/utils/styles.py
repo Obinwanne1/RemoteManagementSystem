@@ -261,9 +261,22 @@ _LOGIN_CSS = """
 """
 
 
+def _hex_to_rgb(hex_color: str):
+    h = hex_color.lstrip('#')
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
 def inject_css():
-    """Apply global brand CSS. Call at the top of every page."""
-    st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
+    """Apply global brand CSS. Swaps primary color if white-label branding is set."""
+    css = _GLOBAL_CSS
+    branding = st.session_state.get("_branding", {})
+    primary = (branding.get("primary_color") or "#407E3C").strip()
+    if primary and primary != "#407E3C":
+        r, g, b = _hex_to_rgb(primary)
+        css = (css
+               .replace("#407E3C", primary)
+               .replace("rgba(64,126,60,", f"rgba({r},{g},{b},"))
+    st.markdown(css, unsafe_allow_html=True)
 
 
 def inject_login_css():

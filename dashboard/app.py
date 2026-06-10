@@ -7,102 +7,143 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Load branding before set_page_config (no session_state yet at this point)
+from utils.branding import fetch_branding_early
+_brand_early = fetch_branding_early()
+
 st.set_page_config(
-    page_title="RMM System",
+    page_title=_brand_early.get("app_name", "RMM System"),
     page_icon="🖥️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 from utils.styles import inject_css, stat_card, BRAND
+from utils.branding import load_branding
 
+# Cache branding into session_state for all pages to use
+load_branding()
 inject_css()
 
 # ── Login ─────────────────────────────────────────────────────────────────────
-_LOGIN_CSS = """
+def _login_css() -> str:
+    """Generate login page CSS with white-label primary color substitution."""
+    from utils.styles import _hex_to_rgb
+    branding = st.session_state.get("_branding", {})
+    p = (branding.get("primary_color") or "#407E3C").strip()
+    r, g, b = _hex_to_rgb(p)
+    # Derive a slightly darker shade for gradient start
+    rd, gd, bd = max(0, r - 45), max(0, g - 35), max(0, b - 18)
+    # Derive a slightly lighter shade for hover
+    rl, gl, bl = min(255, r + 15), min(255, g + 47), min(255, b + 24)
+    return f"""
 <style>
 /* Dark page background — targets the whole app shell */
-.stApp {
+.stApp {{
     background: linear-gradient(160deg, #0A1409 0%, #0F1B10 60%, #0c1a0d 100%) !important;
-}
+}}
 /* Login card */
-.login-card {
+.login-card {{
     background: #152416;
     border: 1px solid #1E3A20;
     border-radius: 16px;
     padding: 2.25rem 2.25rem 1.75rem;
     box-shadow: 0 24px 64px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
-}
+}}
 /* Form labels white */
-.login-card label {
+.login-card label {{
     color: #7EA87E !important;
     font-size: 0.82rem !important;
     font-weight: 600 !important;
-}
+}}
 /* Form inputs dark */
-.login-card input {
+.login-card input {{
     background: rgba(255,255,255,0.04) !important;
     border: 1.5px solid #1E3A20 !important;
     color: #E0F0E0 !important;
     border-radius: 8px !important;
-}
-.login-card input:focus {
-    border-color: #407E3C !important;
-    box-shadow: 0 0 0 3px rgba(64,126,60,0.18) !important;
-}
-.login-card input::placeholder { color: #2A4A2A !important; }
+}}
+.login-card input:focus {{
+    border-color: {p} !important;
+    box-shadow: 0 0 0 3px rgba({r},{g},{b},0.18) !important;
+}}
+.login-card input::placeholder {{ color: #2A4A2A !important; }}
 /* Submit button */
-.login-card .stButton > button {
-    background: linear-gradient(135deg, #2D5C29, #407E3C) !important;
+.login-card .stButton > button {{
+    background: linear-gradient(135deg, rgb({rd},{gd},{bd}), {p}) !important;
     color: #FFFFFF !important;
     font-size: 0.95rem !important;
     font-weight: 600 !important;
     padding: 0.6rem 1rem !important;
     border-radius: 8px !important;
-    box-shadow: 0 4px 14px rgba(64,126,60,0.4) !important;
+    box-shadow: 0 4px 14px rgba({r},{g},{b},0.4) !important;
     border: none !important;
     margin-top: 0.25rem;
-}
-.login-card .stButton > button:hover {
-    background: linear-gradient(135deg, #3D7538, #5AAD54) !important;
+}}
+.login-card .stButton > button:hover {{
+    background: linear-gradient(135deg, {p}, rgb({rl},{gl},{bl})) !important;
     color: #FFFFFF !important;
-    box-shadow: 0 6px 24px rgba(64,126,60,0.65) !important;
+    box-shadow: 0 6px 24px rgba({r},{g},{b},0.65) !important;
     transform: translateY(-1px);
-}
-.brand-title {
+}}
+.brand-title {{
     color: #FFFFFF !important;
     font-size: 1.95rem !important;
     font-weight: 800 !important;
     margin: 0 !important;
     letter-spacing: -0.02em !important;
-}
+}}
 </style>
 """
 
 
 def show_login():
-    st.markdown(_LOGIN_CSS, unsafe_allow_html=True)
+    st.markdown(_login_css(), unsafe_allow_html=True)
 
     _, col, _ = st.columns([1, 1, 1])
     with col:
         st.markdown("<div style='height:10vh'></div>", unsafe_allow_html=True)
 
         # Logo + brand
-        st.markdown("""
-        <div style="text-align:center;margin-bottom:2rem">
-            <div style="display:inline-flex;align-items:center;justify-content:center;
-                        width:68px;height:68px;margin-bottom:1rem;
-                        background:linear-gradient(135deg,#1A3C18,#2D5C29);
-                        border-radius:18px;font-size:2rem;
-                        box-shadow:0 8px 24px rgba(64,126,60,0.4)">
-                🖥️
+        _b = st.session_state.get("_branding", {})
+        _app_name  = _b.get("app_name", "RMM System")
+        _tagline   = _b.get("tagline", "Remote Monitoring &amp; Management")
+        _logo_data = _b.get("logo_data")
+
+        if _logo_data:
+            import base64 as _b64_mod
+            try:
+                _, _b64p = _logo_data.split(",", 1)
+                _img_bytes = _b64_mod.b64decode(_b64p)
+                _, _lc, _ = st.columns([1, 1, 1])
+                with _lc:
+                    st.image(_img_bytes, width=120)
+                st.markdown(
+                    f'<div style="text-align:center;margin-bottom:2rem">'
+                    f'<h1 class="brand-title">{_app_name}</h1>'
+                    f'<p style="color:#8EC88E;font-size:0.88rem;margin:6px 0 0;font-weight:500">{_tagline}</p>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            except Exception:
+                _logo_data = None
+
+        if not _logo_data:
+            st.markdown(f"""
+            <div style="text-align:center;margin-bottom:2rem">
+                <div style="display:inline-flex;align-items:center;justify-content:center;
+                            width:68px;height:68px;margin-bottom:1rem;
+                            background:linear-gradient(135deg,#1A3C18,#2D5C29);
+                            border-radius:18px;font-size:2rem;
+                            box-shadow:0 8px 24px rgba(64,126,60,0.4)">
+                    🖥️
+                </div>
+                <h1 class="brand-title">{_app_name}</h1>
+                <p style="color:#8EC88E;font-size:0.88rem;margin:6px 0 0;font-weight:500">
+                    {_tagline}
+                </p>
             </div>
-            <h1 class="brand-title">RMM System</h1>
-            <p style="color:#8EC88E;font-size:0.88rem;margin:6px 0 0;font-weight:500">
-                Remote Monitoring &amp; Management
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
         # Card wrapper — single markdown block containing only styling div
         st.markdown('<div class="login-card">', unsafe_allow_html=True)
@@ -139,11 +180,12 @@ def show_login():
                     st.success("If that email is registered, a reset link has been sent.")
                     st.session_state["show_forgot_pw"] = False
 
-        st.markdown("""
-        <div style="text-align:center;margin-top:1.25rem;color:#1E3A1E;font-size:0.75rem">
-            RMM System v1.0 · Authorized access only
-        </div>
-        """, unsafe_allow_html=True)
+        _footer_name = st.session_state.get("_branding", {}).get("app_name", "RMM System")
+        st.markdown(
+            f'<div style="text-align:center;margin-top:1.25rem;color:#1E3A1E;font-size:0.75rem">'
+            f'{_footer_name} · Authorized access only</div>',
+            unsafe_allow_html=True,
+        )
 
     if submitted:
         if not email or not password:
@@ -308,7 +350,7 @@ def show_dashboard_home():
 
 def show_mfa_step():
     """Full-screen TOTP entry form shown after password login when MFA is enabled."""
-    st.markdown(_LOGIN_CSS, unsafe_allow_html=True)
+    st.markdown(_login_css(), unsafe_allow_html=True)
 
     _, col, _ = st.columns([1, 1, 1])
     with col:
@@ -363,7 +405,7 @@ def show_mfa_step():
 
 def show_force_change_password():
     """Full-screen form shown when must_change_password is True."""
-    st.markdown(_LOGIN_CSS, unsafe_allow_html=True)
+    st.markdown(_login_css(), unsafe_allow_html=True)
 
     _, col, _ = st.columns([1, 1, 1])
     with col:
@@ -417,7 +459,7 @@ def show_force_change_password():
 
 def show_reset_password_form(reset_token: str):
     """Full-screen password reset form shown when ?reset_token= is in URL."""
-    st.markdown(_LOGIN_CSS, unsafe_allow_html=True)
+    st.markdown(_login_css(), unsafe_allow_html=True)
 
     _, col, _ = st.columns([1, 1, 1])
     with col:

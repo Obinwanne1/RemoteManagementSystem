@@ -39,7 +39,8 @@ def update_org_settings():
         db.session.add(settings)
 
     for field in ["company_name", "company_address", "company_email",
-                  "company_phone", "payment_terms", "bank_details", "footer_notes"]:
+                  "company_phone", "payment_terms", "bank_details", "footer_notes",
+                  "app_name", "tagline", "primary_color"]:
         if field in data:
             setattr(settings, field, data[field])
 
@@ -89,6 +90,25 @@ def upload_org_logo():
     settings.logo_data = logo_b64
     db.session.commit()
     return jsonify({"message": "Logo updated", "logo_data": logo_b64}), 200
+
+
+@org_settings_bp.route("/public/branding", methods=["GET"])
+def public_branding():
+    """Public endpoint — no auth. Returns white-label branding fields only."""
+    settings = OrgSettings.query.get(1)
+    if not settings:
+        return jsonify({
+            "app_name":      "RMM System",
+            "tagline":       "Remote Monitoring & Management",
+            "primary_color": "#407E3C",
+            "logo_data":     None,
+        }), 200
+    return jsonify({
+        "app_name":      settings.app_name or "RMM System",
+        "tagline":       settings.tagline or "Remote Monitoring & Management",
+        "primary_color": settings.primary_color or "#407E3C",
+        "logo_data":     settings.logo_data,
+    }), 200
 
 
 @org_settings_bp.route("/org-settings/logo", methods=["DELETE"])

@@ -15,6 +15,10 @@ class OrgSettings(db.Model):
     payment_terms = db.Column(db.String(100), default="Net 30")
     bank_details = db.Column(db.Text, default="")
     footer_notes = db.Column(db.Text, default="Thank you for your business!")
+    # White-label branding
+    app_name      = db.Column(db.String(100), default="RMM System")
+    tagline       = db.Column(db.String(200), default="Remote Monitoring & Management")
+    primary_color = db.Column(db.String(7),   default="#407E3C")
 
     def to_dict(self):
         return {
@@ -26,7 +30,10 @@ class OrgSettings(db.Model):
             "logo_data": self.logo_data,
             "payment_terms": self.payment_terms or "Net 30",
             "bank_details": self.bank_details or "",
-            "footer_notes": self.footer_notes or "Thank you for your business!",
+            "footer_notes":    self.footer_notes or "Thank you for your business!",
+            "app_name":        self.app_name or "RMM System",
+            "tagline":         self.tagline or "Remote Monitoring & Management",
+            "primary_color":   self.primary_color or "#407E3C",
         }
 
     def logo_bytes(self):

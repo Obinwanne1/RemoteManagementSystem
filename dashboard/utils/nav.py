@@ -4,10 +4,33 @@ from utils.auth import current_user, logout
 
 
 def render_sidebar() -> None:
+    import base64 as _b64
     user = current_user() or {}
     role = user.get("role", "")
+    branding = st.session_state.get("_branding", {})
+    app_name  = branding.get("app_name", "RMM System")
+    logo_data = branding.get("logo_data")
 
     with st.sidebar:
+        # ── Brand header ──────────────────────────────────────────────────────
+        if logo_data:
+            try:
+                _, b64_part = logo_data.split(",", 1)
+                img_bytes = _b64.b64decode(b64_part)
+                st.image(img_bytes, width=120)
+            except Exception:
+                st.markdown(
+                    f'<div style="padding:0.9rem 1rem 0.5rem;font-weight:700;font-size:1rem;color:#E0F0E0">'
+                    f'{app_name}</div>',
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.markdown(
+                f'<div style="padding:0.9rem 1rem 0.5rem;font-weight:700;font-size:1rem;color:#E0F0E0">'
+                f'{app_name}</div>',
+                unsafe_allow_html=True,
+            )
+
         # ── User card ─────────────────────────────────────────────────────────
         _role_pill = {
             "superadmin": ("#7C3AED", "#7C3AED15"),
