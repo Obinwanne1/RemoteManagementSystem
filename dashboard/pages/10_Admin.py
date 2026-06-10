@@ -591,6 +591,55 @@ with tab_org:
             st.success("Org settings saved.")
             st.rerun()
 
+    # ── White-label branding ─────────────────────────────────────────────────
+    st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0.75rem">White-Label Branding</div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.form("branding_form"):
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            brand_name  = st.text_input("App Name",
+                                         value=org.get("app_name", "RMM System"),
+                                         help="Shown on login page, browser tab, and sidebar")
+            brand_color = st.text_input("Primary Color (hex)",
+                                         value=org.get("primary_color", "#407E3C"),
+                                         help="e.g. #2563EB for blue, #DC2626 for red")
+        with bc2:
+            brand_tagline = st.text_input("Tagline",
+                                           value=org.get("tagline", "Remote Monitoring & Management"),
+                                           help="Sub-heading shown below app name on login page")
+            st.markdown(
+                f'<div style="margin-top:1.6rem;width:100%;height:40px;border-radius:7px;'
+                f'background:{org.get("primary_color","#407E3C")};display:flex;align-items:center;'
+                f'justify-content:center;color:#fff;font-weight:600;font-size:0.85rem">'
+                f'Color Preview</div>',
+                unsafe_allow_html=True,
+            )
+        save_brand = st.form_submit_button("Save Branding", use_container_width=False)
+
+    if save_brand:
+        import re
+        if brand_color and not re.match(r'^#[0-9A-Fa-f]{6}$', brand_color):
+            st.error("Primary color must be a valid hex code (e.g. #407E3C)")
+        else:
+            _, berr = client.update_org_settings({
+                "app_name":      brand_name,
+                "tagline":       brand_tagline,
+                "primary_color": brand_color,
+            })
+            if berr:
+                st.error(f"Failed: {berr}")
+            else:
+                # Bust branding cache so sidebar + login reflect changes immediately
+                st.session_state.pop("_branding", None)
+                st.session_state.pop("_branding_ts", None)
+                st.success("Branding saved. Reload the page to see changes.")
+                st.rerun()
+
     # ── Logo management ───────────────────────────────────────────────────────
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
     st.markdown(

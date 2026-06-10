@@ -503,3 +503,22 @@ class RMMClient:
 
     def delete_device(self, device_id: str):
         return self._delete(f"/api/devices/{device_id}")
+
+    # --- Public (no auth) ---
+    @staticmethod
+    def get_branding() -> dict:
+        """Fetch white-label branding. No auth required."""
+        defaults = {
+            "app_name": "RMM System",
+            "tagline": "Remote Monitoring & Management",
+            "primary_color": "#407E3C",
+            "logo_data": None,
+        }
+        try:
+            resp = requests.get(f"{API_BASE}/api/admin/public/branding", timeout=3)
+            if resp.ok:
+                data = resp.json()
+                defaults.update({k: v for k, v in data.items() if v})
+        except Exception:
+            pass
+        return defaults
