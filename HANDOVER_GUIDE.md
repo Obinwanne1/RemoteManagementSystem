@@ -1485,10 +1485,16 @@ Technicians and administrators.
 | Platform | Detected OS family |
 | Status | Online (responded to ping) or Offline |
 
+### Auto-Detected Subnet Default
+
+When you open the Network Discovery page, the **Subnet** field is automatically pre-filled with your server's current `/24` subnet — derived from the server's LAN IP address. If the RMM server is at `192.168.178.37`, the field defaults to `192.168.178.0/24`. You can override it at any time.
+
+> **NOTE:** If you move the RMM server to a different network, the default subnet updates automatically on the next page load.
+
 ### Step-by-step: Running a Network Scan
 
 1. Click **Network Discovery** in the sidebar (under TOOLS).
-2. In the **Subnet** field, enter the network range in CIDR notation. Example: `192.168.1.0/24`
+2. The **Subnet** field is pre-filled with your server's current subnet. Verify or override it.
 3. Optionally select a **Customer** to assign all discovered devices to.
 4. Click **Scan Network**.
 5. A spinner shows while the scan runs (typically 15–30 seconds for a /24 subnet).
@@ -1497,6 +1503,20 @@ Technicians and administrators.
 > **WARNING:** Running a network scan on a network with intrusion detection may trigger security alerts. Check with the client before scanning sensitive networks.
 
 > **NOTE:** The scan uses concurrent ICMP ping (50 parallel threads). On large subnets (/16 or wider), expect longer scan times and consider narrowing the range.
+
+### Clearing Stale Devices from Other Networks
+
+If you have moved to a different subnet and your Devices page shows agentless entries from an old IP range, use the built-in stale-device cleaner.
+
+1. Open **Network Discovery** in the sidebar.
+2. Click the **🗑️ Clear stale devices from old networks** expander below the scan controls.
+3. The panel shows your current detected subnet and lists all agentless devices whose IP addresses fall outside it.
+4. If stale devices are listed, click **Delete N stale device(s)** to remove them permanently.
+5. Run a fresh scan on your current subnet to rediscover devices on the new network.
+
+> **NOTE:** Only agentless (network-discovered) devices are evaluated. Agent-managed devices are never affected by this tool.
+
+> **WARNING:** Deletion is immediate and cannot be undone. Review the listed IPs before confirming.
 
 ### How Platform Detection Works
 
@@ -2625,6 +2645,24 @@ Your logo appears in the top-left corner of every PDF invoice.
 
 > **NOTE:** Logo changes apply to new PDF downloads immediately. Previously downloaded PDFs are not retroactively updated.
 
+**White-Label Branding section:**
+
+Below the logo uploader is the **White-Label Branding** form. These fields control how the dashboard itself appears to every user — useful when reselling the RMM platform under your own company name and colours.
+
+| Field | Description | Example |
+|---|---|---|
+| App Name | Displayed in the sidebar header, browser tab title, and login page | AcmeRMM |
+| Tagline | Subtitle shown on the login page below the app name | Enterprise Monitoring |
+| Primary Color | Hex colour code applied to buttons, tabs, nav accents, and focus borders | `#1E40AF` (blue) |
+
+A live **colour preview block** appears next to the hex input so you can verify the choice before saving.
+
+Click **Save Branding** to apply. Changes take effect on the next browser refresh. A 5-minute cache applies — colour changes may take up to 5 minutes to propagate across all open browser sessions.
+
+> **NOTE:** The primary colour replaces the default green (`#407E3C`) throughout the entire dashboard — buttons, active tab indicators, sidebar nav accents, input focus rings, and the login page submit button. The logo uploaded above is also shown in the sidebar header and login page.
+
+> **TIP:** After saving, open an incognito/private browser window to see the full white-label effect from a fresh session without waiting for the cache to expire.
+
 ### Step-by-step: Setting Up Org Branding for the First Time
 
 1. Go to **Admin** → **Org Settings** tab.
@@ -2765,8 +2803,9 @@ RemoteManagementSystem/
 │   └── utils/
 │       ├── auth.py         # JWT login/logout/session management
 │       ├── api_client.py   # RMMClient: session reuse, retry, refresh
-│       ├── nav.py          # Shared sidebar component
-│       ├── styles.py       # CSS injection, stat cards, badges
+│       ├── nav.py          # Shared sidebar component (shows logo/app_name)
+│       ├── styles.py       # CSS injection, stat cards, badges (color-swappable)
+│       ├── branding.py     # White-label branding loader (cached, early-fetch safe)
 │       └── formatters.py   # Date, byte, color formatting
 └── scripts_library/        # Script templates on disk
 ```
@@ -2812,7 +2851,7 @@ RemoteManagementSystem/
 | AutomationProfile | automation_profiles | id, name, schedule_type, is_active |
 | Report | reports | id, name, template_type, customer_id, file_path |
 | Invoice | invoices | id, invoice_number, customer_id, period_start, period_end, due_date, device_count, per_device_rate, tax_rate, subtotal, tax_amount, total, notes, status |
-| OrgSettings | org_settings | id (always 1), company_name, company_address, company_email, logo_data, payment_terms, bank_details, footer_notes |
+| OrgSettings | org_settings | id (always 1), company_name, company_address, company_email, logo_data, payment_terms, bank_details, footer_notes, app_name, tagline, primary_color |
 | AuditLog | audit_logs | id, user_id, action, resource_type, ip_address |
 
 ---
@@ -3579,13 +3618,18 @@ UPDATE users SET role = 'admin' WHERE email = 'user@company.com';
 **Celery tasks:** `api/tasks/`
 **Agent main loop:** `agent/rmm_agent.py`
 
-**Brand colors:**
-- Primary: `#407E3C`
+**Brand colors (defaults — overridable via Admin → Org Settings → White-Label Branding):**
+- Primary: `#407E3C` (green default; white-label replaces this system-wide)
 - Accent: `#5a9e56`
 - White: `#FFFFFF`
 - Danger: `#EF4444`
 - Warning: `#F59E0B`
 - Success: `#22C55E`
+
+**White-label branding utilities:**
+- `dashboard/utils/branding.py` — `load_branding()` caches into `session_state["_branding"]` (5-min TTL); `fetch_branding_early()` is safe to call before `st.set_page_config`
+- `inject_css()` in `styles.py` reads `session_state["_branding"]["primary_color"]` and string-replaces `#407E3C` across all CSS
+- Public endpoint (no auth): `GET /api/admin/public/branding`
 
 **Auth pattern in dashboard pages:**
 ```python
