@@ -1,7 +1,10 @@
 import hashlib
 import uuid
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+_TOKEN_LIFETIME_DAYS = 90
+_TOKEN_ROTATE_BEFORE_DAYS = 7  # issue new token when < 7 days remain
 
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token
@@ -17,10 +20,10 @@ OFFLINE_THRESHOLD_SECONDS = 180  # 3 minutes without heartbeat = offline
 
 
 def _get_device_by_token(device_id: str):
-    """Validate agent token from Authorization header. Returns device or None."""
+    """Validate agent token. Returns (device, agent_token) or (None, None)."""
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
-        return None
+        return None, None
     token = auth[7:]
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
@@ -30,11 +33,15 @@ def _get_device_by_token(device_id: str):
         is_revoked=False,
     ).first()
     if not agent_token:
-        return None
+        return None, None
 
-    agent_token.last_used_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    if agent_token.expires_at and agent_token.expires_at <= now:
+        return None, None  # expired — agent must re-register
+
+    agent_token.last_used_at = now
     db.session.add(agent_token)
-    return Device.query.get(device_id)
+    return Device.query.get(device_id), agent_token
 
 
 @agents_bp.route("/register", methods=["POST"])
@@ -100,13 +107,16 @@ def register():
     device.is_online = True
     device.status = "healthy"
 
-    # Issue new agent token
+    # Issue new agent token with expiry
     raw_token = str(uuid.uuid4()) + secrets.token_hex(32)
     token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    now = datetime.now(timezone.utc)
 
     agent_token = AgentToken(
         device_id=device.id,
         token_hash=token_hash,
+        issued_at=now,
+        expires_at=now + timedelta(days=_TOKEN_LIFETIME_DAYS),
     )
     db.session.add(agent_token)
     db.session.commit()
@@ -121,7 +131,7 @@ def register():
 @agents_bp.route("/<device_id>/heartbeat", methods=["POST"])
 def heartbeat(device_id):
     """Receive metrics payload from agent. Updates device status."""
-    device = _get_device_by_token(device_id)
+    device, agent_token = _get_device_by_token(device_id)
     if not device:
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -165,15 +175,34 @@ def heartbeat(device_id):
         disks=data.get("disks"),
     )
     db.session.add(metrics)
+
+    # Rotate token when < 7 days remain (sliding window renewal)
+    new_raw_token = None
+    if agent_token and agent_token.expires_at:
+        days_left = (agent_token.expires_at - now).days
+        if days_left < _TOKEN_ROTATE_BEFORE_DAYS:
+            agent_token.is_revoked = True
+            new_raw_token = str(uuid.uuid4()) + secrets.token_hex(32)
+            new_hash = hashlib.sha256(new_raw_token.encode("utf-8")).hexdigest()
+            db.session.add(AgentToken(
+                device_id=device_id,
+                token_hash=new_hash,
+                issued_at=now,
+                expires_at=now + timedelta(days=_TOKEN_LIFETIME_DAYS),
+            ))
+
     db.session.commit()
 
-    return jsonify({"status": "ok", "server_time": now.isoformat()}), 200
+    resp = {"status": "ok", "server_time": now.isoformat()}
+    if new_raw_token:
+        resp["new_agent_token"] = new_raw_token
+    return jsonify(resp), 200
 
 
 @agents_bp.route("/<device_id>/tasks", methods=["GET"])
 def get_tasks(device_id):
     """Return pending tasks for this device."""
-    device = _get_device_by_token(device_id)
+    device, _ = _get_device_by_token(device_id)
     if not device:
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -217,7 +246,7 @@ def get_tasks(device_id):
 @agents_bp.route("/<device_id>/task_result", methods=["POST"])
 def task_result(device_id):
     """Agent posts completed task result."""
-    device = _get_device_by_token(device_id)
+    device, _ = _get_device_by_token(device_id)
     if not device:
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -242,7 +271,7 @@ def task_result(device_id):
 @agents_bp.route("/<device_id>/patches", methods=["PUT"])
 def update_patches(device_id):
     """Agent reports pending Windows Update patches."""
-    device = _get_device_by_token(device_id)
+    device, _ = _get_device_by_token(device_id)
     if not device:
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -280,7 +309,7 @@ def update_patches(device_id):
 @agents_bp.route("/<device_id>/software", methods=["PUT"])
 def update_software(device_id):
     """Agent posts full installed software list (replaces previous)."""
-    device = _get_device_by_token(device_id)
+    device, _ = _get_device_by_token(device_id)
     if not device:
         return jsonify({"error": "Unauthorized"}), 401
 
