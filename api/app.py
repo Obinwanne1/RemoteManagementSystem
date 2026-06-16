@@ -62,7 +62,7 @@ def create_app(config_name=None):
     # Import models so Alembic detects them
     with app.app_context():
         from models import user, device, customer, alert, ticket, patch, script, automation, report, billing, audit  # noqa
-        from models import org_settings  # noqa
+        from models import org_settings, user_session  # noqa
         try:
             from utils.builtin_scripts import ensure_builtin_scripts
             ensure_builtin_scripts()

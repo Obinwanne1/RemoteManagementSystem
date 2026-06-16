@@ -36,8 +36,13 @@ def _get_device_by_token(device_id: str):
         return None, None
 
     now = datetime.now(timezone.utc)
-    if agent_token.expires_at and agent_token.expires_at <= now:
-        return None, None  # expired — agent must re-register
+    if agent_token.expires_at:
+        # SQLite returns naive datetimes; treat as UTC
+        exp = agent_token.expires_at
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if exp <= now:
+            return None, None  # expired — agent must re-register
 
     agent_token.last_used_at = now
     db.session.add(agent_token)
@@ -179,7 +184,10 @@ def heartbeat(device_id):
     # Rotate token when < 7 days remain (sliding window renewal)
     new_raw_token = None
     if agent_token and agent_token.expires_at:
-        days_left = (agent_token.expires_at - now).days
+        exp = agent_token.expires_at
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        days_left = (exp - now).days
         if days_left < _TOKEN_ROTATE_BEFORE_DAYS:
             agent_token.is_revoked = True
             new_raw_token = str(uuid.uuid4()) + secrets.token_hex(32)
