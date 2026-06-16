@@ -54,8 +54,17 @@ class ProductionConfig(Config):
     DEBUG = False
 
 
+class TestConfig(DevelopmentConfig):
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}  # SQLite doesn't need pool options
+    RATELIMIT_ENABLED = False
+    RATELIMIT_STORAGE_URL = "memory://"
+
+
 config_map = {
     "development": DevelopmentConfig,
     "production": ProductionConfig,
+    "testing": TestConfig,
     "default": DevelopmentConfig,
 }

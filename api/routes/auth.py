@@ -78,7 +78,10 @@ def _check_new_ip(user):
 def _check_password_expiry(user):
     """Flag must_change_password if password is 90+ days old."""
     if user.password_changed_at and user.role != "superadmin":
-        age = datetime.now(timezone.utc) - user.password_changed_at
+        changed_at = user.password_changed_at
+        if changed_at.tzinfo is None:
+            changed_at = changed_at.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - changed_at
         if age.days >= _PASSWORD_EXPIRY_DAYS:
             user.must_change_password = True
 
@@ -100,11 +103,15 @@ def login():
         return jsonify({"error": "Invalid credentials"}), 401
 
     # Auto-unlock if lockout window has expired
-    if user.is_locked and user.locked_until and user.locked_until <= datetime.now(timezone.utc):
-        user.is_locked = False
-        user.locked_until = None
-        user.failed_login_attempts = 0
-        db.session.commit()
+    if user.is_locked and user.locked_until:
+        locked_until = user.locked_until
+        if locked_until.tzinfo is None:
+            locked_until = locked_until.replace(tzinfo=timezone.utc)
+        if locked_until <= datetime.now(timezone.utc):
+            user.is_locked = False
+            user.locked_until = None
+            user.failed_login_attempts = 0
+            db.session.commit()
 
     # Reject if account still locked
     if user.is_locked:
