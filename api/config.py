@@ -21,8 +21,8 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(seconds=int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", 900)))
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(seconds=int(os.getenv("JWT_REFRESH_TOKEN_EXPIRES", 604800)))
     JWT_TOKEN_LOCATION = ["headers", "cookies"]
-    JWT_COOKIE_SECURE = False  # Set True in production (HTTPS)
-    JWT_COOKIE_CSRF_PROTECT = False  # Enable in production
+    JWT_COOKIE_SECURE = True
+    JWT_COOKIE_CSRF_PROTECT = True
 
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
@@ -46,12 +46,12 @@ class Config:
 class DevelopmentConfig(Config):
     DEBUG = True
     SQLALCHEMY_ECHO = False
+    JWT_COOKIE_SECURE = False
+    JWT_COOKIE_CSRF_PROTECT = False
 
 
 class ProductionConfig(Config):
     DEBUG = False
-    JWT_COOKIE_SECURE = True
-    JWT_COOKIE_CSRF_PROTECT = True
 
 
 config_map = {

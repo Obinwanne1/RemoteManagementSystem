@@ -17,9 +17,20 @@ from models.user import User
 from models.customer import Customer
 from models.script import Script
 
-ADMIN_EMAIL = "admin@rmm.local"
-ADMIN_PASSWORD = "Admin1234!"
+import secrets
+import string
+
+ADMIN_EMAIL = os.getenv("SEED_ADMIN_EMAIL", "admin@rmm.local")
 ADMIN_NAME = "RMM Administrator"
+
+_env_pw = os.getenv("SEED_ADMIN_PASSWORD")
+if _env_pw:
+    ADMIN_PASSWORD = _env_pw
+else:
+    _alpha = string.ascii_letters + string.digits + "!@#$%^&*"
+    ADMIN_PASSWORD = "".join(secrets.choice(_alpha) for _ in range(16))
+    print(f"\n[SEED] SEED_ADMIN_PASSWORD not set — generated password: {ADMIN_PASSWORD}")
+    print("[SEED] Set SEED_ADMIN_PASSWORD in .env to control this.\n")
 
 BUILTIN_SCRIPTS = [
     {
