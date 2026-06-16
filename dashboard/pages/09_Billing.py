@@ -5,13 +5,17 @@ from datetime import date, timedelta
 from utils.auth import require_auth
 from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, BRAND, stat_card
-from utils.formatters import fmt_datetime, fmt_bytes
+from utils.formatters import fmt_datetime, fmt_bytes, fmt_currency, CURRENCY_SYMBOLS
 
 st.set_page_config(page_title="Billing — RMM", layout="wide")
 inject_css()
 
 client = require_auth()
 render_sidebar()
+
+_org = st.session_state.get("_org_settings", {})
+_currency = _org.get("currency", "USD")
+_curr_sym = CURRENCY_SYMBOLS.get(_currency, _currency + " ")
 
 st.markdown('<h1 style="margin:0">Billing</h1><p style="color:#6B7B6B;margin:2px 0 1rem;font-size:0.88rem">Customer invoices and billing management</p>', unsafe_allow_html=True)
 
@@ -44,9 +48,9 @@ overdue_total = sum(float(inv.get("total") or 0) for inv in invoices if (inv.get
 
 sc1, sc2, sc3, sc4 = st.columns(4)
 sc1.metric("Total Invoices", len(invoices))
-sc2.metric("Revenue (Paid)", f"${paid_total:,.2f}")
-sc3.metric("Outstanding", f"${pending_total:,.2f}")
-sc4.metric("Overdue", f"${overdue_total:,.2f}")
+sc2.metric("Revenue (Paid)", fmt_currency(paid_total, _currency))
+sc3.metric("Outstanding", fmt_currency(pending_total, _currency))
+sc4.metric("Overdue", fmt_currency(overdue_total, _currency))
 
 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
@@ -89,8 +93,8 @@ else:
         period_start = (inv.get("period_start") or "")[:10] or "—"
         period_end   = (inv.get("period_end") or "")[:10] or "—"
         dev_count    = inv.get("device_count") or "—"
-        rate         = f"${float(inv.get('per_device_rate') or 0):.2f}"
-        total        = f"${float(inv.get('total') or 0):,.2f}"
+        rate         = fmt_currency(inv.get('per_device_rate') or 0, _currency)
+        total        = fmt_currency(inv.get('total') or 0, _currency)
 
         c0,c1,c2,c3,c4,c5,c6,c7 = st.columns([1.5, 1.8, 1.1, 1.1, 0.7, 0.8, 0.9, 2.5])
         c0.markdown(f"<div style='font-size:0.78rem;font-family:monospace;color:#407E3C;font-weight:600'>{inv_num}</div>", unsafe_allow_html=True)
@@ -165,7 +169,7 @@ else:
             last_day = (date.today().replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
             inv_end = st.date_input("Period End", value=last_day)
         with gi_c4:
-            inv_rate = st.number_input("Rate / Device ($)", min_value=0.0, value=25.0, step=0.5, format="%.2f")
+            inv_rate = st.number_input(f"Rate / Device ({_curr_sym})", min_value=0.0, value=25.0, step=0.5, format="%.2f")
 
         gr_c1, gr_c2, gr_c3 = st.columns([1, 1.5, 3.5])
         with gr_c1:

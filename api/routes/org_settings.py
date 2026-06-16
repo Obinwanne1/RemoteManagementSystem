@@ -40,7 +40,7 @@ def update_org_settings():
 
     for field in ["company_name", "company_address", "company_email",
                   "company_phone", "payment_terms", "bank_details", "footer_notes",
-                  "app_name", "tagline", "primary_color"]:
+                  "app_name", "tagline", "primary_color", "currency", "timezone"]:
         if field in data:
             setattr(settings, field, data[field])
 

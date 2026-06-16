@@ -188,7 +188,15 @@
       "PowerShell(Start-Process -FilePath \"streamlit\" -ArgumentList \"run\", \"app.py\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\dashboard\" -WindowStyle Hidden)",
       "PowerShell(\\(Get-Command streamlit -ErrorAction SilentlyContinue\\).Source ; \\(Get-Command python -ErrorAction SilentlyContinue\\).Source)",
       "PowerShell(Start-Process -FilePath \"python\" -ArgumentList \"-m\", \"streamlit\", \"run\", \"app.py\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\dashboard\" -WindowStyle Hidden)",
-      "PowerShell(git *)"
+      "PowerShell(git *)",
+      "PowerShell(Start-Process \"https://github.com/Obinwanne1/RemoteManagementSystem\")",
+      "PowerShell(Start-Process -FilePath \"python\" -ArgumentList \"-m streamlit run app.py\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\dashboard\" -WindowStyle Hidden)",
+      "Bash(python -m streamlit run app.py)",
+      "Bash(pkill -f \"streamlit run app.py\")",
+      "PowerShell(Get-WmiObject *)",
+      "PowerShell(C:\\\\Python314\\\\python.exe -c \"import streamlit as st; print\\(hasattr\\(st, 'html'\\)\\)\")",
+      "PowerShell($env:PYTHONIOENCODING=\"utf-8\"; Start-Process -FilePath \"C:\\\\Python314\\\\python.exe\" -ArgumentList \"-m streamlit run app.py\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\dashboard\" -RedirectStandardOutput \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\st_out.txt\" -RedirectStandardError \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\st_err.txt\" -NoNewWindow -PassThru | Select-Object Id)",
+      "PowerShell(Start-Process -FilePath \"C:\\\\Python314\\\\python.exe\" -ArgumentList \"-m streamlit run app.py\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\dashboard\" -RedirectStandardOutput \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\st_out.txt\" -RedirectStandardError \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\st_err.txt\" -NoNewWindow -PassThru | Select-Object Id)"
     ]
   }
 }

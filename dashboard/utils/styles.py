@@ -1,5 +1,18 @@
 """Centralized CSS and reusable HTML components for RMM Dashboard."""
+import hashlib
+import pathlib
 import streamlit as st
+
+_STATIC_DIR = pathlib.Path(__file__).parent.parent / "static"
+_FA_LINK = '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>'
+
+
+def _write_css(filename: str, css: str) -> str:
+    """Write CSS to dashboard/static/<filename>, return cache-busted href."""
+    _STATIC_DIR.mkdir(exist_ok=True)
+    (_STATIC_DIR / filename).write_text(css, encoding="utf-8")
+    v = hashlib.md5(css.encode()).hexdigest()[:8]
+    return f"/app/static/{filename}?v={v}"
 
 # ── Color tokens ──────────────────────────────────────────────────────────────
 BRAND = {
@@ -41,11 +54,8 @@ PRIORITY_COLORS = {
     "critical": "#EF4444",
 }
 
-# ── Global CSS ────────────────────────────────────────────────────────────────
-_GLOBAL_CSS = """
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
-<style>
-/* Streamlit chrome removal */
+# ── Global CSS rules (plain text — no <style> wrapper) ───────────────────────
+_GLOBAL_CSS_RULES = """
 #MainMenu,
 footer,
 [data-testid="stToolbar"],
@@ -55,13 +65,10 @@ button[data-testid="manage-app-button"],
 [data-testid="collapsedControl"] {
     display: none !important;
 }
-
 header[data-testid="stHeader"] {
     background: transparent;
     height: 0 !important;
 }
-
-/* App layout */
 .appview-container > section:first-child { padding-top: 0; }
 .main .block-container {
     padding-top: 1.75rem;
@@ -70,8 +77,6 @@ header[data-testid="stHeader"] {
     padding-right: 2.25rem;
     max-width: 1600px;
 }
-
-/* ── Sidebar ─────────────────────── */
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #0A1409 0%, #0F1B10 40%, #0A1409 100%) !important;
     border-right: 1px solid #1A2E1A !important;
@@ -82,8 +87,6 @@ header[data-testid="stHeader"] {
     max-height: 100vh !important;
 }
 [data-testid="stSidebar"] section { background: transparent !important; }
-
-/* All text inside sidebar: default light green */
 [data-testid="stSidebar"] p,
 [data-testid="stSidebar"] span,
 [data-testid="stSidebar"] li,
@@ -92,14 +95,10 @@ header[data-testid="stHeader"] {
 [data-testid="stSidebar"] label {
     color: #C8DCC8 !important;
 }
-
-/* Hide default Streamlit auto-generated page nav — we use custom HTML nav */
 [data-testid="stSidebarNav"],
 [data-testid="stSidebarNavItems"],
 section[data-testid="stSidebar"] > div > div > div > ul,
 nav[data-testid="stSidebarNav"] { display: none !important; }
-
-/* Nav link container */
 [data-testid="stSidebarNavLink"] {
     border-radius: 6px;
     margin: 1px 6px;
@@ -123,8 +122,6 @@ nav[data-testid="stSidebarNav"] { display: none !important; }
 [data-testid="stSidebarNavLink"][aria-selected="true"] div {
     color: #FFFFFF !important;
 }
-
-/* ── Buttons ─────────────────────── */
 .stButton > button {
     background: #407E3C;
     color: #FFFFFF;
@@ -143,7 +140,6 @@ nav[data-testid="stSidebarNav"] { display: none !important; }
     box-shadow: 0 4px 10px rgba(64,126,60,0.3);
 }
 .stButton > button:active { transform: translateY(0); }
-
 [data-testid="stSidebar"] .stButton > button {
     background: transparent;
     border: 1px solid #1E3320;
@@ -155,8 +151,6 @@ nav[data-testid="stSidebarNav"] { display: none !important; }
     color: #D4EED4;
     border-color: #3A6636;
 }
-
-/* ── Inputs ──────────────────────── */
 .stTextInput > div > div > input {
     border-radius: 7px;
     border: 1.5px solid #DDE8DD;
@@ -173,8 +167,6 @@ nav[data-testid="stSidebarNav"] { display: none !important; }
     border-radius: 7px;
     border-color: #DDE8DD;
 }
-
-/* ── st.metric boxes ─────────────── */
 [data-testid="stMetric"] {
     background: #FFFFFF;
     border-radius: 10px;
@@ -195,11 +187,7 @@ nav[data-testid="stSidebarNav"] { display: none !important; }
     color: #6B7B6B !important;
     font-weight: 600 !important;
 }
-[data-testid="stMetricDelta"] {
-    font-size: 0.78rem !important;
-}
-
-/* ── Expanders ───────────────────── */
+[data-testid="stMetricDelta"] { font-size: 0.78rem !important; }
 [data-testid="stExpander"] {
     border: 1px solid #DDE8DD !important;
     border-radius: 9px !important;
@@ -211,14 +199,8 @@ nav[data-testid="stSidebarNav"] { display: none !important; }
     background: #FAFCFA !important;
     padding: 0.7rem 1rem !important;
 }
-[data-testid="stExpander"] > details > summary:hover {
-    background: #F0F7F0 !important;
-}
-[data-testid="stExpander"] > details[open] > summary {
-    border-bottom: 1px solid #DDE8DD !important;
-}
-
-/* ── Tabs ────────────────────────── */
+[data-testid="stExpander"] > details > summary:hover { background: #F0F7F0 !important; }
+[data-testid="stExpander"] > details[open] > summary { border-bottom: 1px solid #DDE8DD !important; }
 [data-testid="stTabs"] button[role="tab"] {
     border-radius: 7px 7px 0 0;
     font-weight: 500;
@@ -228,38 +210,27 @@ nav[data-testid="stSidebarNav"] { display: none !important; }
     color: #407E3C;
     border-bottom: 2px solid #407E3C;
 }
-
-/* ── Dataframe / tables ──────────── */
 [data-testid="stDataFrame"] {
     border-radius: 9px !important;
     overflow: hidden !important;
     border: 1px solid #DDE8DD !important;
 }
-
-/* ── Misc ────────────────────────── */
 hr { border-color: #DDE8DD; margin: 1.2rem 0; }
 h1 { font-size: 1.55rem !important; font-weight: 700 !important; color: #1A2B1A !important; }
 h2 { font-size: 1.15rem !important; font-weight: 600 !important; color: #1A2B1A !important; }
 h3 { font-size: 1rem !important; font-weight: 600 !important; color: #2A3B2A !important; }
-
 .stCaption, [data-testid="stCaptionContainer"] {
     color: #6B7B6B !important;
     font-size: 0.8rem !important;
 }
-</style>
 """
 
-_LOGIN_CSS = """
-<style>
-/* Login page overrides */
-.main .block-container {
+_LOGIN_CSS_RULES = """.main .block-container {
     padding-top: 0 !important;
     max-width: 100% !important;
     padding-left: 0 !important;
     padding-right: 0 !important;
-}
-</style>
-"""
+}"""
 
 
 def _hex_to_rgb(hex_color: str):
@@ -268,8 +239,8 @@ def _hex_to_rgb(hex_color: str):
 
 
 def inject_css():
-    """Apply global brand CSS. Swaps primary color if white-label branding is set."""
-    css = _GLOBAL_CSS
+    """Apply global brand CSS via static file (Streamlit 1.36+ compatible)."""
+    css = _GLOBAL_CSS_RULES
     branding = st.session_state.get("_branding", {})
     primary = (branding.get("primary_color") or "#407E3C").strip()
     if primary and primary != "#407E3C":
@@ -277,12 +248,17 @@ def inject_css():
         css = (css
                .replace("#407E3C", primary)
                .replace("rgba(64,126,60,", f"rgba({r},{g},{b},"))
-    st.markdown(css, unsafe_allow_html=True)
+    href = _write_css("brand.css", css)
+    st.markdown(
+        f'{_FA_LINK}\n<link rel="stylesheet" href="{href}">',
+        unsafe_allow_html=True,
+    )
 
 
 def inject_login_css():
     """Additional CSS for the login page."""
-    st.markdown(_LOGIN_CSS, unsafe_allow_html=True)
+    href = _write_css("login_extra.css", _LOGIN_CSS_RULES)
+    st.markdown(f'<link rel="stylesheet" href="{href}">', unsafe_allow_html=True)
 
 
 # ── HTML component helpers ────────────────────────────────────────────────────

@@ -19,6 +19,9 @@ class OrgSettings(db.Model):
     app_name      = db.Column(db.String(100), default="RMM System")
     tagline       = db.Column(db.String(200), default="Remote Monitoring & Management")
     primary_color = db.Column(db.String(7),   default="#407E3C")
+    # Regional settings
+    currency      = db.Column(db.String(3),   default="USD")
+    timezone      = db.Column(db.String(50),  default="UTC")
 
     def to_dict(self):
         return {
@@ -34,6 +37,8 @@ class OrgSettings(db.Model):
             "app_name":        self.app_name or "RMM System",
             "tagline":         self.tagline or "Remote Monitoring & Management",
             "primary_color":   self.primary_color or "#407E3C",
+            "currency":        self.currency or "USD",
+            "timezone":        self.timezone or "UTC",
         }
 
     def logo_bytes(self):
