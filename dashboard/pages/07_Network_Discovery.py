@@ -49,9 +49,23 @@ if _can_scan:
     ctrl1, ctrl2, ctrl3 = st.columns([2.5, 1.5, 1])
 
     with ctrl1:
+        # Auto-detect server's current subnet as default
+        if "nd_detected_subnet" not in st.session_state:
+            _ip_data, _ = client._get("/api/admin/server_ips")
+            _ips = (_ip_data or {}).get("lan_ips", [])
+            if _ips:
+                import ipaddress as _ipmod
+                try:
+                    _net = _ipmod.ip_network(f"{_ips[0]}/24", strict=False)
+                    st.session_state["nd_detected_subnet"] = str(_net)
+                except Exception:
+                    st.session_state["nd_detected_subnet"] = "192.168.1.0/24"
+            else:
+                st.session_state["nd_detected_subnet"] = "192.168.1.0/24"
+
         scan_range = st.text_input(
             "Subnet (CIDR)",
-            value="192.168.1.0/24",
+            value=st.session_state["nd_detected_subnet"],
             placeholder="e.g. 192.168.0.0/24",
             help="Supports /24 or smaller ranges (max 254 hosts).",
             label_visibility="visible",
@@ -78,6 +92,52 @@ else:
     run_scan = False
 
 st.markdown("</div>", unsafe_allow_html=True)
+
+# ── Clear stale agentless devices ─────────────────────────────────────────────
+if _can_scan:
+    with st.expander("🗑️ Clear stale devices from old networks"):
+        import ipaddress as _ipmod2
+        _current_subnet = st.session_state.get("nd_detected_subnet", "")
+        st.caption(f"Current detected subnet: **{_current_subnet}**")
+
+        _dev_data, _dev_err = client._get("/api/devices?per_page=500")
+        _all_devices = (_dev_data or {}).get("items", []) if not _dev_err else []
+        _agentless = [d for d in _all_devices if d.get("is_agentless")]
+
+        # Find devices whose IP doesn't belong to current subnet
+        _stale = []
+        if _current_subnet and _agentless:
+            try:
+                _net_obj = _ipmod2.ip_network(_current_subnet, strict=False)
+                for _d in _agentless:
+                    _ip = _d.get("ip_address") or ""
+                    try:
+                        if _ip and _ipmod2.ip_address(_ip) not in _net_obj:
+                            _stale.append(_d)
+                    except Exception:
+                        _stale.append(_d)
+            except Exception:
+                _stale = []
+
+        if not _stale:
+            st.success(f"No stale devices — all {len(_agentless)} agentless device(s) are on the current subnet.")
+        else:
+            st.warning(f"Found **{len(_stale)}** agentless device(s) from other subnets:")
+            for _d in _stale:
+                st.markdown(
+                    f"- `{_d.get('ip_address','?')}` — {_d.get('hostname') or _d.get('name','unknown')} "
+                    f"({_d.get('platform','?')})",
+                    unsafe_allow_html=False,
+                )
+            if st.button(f"Delete {len(_stale)} stale device(s)", type="primary", key="clear_stale_btn"):
+                _deleted = 0
+                for _d in _stale:
+                    _, _err = client.delete_device(_d["id"])
+                    if not _err:
+                        _deleted += 1
+                st.success(f"Deleted {_deleted} stale device(s). Refresh page to confirm.")
+                st.session_state.pop("nd_detected_subnet", None)
+                st.rerun()
 
 # ── Trigger scan ──────────────────────────────────────────────────────────────
 if run_scan:
