@@ -223,6 +223,110 @@ h3 { font-size: 1rem !important; font-weight: 600 !important; color: #2A3B2A !im
     color: #6B7B6B !important;
     font-size: 0.8rem !important;
 }
+
+/* ── Tablet (≤1024px) ────────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+    .main .block-container {
+        padding-left: 1.25rem !important;
+        padding-right: 1.25rem !important;
+        padding-top: 1.25rem !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.6rem !important;
+    }
+}
+
+/* ── Mobile (≤768px) ─────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    /* Reduce content padding */
+    .main .block-container {
+        padding-top: 0.75rem !important;
+        padding-left: 0.6rem !important;
+        padding-right: 0.6rem !important;
+        padding-bottom: 1.5rem !important;
+    }
+    /* Stack all st.columns vertically */
+    [data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+        gap: 0.4rem !important;
+    }
+    [data-testid="column"] {
+        width: 100% !important;
+        min-width: 100% !important;
+        flex: 1 1 100% !important;
+    }
+    /* Metric cards */
+    [data-testid="stMetric"] {
+        padding: 0.65rem 0.9rem 0.6rem !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.4rem !important;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 0.65rem !important;
+    }
+    /* Header sizes */
+    h1 { font-size: 1.2rem !important; }
+    h2 { font-size: 1rem !important; }
+    h3 { font-size: 0.9rem !important; }
+    /* Bigger tap targets for buttons (44px min per WCAG) */
+    .stButton > button {
+        min-height: 44px !important;
+        font-size: 0.9rem !important;
+        padding: 0.55rem 0.9rem !important;
+    }
+    /* Bigger inputs for touch */
+    .stTextInput > div > div > input,
+    .stTextArea > div > div > textarea {
+        font-size: 1rem !important;
+        min-height: 44px !important;
+    }
+    .stSelectbox > div > div,
+    .stMultiSelect > div > div {
+        min-height: 44px !important;
+    }
+    /* Tabs: horizontal scroll instead of wrap */
+    [data-testid="stTabs"] {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    [data-testid="stTabs"] [role="tablist"] {
+        flex-wrap: nowrap !important;
+        white-space: nowrap !important;
+    }
+    /* Expanders */
+    [data-testid="stExpander"] > details > summary {
+        padding: 0.75rem 0.85rem !important;
+        font-size: 0.9rem !important;
+    }
+    /* DataFrame horizontal scroll */
+    [data-testid="stDataFrame"] {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    /* Sidebar: constrain width so it doesn't push content off-screen */
+    [data-testid="stSidebar"] {
+        min-width: 230px !important;
+        max-width: 82vw !important;
+    }
+    /* Login card full-width */
+    .login-card {
+        border-radius: 10px !important;
+        padding: 1.5rem 1.1rem 1.25rem !important;
+    }
+}
+
+/* ── Very small (≤480px) ─────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+    .main .block-container {
+        padding-left: 0.4rem !important;
+        padding-right: 0.4rem !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.25rem !important;
+    }
+    h1 { font-size: 1.05rem !important; }
+}
 """
 
 _LOGIN_CSS_RULES = """.main .block-container {

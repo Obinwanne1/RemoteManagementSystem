@@ -86,6 +86,36 @@ def _login_css() -> str:
     margin: 0 !important;
     letter-spacing: -0.02em !important;
 }}
+@media (max-width: 768px) {{
+    .main .block-container {{
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        padding-top: 0 !important;
+    }}
+    .login-card {{
+        padding: 1.5rem 1.1rem 1.25rem !important;
+        border-radius: 10px !important;
+    }}
+    .brand-title {{
+        font-size: 1.5rem !important;
+    }}
+    .login-card .stButton > button {{
+        min-height: 48px !important;
+        font-size: 1rem !important;
+    }}
+    .login-card .stTextInput > div > div > input {{
+        min-height: 48px !important;
+        font-size: 1rem !important;
+    }}
+    [data-testid="stHorizontalBlock"] {{
+        flex-wrap: wrap !important;
+    }}
+    [data-testid="column"] {{
+        width: 100% !important;
+        min-width: 100% !important;
+        flex: 1 1 100% !important;
+    }}
+}}
 """
     static_dir = pathlib.Path(__file__).parent / "static"
     static_dir.mkdir(exist_ok=True)
