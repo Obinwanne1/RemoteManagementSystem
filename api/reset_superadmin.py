@@ -33,6 +33,9 @@ with app.app_context():
     sa.set_password(new_password)
     sa.is_active = True
     sa.must_change_password = False
+    sa.is_locked = False
+    sa.locked_until = None
+    sa.failed_login_attempts = 0
     db.session.commit()
     print(f"Superadmin password reset.")
     print(f"  Email: {SUPERADMIN_EMAIL}")

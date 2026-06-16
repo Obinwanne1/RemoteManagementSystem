@@ -60,3 +60,6 @@ htmlcov/
 
 # Alembic
 api/migrations/versions/*.pyc
+
+# TLS certificates (never commit private keys)
+nginx/certs/

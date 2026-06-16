@@ -36,6 +36,20 @@ services:
       timeout: 5s
       retries: 5
 
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+      - dashboard
+
   api:
     build:
       context: ./api
@@ -50,8 +64,9 @@ services:
       FLASK_ENV: production
       API_HOST: 0.0.0.0
       API_PORT: "5000"
-    ports:
-      - "5000:5000"
+    # Port 5000 intentionally NOT exposed externally — nginx proxies all traffic
+    expose:
+      - "5000"
     depends_on:
       db:
         condition: service_healthy
@@ -104,8 +119,9 @@ services:
     env_file: .env
     environment:
       API_BASE_URL: http://api:5000
-    ports:
-      - "8501:8501"
+    # Port 8501 intentionally NOT exposed externally — nginx proxies all traffic
+    expose:
+      - "8501"
     depends_on:
       - api
     command: python -m streamlit run app.py --server.port=8501 --server.address=0.0.0.0

@@ -117,23 +117,22 @@ def login():
 
     if not user.check_password(password):
         _audit("login_failed", user_id=user.id, payload={"email": email})
-        # Increment attempt counter — superadmin is never locked
-        if user.role != "superadmin":
-            user.failed_login_attempts += 1
-            if user.failed_login_attempts >= 3:
-                user.is_locked = True
-                user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
-                db.session.commit()
-                admin_emails = [
-                    u.email for u in User.query.filter(
-                        User.role == "admin", User.is_active == True
-                    ).all()
-                ]
-                send_account_locked_email(user.email, admin_emails)
-                return jsonify({
-                    "error": "account_locked",
-                    "locked_until": user.locked_until.isoformat(),
-                }), 423
+        user.failed_login_attempts += 1
+        if user.failed_login_attempts >= 3:
+            user.is_locked = True
+            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+            db.session.commit()
+            admin_emails = [
+                u.email for u in User.query.filter(
+                    User.role.in_(["admin", "superadmin"]), User.is_active == True,
+                    User.email != user.email,
+                ).all()
+            ]
+            send_account_locked_email(user.email, admin_emails)
+            return jsonify({
+                "error": "account_locked",
+                "locked_until": user.locked_until.isoformat(),
+            }), 423
         db.session.commit()
         return jsonify({"error": "Invalid credentials"}), 401
 

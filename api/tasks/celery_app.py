@@ -69,6 +69,10 @@ def make_celery(app=None):
                 "task": "tasks.alert_tasks.check_password_expiry",
                 "schedule": 86400.0,
             },
+            "prune-old-data-daily": {
+                "task": "tasks.maintenance_tasks.prune_old_data",
+                "schedule": 86400.0,
+            },
         },
     )
 

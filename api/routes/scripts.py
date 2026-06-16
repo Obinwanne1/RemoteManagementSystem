@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from extensions import db
+from extensions import db, limiter
 from models.script import Script, ScriptRun
 from models.device import Device
 
@@ -108,6 +108,7 @@ def delete_script(script_id):
 
 @scripts_bp.route("/<script_id>/run", methods=["POST"])
 @jwt_required()
+@limiter.limit("5 per minute")
 def run_script(script_id):
     err = _require_role("admin", "technician")
     if err:

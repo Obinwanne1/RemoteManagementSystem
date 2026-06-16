@@ -160,6 +160,14 @@ def main():
             _consecutive_failures = 0
             logger.debug("Heartbeat OK — server_time=%s", data.get("server_time"))
 
+            # Rotate agent token if server issued a new one
+            if data.get("new_agent_token"):
+                new_token = data["new_agent_token"]
+                config.set("agent", "agent_token", new_token)
+                save_config(config)
+                client.session.headers.update({"Authorization": f"Bearer {new_token}"})
+                logger.info("Agent token rotated and saved to config.ini")
+
             # Poll and execute tasks
             tasks = client.get_tasks()
             for task in tasks:
