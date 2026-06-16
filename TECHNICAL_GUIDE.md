@@ -2,7 +2,7 @@
 
 **Audience:** Developers, system architects, and advanced administrators  
 **Stack:** Flask 3 · SQLAlchemy 2 · Celery 5 · Streamlit 1.58 · PostgreSQL 15 · Redis/Memurai  
-**Version:** 1.1 (multi-currency/timezone, network scan fix, Flask stability)
+**Version:** 1.2 (responsive design, multi-currency/timezone, network scan fix)
 
 ---
 
@@ -1083,6 +1083,48 @@ Default window: 24 hours (`GET /api/devices/<id>/metrics?hours=24`). If the API 
 - If the 7-day window is also empty, `st.warning("No metric history available.")` is shown.
 
 The `collected_at` timezone handling: `pd.to_datetime()` preserves tz-aware timestamps; the "hours ago" calculation converts to UTC via `.tz_convert("UTC")` before diffing against `pd.Timestamp.now(tz="UTC")`.
+
+### Responsive Design — CSS Breakpoints
+
+Responsive styles live entirely in `dashboard/utils/styles.py` (`_GLOBAL_CSS_RULES`) and are injected as a static CSS file via `inject_css()`. The login page adds its own mobile overrides through `_login_css()` in `dashboard/app.py`.
+
+**Breakpoints:**
+
+| Breakpoint | Selector | Key rules |
+|---|---|---|
+| ≤1024px (tablet) | `@media (max-width: 1024px)` | Padding → 1.25rem, metric value → 1.6rem |
+| ≤768px (mobile) | `@media (max-width: 768px)` | Columns stack (`flex-wrap: wrap`, `flex: 1 1 100%`), 44px tap targets, 1rem input font, tabs scroll horizontally, DataFrames scroll, sidebar capped at 82vw, login card full-width |
+| ≤480px (small phone) | `@media (max-width: 480px)` | Padding → 0.4rem, heading/metric further reduced |
+
+**Column stacking — how it works:**
+
+Streamlit renders `st.columns()` as `[data-testid="stHorizontalBlock"]` with children `[data-testid="column"]`. On mobile:
+```css
+[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
+[data-testid="column"]            { width: 100% !important; min-width: 100% !important; flex: 1 1 100% !important; }
+```
+All column layouts — stat cards, device rows, billing columns — stack vertically. Empty spacer columns (e.g. `_, col, _` in login) have no content so they take zero visible height.
+
+**Touch targets (WCAG 2.5.5):**
+```css
+.stButton > button       { min-height: 44px !important; }
+.stTextInput input       { min-height: 44px !important; font-size: 1rem !important; }
+```
+`font-size: 1rem` on inputs prevents iOS Safari from auto-zooming on focus.
+
+**Tab overflow:**
+```css
+[data-testid="stTabs"]             { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+[data-testid="stTabs"] [role="tablist"] { flex-wrap: nowrap !important; }
+```
+Tabs scroll horizontally on mobile instead of wrapping or clipping.
+
+**Login page specifics (`_login_css()` in `app.py`):**
+Same column-stack rules are duplicated inside the login CSS block so they apply before `inject_css()` is called. Login-specific: `min-height: 48px` on inputs/buttons (slightly larger for first-touch UX), `brand-title` shrinks to 1.5rem.
+
+**Platform limitation:** Streamlit injects its own `<meta name="viewport" content="width=device-width, initial-scale=1">` — no override needed. However, Streamlit renders in an iframe context where the `window.innerWidth` seen by CSS is the iframe width, not the device width. On current Chrome/Safari (mobile), this equals the viewport width correctly. On some embedded or WebView contexts, breakpoints may not fire. No workaround exists within Streamlit's current architecture.
+
+**White-label color swap compatibility:** `inject_css()` does a string-replace of `#407E3C` → custom color before writing the CSS file. The responsive rules contain no color values, so the swap is unaffected.
 
 ### Device Health Map — Clickable Cards
 

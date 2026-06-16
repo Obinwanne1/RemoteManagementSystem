@@ -8,7 +8,7 @@ Version 1.0 — Built exclusively for Faiyke-AI Agency
 **Prepared for:** Faiyke-AI Agency
 **System URL:** http://localhost:8501
 **API URL:** http://localhost:5000
-**Document version:** 2.1 (multi-currency, regional settings, network scan fix)
+**Document version:** 2.2 (responsive design for mobile and tablet)
 
 ---
 
@@ -840,6 +840,21 @@ Steps 1 through 5 happen with zero human involvement. That is the power of an RM
 
 Everyone. This is the entry point to every page in the system.
 
+### Supported Devices and Screen Sizes
+
+The dashboard is responsive and adapts to the following screen sizes:
+
+| Device | Screen Width | Experience |
+|---|---|---|
+| Desktop / large monitor | >1024px | Full layout — sidebar expanded, multi-column grids |
+| Tablet (landscape) | 768–1024px | Reduced padding, slightly smaller metrics |
+| Mobile / tablet (portrait) | ≤768px | All columns stack vertically, full-width login card, 44px touch targets on buttons and inputs |
+| Small phone | ≤480px | Further padding and font-size reduction |
+
+On mobile, the sidebar collapses automatically — tap the **☰ menu button** (top left) to open it. All navigation works the same way as on desktop.
+
+> **NOTE:** The dashboard runs inside Streamlit's web runtime, which sets its own viewport. On some older mobile browsers, responsive breakpoints may not trigger as expected. Chrome and Safari on iOS/Android (current versions) are fully supported.
+
 ### Step-by-step: Logging In
 
 1. Open your web browser (Chrome, Firefox, or Edge recommended).
@@ -870,7 +885,7 @@ If an administrator created your account with the **"Require password change on 
 After logging in, the screen has two sections:
 
 **The Sidebar (left panel)**
-Your navigation menu, always visible. Pages are grouped:
+Your navigation menu. On desktop it is always visible on the left. On mobile and tablet it collapses — tap the **☰** icon in the top-left corner to open it, and tap anywhere on the main content area to close it. Pages are grouped:
 - **MONITORING:** Overview (Dashboard), Devices, Alerts
 - **MANAGEMENT:** Tickets, Customers, Automation
 - **PATCHING:** OS Patches, Software Patches
@@ -3774,6 +3789,6 @@ Password must be at least 10 characters. No API restart needed.
 
 ---
 
-*End of RMM System Complete Handbook — Version 2.1*
+*End of RMM System Complete Handbook — Version 2.2*
 
 *For support with this guide, contact your system administrator or development team.*
