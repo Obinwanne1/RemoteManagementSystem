@@ -4,6 +4,8 @@ from flask_jwt_extended import jwt_required, get_jwt
 from extensions import db
 from models.automation import AutomationProfile, ScheduledTaskRun
 from models.device import Device
+from utils.validation import validate_body
+from schemas.automation import AutomationProfileCreateSchema, AutomationProfileUpdateSchema
 
 automation_bp = Blueprint("automation", __name__)
 
@@ -11,7 +13,7 @@ automation_bp = Blueprint("automation", __name__)
 def _require_role(*roles):
     claims = get_jwt()
     if claims.get("role") == "superadmin":
-        return None  # superadmin bypasses all role checks
+        return None
     if claims.get("role") not in roles:
         return jsonify({"error": "Insufficient permissions"}), 403
     return None
@@ -30,6 +32,7 @@ def list_profiles():
 
 @automation_bp.route("/profiles", methods=["POST"])
 @jwt_required()
+@validate_body(AutomationProfileCreateSchema)
 def create_profile():
     err = _require_role("admin", "technician")
     if err:
@@ -66,6 +69,7 @@ def get_profile(profile_id):
 
 @automation_bp.route("/profiles/<profile_id>", methods=["PUT"])
 @jwt_required()
+@validate_body(AutomationProfileUpdateSchema)
 def update_profile(profile_id):
     err = _require_role("admin", "technician")
     if err:
@@ -102,7 +106,6 @@ def run_profile_now(profile_id):
         return err
     profile = AutomationProfile.query.get_or_404(profile_id)
 
-    # Idempotency guard — reject duplicate runs within 30 seconds
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
     recent = ScheduledTaskRun.query.filter(
         ScheduledTaskRun.profile_id == profile_id,
@@ -112,7 +115,6 @@ def run_profile_now(profile_id):
     if recent:
         return jsonify({"message": "Run already queued recently, skipping duplicate"}), 200
 
-    # Dispatch to Celery — avoids blocking request on large device sets
     from tasks.automation_tasks import enqueue_profile_run
     task = enqueue_profile_run.delay(profile_id)
 

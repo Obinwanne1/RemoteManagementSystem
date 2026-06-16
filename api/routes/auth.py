@@ -17,6 +17,12 @@ from utils.notifications import (
     send_login_anomaly_alert,
 )
 from utils.password import password_error_response
+from utils.validation import validate_body
+from schemas.auth import (
+    LoginSchema, ChangePasswordSchema, ForceChangePasswordSchema,
+    MfaEnableSchema, MfaLoginSchema, MfaDisableSchema,
+    PasswordResetRequestSchema, PasswordResetConfirmSchema,
+)
 
 # Short-lived JWT purpose claims
 _MFA_PENDING = "mfa_pending"
@@ -88,6 +94,7 @@ def _check_password_expiry(user):
 
 @auth_bp.route("/login", methods=["POST"])
 @limiter.limit("10 per minute")
+@validate_body(LoginSchema)
 def login():
     data = request.get_json(silent=True) or {}
     email = data.get("email", "").strip().lower()
@@ -228,6 +235,7 @@ def me():
 
 @auth_bp.route("/me/password", methods=["PUT"])
 @jwt_required()
+@validate_body(ChangePasswordSchema)
 def change_password():
     identity = get_jwt_identity()
     user = User.query.get(identity)
@@ -251,6 +259,7 @@ def change_password():
 
 @auth_bp.route("/me/force-change-password", methods=["POST"])
 @jwt_required()
+@validate_body(ForceChangePasswordSchema)
 def force_change_password():
     """Used on forced first-login password change — no current password required."""
     identity = get_jwt_identity()
@@ -301,6 +310,7 @@ def mfa_setup():
 
 @auth_bp.route("/mfa/enable", methods=["POST"])
 @jwt_required()
+@validate_body(MfaEnableSchema)
 def mfa_enable():
     """Verify TOTP code and activate MFA on the account."""
     identity = get_jwt_identity()
@@ -328,6 +338,7 @@ def mfa_enable():
 
 @auth_bp.route("/mfa/login", methods=["POST"])
 @limiter.limit("10 per minute")
+@validate_body(MfaLoginSchema)
 def mfa_login():
     """Second step of MFA login. Accepts mfa_token + TOTP code, returns full JWT."""
     data = request.get_json(silent=True) or {}
@@ -379,6 +390,7 @@ def mfa_login():
 
 @auth_bp.route("/mfa/disable", methods=["POST"])
 @jwt_required()
+@validate_body(MfaDisableSchema)
 def mfa_disable():
     """Disable MFA. Requires current password for confirmation."""
     identity = get_jwt_identity()
@@ -456,6 +468,7 @@ def delete_avatar():
 
 @auth_bp.route("/password-reset/request", methods=["POST"])
 @limiter.limit("5 per minute")
+@validate_body(PasswordResetRequestSchema)
 def password_reset_request():
     """Request a password reset link. Always returns 200 to prevent email enumeration."""
     data = request.get_json(silent=True) or {}
@@ -480,6 +493,7 @@ def password_reset_request():
 
 
 @auth_bp.route("/password-reset/confirm", methods=["POST"])
+@validate_body(PasswordResetConfirmSchema)
 def password_reset_confirm():
     """Confirm a password reset using the token from the reset link."""
     data = request.get_json(silent=True) or {}

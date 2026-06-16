@@ -4,6 +4,8 @@ from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy import func
 from extensions import db, limiter
 from models.device import Device, DeviceMetrics
+from utils.validation import validate_body
+from schemas.devices import DeviceUpdateSchema, QueueTaskSchema, DeployPatchesSchema
 
 devices_bp = Blueprint("devices", __name__)
 
@@ -99,6 +101,7 @@ def get_device(device_id):
 
 @devices_bp.route("/<device_id>", methods=["PUT"])
 @jwt_required()
+@validate_body(DeviceUpdateSchema)
 def update_device(device_id):
     err = _require_role("admin", "technician")
     if err:
@@ -184,6 +187,7 @@ def shutdown_device(device_id):
 @devices_bp.route("/<device_id>/queue_task", methods=["POST"])
 @jwt_required()
 @limiter.limit("5 per minute")
+@validate_body(QueueTaskSchema)
 def queue_device_task(device_id):
     """Queue a built-in maintenance task for a device. Agent picks it up on next poll."""
     err = _require_role("admin", "technician")
@@ -209,6 +213,7 @@ def queue_device_task(device_id):
 @devices_bp.route("/<device_id>/deploy_patches", methods=["POST"])
 @jwt_required()
 @limiter.limit("2 per minute")
+@validate_body(DeployPatchesSchema)
 def deploy_patches_route(device_id):
     """Trigger Celery task to deploy approved patches to a device."""
     err = _require_role("admin", "technician")

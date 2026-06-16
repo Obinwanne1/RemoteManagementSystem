@@ -3,6 +3,8 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from extensions import db
 from models.ticket import Ticket, TicketComment
+from utils.validation import validate_body
+from schemas.tickets import TicketCreateSchema, TicketUpdateSchema, CommentCreateSchema
 
 tickets_bp = Blueprint("tickets", __name__)
 
@@ -10,7 +12,7 @@ tickets_bp = Blueprint("tickets", __name__)
 def _require_role(*roles):
     claims = get_jwt()
     if claims.get("role") == "superadmin":
-        return None  # superadmin bypasses all role checks
+        return None
     if claims.get("role") not in roles:
         return jsonify({"error": "Insufficient permissions"}), 403
     return None
@@ -46,6 +48,7 @@ def list_tickets():
 
 @tickets_bp.route("/", methods=["POST"])
 @jwt_required()
+@validate_body(TicketCreateSchema)
 def create_ticket():
     err = _require_role("admin", "technician")
     if err:
@@ -79,6 +82,7 @@ def get_ticket(ticket_id):
 
 @tickets_bp.route("/<ticket_id>", methods=["PUT"])
 @jwt_required()
+@validate_body(TicketUpdateSchema)
 def update_ticket(ticket_id):
     ticket = Ticket.query.get_or_404(ticket_id)
     data = request.get_json(silent=True) or {}
@@ -106,6 +110,7 @@ def delete_ticket(ticket_id):
 
 @tickets_bp.route("/<ticket_id>/comments", methods=["POST"])
 @jwt_required()
+@validate_body(CommentCreateSchema)
 def add_comment(ticket_id):
     Ticket.query.get_or_404(ticket_id)
     data = request.get_json(silent=True) or {}

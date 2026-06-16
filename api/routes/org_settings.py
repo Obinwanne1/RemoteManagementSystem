@@ -4,6 +4,8 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
 from extensions import db
 from models.org_settings import OrgSettings
+from utils.validation import validate_body
+from schemas.org_settings import OrgSettingsSchema
 
 org_settings_bp = Blueprint("org_settings", __name__)
 
@@ -28,6 +30,7 @@ def get_org_settings():
 
 @org_settings_bp.route("/org-settings", methods=["PUT"])
 @jwt_required()
+@validate_body(OrgSettingsSchema)
 def update_org_settings():
     err = _require_admin()
     if err:
@@ -70,7 +73,6 @@ def upload_org_logo():
     try:
         from PIL import Image
         img = Image.open(io.BytesIO(raw))
-        # Scale to max 400px wide, maintaining aspect ratio
         max_w = 400
         if img.width > max_w:
             ratio = max_w / img.width
