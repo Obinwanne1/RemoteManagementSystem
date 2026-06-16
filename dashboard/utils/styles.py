@@ -96,7 +96,9 @@ header[data-testid="stHeader"] {
 /* Hide default Streamlit auto-generated page nav — we use custom HTML nav */
 [data-testid="stSidebarNav"],
 [data-testid="stSidebarNavItems"],
+[data-testid="stSidebarNavLink"],
 section[data-testid="stSidebar"] > div > div > div > ul,
+section[data-testid="stSidebar"] ul,
 nav[data-testid="stSidebarNav"] { display: none !important; }
 
 /* Nav link container */
