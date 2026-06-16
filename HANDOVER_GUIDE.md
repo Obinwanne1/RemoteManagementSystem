@@ -8,7 +8,7 @@ Version 1.0 — Built exclusively for Faiyke-AI Agency
 **Prepared for:** Faiyke-AI Agency
 **System URL:** http://localhost:8501
 **API URL:** http://localhost:5000
-**Document version:** 2.0 (comprehensive edition)
+**Document version:** 2.1 (multi-currency, regional settings, network scan fix)
 
 ---
 
@@ -91,6 +91,7 @@ This document is written in plain language. Technical jargon is explained when f
   - Account Lockout and Unlock
   - Deactivating, Reactivating, and Deleting Users
   - Account Security Policies (Lockout, Password Expiry, Dormant Accounts, Login Anomaly Detection)
+  - Regional Settings (Currency and Timezone)
 
 **PART VIII — TECHNICAL REFERENCE**
 - Chapter 27: System Architecture
@@ -2229,6 +2230,7 @@ Set up your company branding so invoices look professional. Go to **Admin → Or
 - Payment terms (e.g. "Net 30") and bank/payment details
 - Upload your company logo (PNG or JPG, max 400px wide)
 - Optional footer message (e.g. "Thank you for your business!")
+- **Currency** — select the currency for billing (EUR for Europe, USD for USA, etc.)
 
 These details appear on every generated PDF invoice.
 
@@ -2254,10 +2256,12 @@ These details appear on every generated PDF invoice.
 | Customer | The client being billed |
 | Period Start | Start date of the billing period (defaults to first day of current month) |
 | Period End | End date of the billing period (defaults to last day of current month) |
-| Rate / Device ($) | Per-device monthly rate (e.g., 25.00) |
+| Rate / Device | Per-device monthly rate — label shows your configured currency symbol (e.g. €25.00 for EUR, $25.00 for USD) |
 | Tax Rate (%) | Optional tax percentage applied to the subtotal (0 = no tax) |
 | Due Date | Payment due date (defaults to Period End + 30 days) |
 | Notes | Optional per-invoice notes printed on the PDF |
+
+> **NOTE:** All monetary amounts on the Billing page — invoice totals, Revenue (Paid), Outstanding, and Overdue — are displayed in the currency configured under **Admin → Org Settings → Regional Settings**. To change the currency, update Regional Settings and refresh the Billing page.
 
 > **NOTE:** Device count is determined automatically from the devices registered to that customer in the system at the time of generation. You do not enter it manually.
 
@@ -2663,15 +2667,34 @@ Click **Save Branding** to apply. Changes take effect on the next browser refres
 
 > **TIP:** After saving, open an incognito/private browser window to see the full white-label effect from a fresh session without waiting for the cache to expire.
 
+**Regional Settings section:**
+
+The **Regional Settings** form controls how currency and timestamps are displayed across the entire dashboard — both on-screen and in generated PDF invoices. Configure this before going live in any country or region.
+
+| Field | Description | Supported Options |
+|---|---|---|
+| Currency | 3-letter ISO code used for all monetary amounts on Billing, Invoices, and summary metrics | USD, EUR, GBP, CHF, CAD, AUD, JPY, SEK, NOK, DKK |
+| Timezone | Timezone applied when displaying timestamps throughout the dashboard | UTC, Europe/Berlin, Europe/London, Europe/Paris, Europe/Amsterdam, Europe/Zurich, America/New_York, America/Chicago, America/Denver, America/Los_Angeles, America/Toronto, America/Sao_Paulo, Australia/Sydney, Australia/Melbourne, Asia/Tokyo, Asia/Singapore, Asia/Dubai, Asia/Kolkata, Africa/Lagos |
+
+Each currency option in the dropdown shows the full name and symbol for clarity — for example, `EUR — Euro (€)`, `USD — US Dollar ($)`, `GBP — British Pound (£)`.
+
+Click **Save Regional Settings** to apply. Changes take effect immediately on the next page load — no server restart required.
+
+> **IMPORTANT:** After changing currency, all billing figures on the Billing page will display the new symbol immediately. Historical invoice PDF downloads will also reflect the new symbol on re-download, since PDFs are generated on demand. Only the stored numeric amounts are unchanged — currency conversion is not performed.
+
+> **TIP:** For a Germany deployment, set Currency = `EUR — Euro (€)` and Timezone = `Europe/Berlin`. For a USA deployment, set Currency = `USD — US Dollar ($)` and Timezone = `America/New_York` (or the appropriate US timezone). Each deployment saves its own settings — multiple clients on different deployments each configure their own regional preferences independently.
+
 ### Step-by-step: Setting Up Org Branding for the First Time
 
 1. Go to **Admin** → **Org Settings** tab.
 2. Fill in all Company Details fields.
 3. Upload your company logo.
 4. Click **Save Company Settings**.
-5. Navigate to **Billing** and generate a test invoice for any customer.
-6. Click **View** → **⬇ Download PDF** to verify the branding looks correct.
-7. If the logo or details need adjusting, return to Admin → Org Settings and update.
+5. Scroll to **Regional Settings** — select your **Currency** and **Timezone**.
+6. Click **Save Regional Settings**.
+7. Navigate to **Billing** and generate a test invoice for any customer.
+8. Click **View** → **⬇ Download PDF** to verify the branding and currency symbol look correct.
+9. If the logo, details, or currency need adjusting, return to Admin → Org Settings and update.
 
 ### The Superadmin Account
 
@@ -2806,7 +2829,7 @@ RemoteManagementSystem/
 │       ├── nav.py          # Shared sidebar component (shows logo/app_name)
 │       ├── styles.py       # CSS injection, stat cards, badges (color-swappable)
 │       ├── branding.py     # White-label branding loader (cached, early-fetch safe)
-│       └── formatters.py   # Date, byte, color formatting
+│       └── formatters.py   # Date, byte, color, currency formatting (fmt_currency, fmt_datetime_tz)
 └── scripts_library/        # Script templates on disk
 ```
 
@@ -2851,7 +2874,7 @@ RemoteManagementSystem/
 | AutomationProfile | automation_profiles | id, name, schedule_type, is_active |
 | Report | reports | id, name, template_type, customer_id, file_path |
 | Invoice | invoices | id, invoice_number, customer_id, period_start, period_end, due_date, device_count, per_device_rate, tax_rate, subtotal, tax_amount, total, notes, status |
-| OrgSettings | org_settings | id (always 1), company_name, company_address, company_email, logo_data, payment_terms, bank_details, footer_notes, app_name, tagline, primary_color |
+| OrgSettings | org_settings | id (always 1), company_name, company_address, company_email, logo_data, payment_terms, bank_details, footer_notes, app_name, tagline, primary_color, currency (ISO 3-letter, default USD), timezone (IANA tz, default UTC) |
 | AuditLog | audit_logs | id, user_id, action, resource_type, ip_address |
 
 ---
@@ -3334,6 +3357,19 @@ UPDATE users SET role = 'admin' WHERE email = 'your@email.com';
 
 ---
 
+### Problem: Network scan stuck in "RUNNING" status forever
+
+**Cause:** The Flask API was restarted while a scan was in progress. Network scans run in a background thread — when Flask restarts, the thread is killed but the database record remains in "running" state indefinitely.
+
+**Steps:**
+1. Restart the Flask API. On startup, it automatically marks any scan that has been "running" for more than 5 minutes as "failed" and records "Scan interrupted (server restarted)" in the results.
+2. Refresh the **Network Discovery** page. The stuck scan will now show as **Failed**.
+3. Run a new scan.
+
+> **NOTE:** This cleanup runs every time the API starts (`create_app()` in `api/app.py`). You do not need to manually update the database — just restart the API and re-scan.
+
+---
+
 ### Problem: Docker container 'api' exits immediately
 
 **Cause:** Missing or invalid `api\.env`, or `SUPERADMIN_PASSWORD` not set.
@@ -3396,6 +3432,7 @@ python rmm_agent.py
 | Celery | A distributed task queue. Runs background tasks: alert evaluation, patch deployment, script dispatch. |
 | Celery Beat | The Celery scheduler component. Triggers tasks on a schedule (every 60 seconds, daily profiles, etc.). |
 | Compliance % | Percentage of managed devices that are fully patched and up to date. |
+| Currency | ISO 3-letter code (USD, EUR, GBP, etc.) configured in Admin → Org Settings → Regional Settings. Controls the symbol shown on all billing amounts. |
 | Cooldown | Minimum time before an alert rule can fire again for the same device. Prevents alert flooding. |
 | Critical | Highest alert severity. Immediate action required. |
 | Dashboard | The Streamlit web interface at port 8501. Also specifically refers to the Overview page. |
@@ -3423,6 +3460,7 @@ python rmm_agent.py
 | PS1 | PowerShell script file extension. |
 | RBAC | Role-Based Access Control — permissions determined by user role. |
 | Redis | In-memory data store used as the Celery message broker. Port 6379. |
+| Regional Settings | Admin → Org Settings section configuring Currency and Timezone for all billing displays and timestamp formatting. |
 | RMM | Remote Monitoring and Management. |
 | Script | Code (PS1, BAT, PY, or SH) that can be executed remotely on a managed device. |
 | Session | An active user login. Represented by a JWT token stored in browser memory. |
@@ -3432,6 +3470,7 @@ python rmm_agent.py
 | Technician | User role with full operational permissions but no user management or admin access. |
 | Tier | Customer support level: standard, premium, or enterprise. |
 | Timeout | Maximum time for a script to run before forced termination. |
+| Timezone | IANA timezone name (e.g. `Europe/Berlin`, `America/New_York`) configured in Admin → Org Settings → Regional Settings. Timestamps on the dashboard are converted to this timezone for display. |
 | Token | See JWT. A cryptographic string proving a user is authenticated. |
 | Viewer | User role with read-only access. Cannot make changes. |
 | Warning | Medium severity alert. Indicates degraded performance needing attention soon. |
@@ -3646,6 +3685,25 @@ else:
     devices = data.get("items", [])
 ```
 
+**Currency and timezone formatting:**
+```python
+from utils.formatters import fmt_currency, fmt_datetime_tz, CURRENCY_SYMBOLS
+
+# Read org settings loaded once per session by require_auth()
+_org = st.session_state.get("_org_settings", {})
+_currency = _org.get("currency", "USD")   # e.g. "EUR"
+_tz       = _org.get("timezone", "UTC")   # e.g. "Europe/Berlin"
+
+fmt_currency(25.0, _currency)             # → "€25.00"
+fmt_datetime_tz("2026-06-16T10:00:00Z", _tz)  # → "2026-06-16 12:00" (Berlin=UTC+2)
+```
+
+`SUPPORTED_CURRENCIES` and `SUPPORTED_TIMEZONES` lists in `formatters.py` drive the Admin dropdowns — extend them there to add new options.
+
+**Regional Settings API endpoint:** `PUT /api/org-settings` — accepts `currency` (str, 3-char ISO) and `timezone` (str, IANA name) alongside all other org settings fields.
+
+**Alembic migration for currency/timezone:** `api/migrations/versions/f1a2b3c4d5e6_currency_timezone_org_settings.py` (down_revision: `e6f7a8b9c0d1`)
+
 **Agent heartbeat interval:** 60s (`config.ini → [agent] → heartbeat_interval`)
 **Software scan interval:** 21600s / 6h (`config.ini → [agent] → software_interval`)
 **Exit code convention:** 0 = SUCCESS, non-zero = FAILED
@@ -3716,6 +3774,6 @@ Password must be at least 10 characters. No API restart needed.
 
 ---
 
-*End of RMM System Complete Handbook — Version 2.0*
+*End of RMM System Complete Handbook — Version 2.1*
 
 *For support with this guide, contact your system administrator or development team.*
