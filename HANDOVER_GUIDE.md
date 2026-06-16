@@ -8,7 +8,7 @@ Version 1.0 — Built exclusively for Faiyke-AI Agency
 **Prepared for:** Faiyke-AI Agency
 **System URL:** http://localhost:8501
 **API URL:** http://localhost:5000
-**Document version:** 2.2 (responsive design for mobile and tablet)
+**Document version:** 3.0 (API validation, CI/CD pipeline, load testing)
 
 ---
 
@@ -100,6 +100,9 @@ This document is written in plain language. Technical jargon is explained when f
 - Chapter 30: Automation Profile Design
 - Chapter 31: User Roles and Permissions Matrix
 - Chapter 32: Common Troubleshooting
+- Chapter 33: API Input Validation
+- Chapter 34: Continuous Integration (CI/CD)
+- Chapter 35: Load Testing
 
 **Appendix A: Glossary**
 **Appendix B: Quick Reference Cards**
@@ -3434,6 +3437,209 @@ python rmm_agent.py
 
 ---
 
+## Chapter 33: API Input Validation
+
+### What it is
+
+All write endpoints in the RMM API now enforce strict input validation using Marshmallow schemas. Every `POST`, `PUT`, and `PATCH` request is validated before reaching the database. Invalid or malformed requests are rejected immediately with a structured error response.
+
+This applies to all 30+ write operations: login, device management, ticket creation, billing, alert rules, scripts, automation profiles, network scans, org settings, and more.
+
+### Who uses this information
+
+Developers integrating with the API, and administrators troubleshooting API errors.
+
+### How validation errors are returned
+
+When a request fails validation, the API returns HTTP `400 Bad Request` with a JSON body identifying exactly which field failed and why:
+
+```json
+{
+  "error": "Validation failed",
+  "details": {
+    "email": ["Not a valid email address."],
+    "password": ["Missing data for required field."]
+  }
+}
+```
+
+The `details` object maps each failing field name to a list of error messages. Multiple fields can fail in a single response.
+
+### Schema files
+
+All schemas live in `api/schemas/`. One file per domain:
+
+| File | Covers |
+|---|---|
+| `api/schemas/auth.py` | Login, password change, MFA, password reset |
+| `api/schemas/agents.py` | Agent registration, heartbeat, software inventory, patches |
+| `api/schemas/customers.py` | Customer create/update, device groups |
+| `api/schemas/devices.py` | Device update, queue task, deploy patches |
+| `api/schemas/tickets.py` | Ticket create/update, comments |
+| `api/schemas/alerts.py` | Alert rule create/update |
+| `api/schemas/scripts.py` | Script create/update, run script |
+| `api/schemas/admin.py` | User create/update |
+| `api/schemas/automation.py` | Automation profile create/update |
+| `api/schemas/network.py` | Network scan, agentless device upsert |
+| `api/schemas/billing.py` | Invoice generation, invoice status |
+| `api/schemas/org_settings.py` | Org settings update |
+
+### The validation decorator
+
+The `@validate_body` decorator in `api/utils/validation.py` gates each endpoint. If validation fails, it returns `400` before the route function runs. Route internals are unchanged — the decorator is purely additive.
+
+```python
+from utils.validation import validate_body
+from schemas.auth import LoginSchema
+
+@auth_bp.route("/login", methods=["POST"])
+@validate_body(LoginSchema)
+def login():
+    data = request.get_json()
+    # data is guaranteed valid here
+```
+
+### Key validation rules by domain
+
+**Authentication:** `email` must be a valid email format. `password` is required. `new_password` is required for all password-change endpoints.
+
+**Agents:** `org_token` and `hostname` required for registration. `platform` must be one of: `windows`, `mac`, `linux`, `android`, `ios`, `unknown`. `cpu_cores` integer 1–256. `cpu_pct`, `ram_pct`, `disk_pct` float 0–100.
+
+**Tickets:** `title` and `customer_id` required for creation. `priority` must be one of: `low`, `medium`, `high`, `critical`. `status` must be one of: `open`, `in_progress`, `resolved`, `closed`.
+
+**Scripts:** `file_type` must be one of: `bat`, `ps1`, `py`. Script content is capped at 512 KB. `device_ids` minimum 1 device required to run.
+
+**Org Settings:** `primary_color` must match hex pattern `#RRGGBB`.
+
+**Unknown fields:** All schemas use `EXCLUDE` mode — extra fields in a request body are silently ignored, not rejected. Partial updates (PUT with a subset of fields) always succeed.
+
+### Adding a new validated endpoint
+
+1. Create a schema in the appropriate `api/schemas/*.py` file, extending `Schema` from marshmallow.
+2. Import `validate_body` from `api/utils/validation.py`.
+3. Apply `@validate_body(YourSchema)` to the route, after `@jwt_required()` and before the handler.
+
+---
+
+## Chapter 34: Continuous Integration (CI/CD)
+
+### What it is
+
+The project includes a GitHub Actions CI pipeline that automatically runs the full test suite on every code push and pull request to the `main` branch. A failing test blocks the merge — no broken code reaches main without being caught first.
+
+### Who uses this information
+
+Developers and maintainers.
+
+### Pipeline configuration
+
+File: `.github/workflows/ci.yml`
+
+The pipeline runs on `ubuntu-latest` with a 10-minute timeout. Steps:
+
+1. **Checkout** — clones the repository at the pushed commit.
+2. **Set up Python 3.11** — with pip cache keyed on `api/requirements.txt` for fast repeat runs.
+3. **Install dependencies** — runs `pip install -r api/requirements.txt`.
+4. **Run pytest** — runs `python -m pytest tests/ -v --tb=short` from the `api/` working directory.
+
+No PostgreSQL or Redis are needed in CI. The pipeline uses `sqlite:///:memory:` — created fresh and torn down in-memory on every run. All required environment variables are supplied inline via the workflow `env:` block. No secrets are stored in the repository.
+
+### Environment variables in CI
+
+| Variable | CI value |
+|---|---|
+| `SECRET_KEY` | 32-char test string |
+| `JWT_SECRET_KEY` | 32-char test string |
+| `DATABASE_URL` | `sqlite:///:memory:` |
+| `SUPERADMIN_PASSWORD` | `CITestSuperAdmin@1` |
+| `ORG_REGISTRATION_TOKEN` | `ci-org-token-unique-secret-value-here` |
+
+### What the tests cover
+
+The test suite at `api/tests/` covers authentication (login, token refresh, MFA, password reset), agent registration and heartbeat, device management, ticket and customer CRUD, alert rule evaluation, script creation and dispatch, billing invoice generation, admin and org settings endpoints, and schema validation (invalid payloads rejected with 400 errors).
+
+Current count: **51 tests, all passing.**
+
+### Running tests locally
+
+```powershell
+Set-Location C:\RMM\RemoteManagementSystem\api
+.\venv\Scripts\Activate.ps1
+pytest tests/ -v --tb=short
+```
+
+Expected: `51 passed` (plus deprecation warnings about `Model.query.get()` — non-breaking, informational only).
+
+### Extending CI
+
+To add a new test: create a file in `api/tests/` following the existing pattern. The pipeline picks it up automatically on the next push — no workflow changes needed.
+
+To add a workflow step (linting, security scan, etc.): edit `.github/workflows/ci.yml` and add a step under `jobs.test.steps`.
+
+---
+
+## Chapter 35: Load Testing
+
+### What it is
+
+The project includes a Locust load test scaffold that simulates concurrent RMM agents and dashboard users hitting the API. Use it to establish baseline performance numbers, find bottlenecks before production deployment, and validate the system under stress.
+
+### Who uses this information
+
+Developers, infrastructure engineers, and administrators preparing for production deployment.
+
+### Setup
+
+```powershell
+pip install locust
+```
+
+Before running, edit `tests/load/locustfile.py` line 20 and set `ORG_TOKEN` to match `ORG_REGISTRATION_TOKEN` in `api/.env`. Update `ADMIN_EMAIL` and `ADMIN_PASSWORD` if the superadmin credentials differ from defaults.
+
+### Running the load test
+
+Start all services first (API + PostgreSQL + Redis). Celery is optional unless testing patch deployment or automation tasks.
+
+```powershell
+locust -f tests/load/locustfile.py --host http://localhost:5000
+```
+
+Open **http://localhost:8089** in a browser. Set the user count and spawn rate, then click **Start**.
+
+### Simulated user types
+
+**AgentUser** — simulates a registered RMM agent:
+- On start: registers as a new agent with a unique hostname and random MAC address
+- Every ~30 seconds: sends a heartbeat with randomised CPU/RAM/disk readings (task weight 10)
+- Occasionally: polls for queued tasks (weight 2) or submits a software inventory update (weight 1)
+- Handles token rotation: if a heartbeat response includes `new_agent_token`, the agent updates its token automatically
+
+**DashboardUser** — simulates a logged-in technician:
+- On start: logs in as superadmin and stores the access token
+- Requests: list devices (weight 5), list alerts (weight 3), list tickets (weight 2), dashboard summary (weight 2), health check (weight 1)
+
+### Recommended scenarios
+
+| Scenario | AgentUser | DashboardUser | Spawn rate | Goal |
+|---|---|---|---|---|
+| Baseline | 50 | 5 | 5/s | Confirm heartbeat p95 < 300ms |
+| Normal load | 100 | 10 | 10/s | Sustain 10 minutes, error rate 0% |
+| Stress | 500 | 50 | 20/s | Find where errors begin appearing |
+| Spike | 0→200 in 10s | 0→20 in 10s | 20/s | Verify recovery after sudden load |
+
+### What to watch
+
+- **Heartbeat p95 latency** — target under 300ms at normal load
+- **Error rate** — target 0% under normal load, under 1% under stress
+- **PostgreSQL connections** — monitor `pg_stat_activity` when errors spike
+- **Flask process memory (RSS)** — watch for growth under sustained 500-agent load
+
+### Recording results
+
+After each run, add the results to `tests/load/README.md` using the results template in that file.
+
+---
+
 # APPENDIX A: GLOSSARY
 
 | Term | Definition |
@@ -3727,8 +3933,22 @@ fmt_datetime_tz("2026-06-16T10:00:00Z", _tz)  # → "2026-06-16 12:00" (Berlin=U
 ```powershell
 cd C:\RMM\RemoteManagementSystem\api
 .\venv\Scripts\Activate.ps1
-pytest tests/ -v
+pytest tests/ -v --tb=short
 ```
+
+Expected: 51 passed. CI runs this same command automatically on every push to `main` via `.github/workflows/ci.yml` (Python 3.11, sqlite:///:memory:, no external services needed).
+
+**API input validation:**
+All write endpoints are guarded by `@validate_body(Schema)` from `api/utils/validation.py`. Invalid requests return `400 {"error": "Validation failed", "details": {...}}` with field-level errors. Schemas live in `api/schemas/` — one file per domain (auth, agents, customers, devices, tickets, alerts, scripts, admin, automation, network, billing, org_settings). All schemas use `EXCLUDE` mode so partial PUT requests succeed.
+
+**Load testing:**
+```powershell
+# Edit ORG_TOKEN in tests/load/locustfile.py first
+pip install locust
+locust -f tests/load/locustfile.py --host http://localhost:5000
+# Open http://localhost:8089 to start
+```
+Two user types: `AgentUser` (register + heartbeat loop, ~30s wait) and `DashboardUser` (login + browse). See `tests/load/README.md` for scenarios and results template.
 
 ---
 

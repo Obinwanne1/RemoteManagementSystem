@@ -374,11 +374,53 @@ def md_to_flowables(md_text: str) -> list:
                     flowables.append(CondPageBreak(50 * mm))
                     flowables.append(Paragraph(text, styles["h2"]))
             elif level == 3:
-                flowables.append(CondPageBreak(40 * mm))
-                flowables.append(Paragraph(text, styles["h3"]))
+                from reportlab.platypus import KeepTogether
+                h3_para = Paragraph(text, styles["h3"])
+                peek = i + 1
+                body_paras = []
+                collected = 0
+                while peek < n and collected < 2:
+                    nxt = lines[peek].strip()
+                    if (not nxt or nxt.startswith("#") or nxt.startswith("|")
+                            or nxt.startswith("```") or nxt.startswith(">")
+                            or re.match(r'^[-*+]\s+', nxt)
+                            or re.match(r'^\d+\.\s+', nxt)
+                            or re.match(r'^[-*_]{3,}\s*$', nxt)):
+                        break
+                    body_paras.append(Paragraph(inline_fmt(nxt), styles["body"]))
+                    collected += 1
+                    peek += 1
+                if body_paras:
+                    flowables.append(CondPageBreak(45 * mm))
+                    flowables.append(KeepTogether([h3_para] + body_paras))
+                    i = peek
+                else:
+                    flowables.append(CondPageBreak(40 * mm))
+                    flowables.append(h3_para)
             else:
-                flowables.append(CondPageBreak(35 * mm))
-                flowables.append(Paragraph(text, styles["h4"]))
+                from reportlab.platypus import KeepTogether
+                h4_para = Paragraph(text, styles["h4"])
+                peek = i + 1
+                body_paras = []
+                collected = 0
+                while peek < n and collected < 2:
+                    nxt = lines[peek].strip()
+                    if (not nxt or nxt.startswith("#") or nxt.startswith("|")
+                            or nxt.startswith("```") or nxt.startswith(">")
+                            or re.match(r'^[-*+]\s+', nxt)
+                            or re.match(r'^\d+\.\s+', nxt)
+                            or re.match(r'^[-*_]{3,}\s*$', nxt)):
+                        break
+                    body_paras.append(Paragraph(inline_fmt(nxt), styles["body"]))
+                    collected += 1
+                    peek += 1
+                if body_paras:
+                    flowables.append(CondPageBreak(40 * mm))
+                    flowables.append(KeepTogether([h4_para] + body_paras))
+                    i = peek
+                else:
+                    flowables.append(CondPageBreak(35 * mm))
+                    flowables.append(h4_para)
             i += 1
             continue
 
@@ -490,7 +532,7 @@ def cover_page() -> list:
         Paragraph("Complete reference for all staff — from first login to advanced automation",
                   styles["cover_sub"]),
         Spacer(1, 6 * mm),
-        Paragraph("Version 1.0 · June 2026", styles["cover_ver"]),
+        Paragraph("Version 3.0 · June 2026", styles["cover_ver"]),
         Spacer(1, 8 * mm),
         HRFlowable(width="30%", thickness=0.5, color=MUTED,
                    hAlign='CENTER', spaceAfter=4),
