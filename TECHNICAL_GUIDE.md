@@ -2,7 +2,7 @@
 
 **Audience:** Developers, system architects, and advanced administrators  
 **Stack:** Flask 3 · SQLAlchemy 2 · Celery 5 · Streamlit 1.58 · PostgreSQL 15 · Redis/Memurai  
-**Version:** 1.0 (all phases complete)
+**Version:** 1.1 (multi-currency/timezone, network scan fix, Flask stability)
 
 ---
 
@@ -388,10 +388,19 @@ logo_data       Text nullable            # base64 data URI (same pattern as user
 payment_terms   String(100) default "Net 30"
 bank_details    Text default ""
 footer_notes    Text default "Thank you for your business!"
+# White-label branding
+app_name        String(100) default "RMM System"
+tagline         String(200) default "Remote Monitoring & Management"
+primary_color   String(7)   default "#407E3C"
+# Regional settings (added migration f1a2b3c4d5e6, down_revision e6f7a8b9c0d1)
+currency        String(3)   nullable server_default='USD'   # ISO 4217 code
+timezone        String(50)  nullable server_default='UTC'   # IANA tz name
 ```
 
 `logo_bytes()` method decodes the base64 data URI and returns raw bytes for use in PDF generation.
 `ensure_org_settings()` is called from `create_app()` — safe to call multiple times (no-op if row exists).
+
+`to_dict()` returns `currency` (default `"USD"`) and `timezone` (default `"UTC"`) alongside all other fields. Dashboard reads these from `st.session_state["_org_settings"]` (loaded once per session in `require_auth()`).
 
 ---
 
@@ -514,8 +523,8 @@ All endpoints prefixed with `/api/`. Protected by `@jwt_required()` unless noted
 ### Org Settings (`/api/admin/`)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/org-settings` | JWT admin | Return OrgSettings singleton (includes `logo_data` base64 URI) |
-| PUT | `/org-settings` | JWT admin | Update text fields (company name, address, email, phone, payment terms, bank details, footer notes) |
+| GET | `/org-settings` | JWT admin | Return OrgSettings singleton (includes `logo_data` base64 URI, `currency`, `timezone`) |
+| PUT | `/org-settings` | JWT admin | Update text fields: company name, address, email, phone, payment terms, bank details, footer notes, `app_name`, `tagline`, `primary_color`, **`currency`** (ISO 3-letter), **`timezone`** (IANA name) |
 | PUT | `/org-settings/logo` | JWT admin | Upload logo — multipart file upload, Pillow-resized to max 400px wide, stored as base64 |
 | DELETE | `/org-settings/logo` | JWT admin | Remove logo (sets `logo_data = null`) |
 
@@ -785,6 +794,25 @@ On 401: agent re-registers (full registration flow).
 
 > **NOTE:** Phones with fully randomized MACs and all ports blocked will still reach the hostname fallback. If the router assigns a model-name hostname (Fritz!Box, ASUS, TP-Link all do), the device will be identified. Devices that remain "unknown" after all three stages can be corrected via the Edit button on the agentless device row.
 
+#### Stale Network Scan Cleanup (startup, not Celery)
+
+Network scans run in a `threading.Thread(daemon=True)` — if Flask restarts mid-scan, the thread is killed but the `NetworkScan` DB record stays in `"running"` forever. On every `create_app()` call, a cleanup block runs **before** the API accepts requests:
+
+```python
+cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+stale = NetworkScan.query.filter(
+    NetworkScan.status == "running",
+    NetworkScan.started_at < cutoff,
+).all()
+for s in stale:
+    s.status = "failed"
+    s.completed_at = datetime.now(timezone.utc)
+    s.discovered_hosts = [{"error": "Scan interrupted (server restarted)"}]
+db.session.commit()
+```
+
+This resolves all orphaned scans automatically on every API start. No manual DB intervention needed.
+
 #### `ping_agentless_devices()`
 - Loads all `Device` records where `is_agentless=True`
 - Pings each device's `ip_address`
@@ -1043,6 +1071,7 @@ def _request(self, method, path, **kwargs):
 | `st.spinner` | All data loads wrapped — user sees progress feedback |
 | Graceful degradation | `st.warning` instead of `st.stop()` — page stays interactive on partial failure |
 | Token URL security | `require_auth()` strips `?tok=`/`?rtok=` from URL after first restore. Tokens no longer re-stamped on every page load — reduces browser history exposure. |
+| Org settings session cache | `require_auth()` loads `GET /api/admin/org-settings` once per session into `st.session_state["_org_settings"]`. All pages read `currency`/`timezone` from this dict — zero repeated API calls. Admin page clears `_org_settings` from session state after Regional Settings save to force a fresh load. |
 
 ### Metrics History — 7-Day Fallback
 
@@ -1178,6 +1207,55 @@ app.register_blueprint(mymodule.mymodule_bp, url_prefix='/api/mymodule')
 **Identifying devices that evade automated detection (randomized MAC + closed ports):**
 
 Modern phones randomize their MAC address per network, defeating OUI lookup. They also typically block all probed ports. These devices will remain platform "unknown" after a scan. Use the **Edit** button on the agentless device row in the Devices page to manually set hostname, platform, and device_type. This calls `PUT /api/devices/<id>` via `client.update_device(device_id, data)`.
+
+### Adding or Changing a Supported Currency or Timezone
+
+All supported currencies and timezones are defined as Python lists in `dashboard/utils/formatters.py`:
+
+```python
+SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "CHF", "CAD", "AUD", "JPY", "SEK", "NOK", "DKK"]
+
+CURRENCY_SYMBOLS = {
+    "USD": "$", "EUR": "€", "GBP": "£", "CHF": "Fr",
+    "CAD": "CA$", "AUD": "A$", "JPY": "¥",
+    "SEK": "kr", "NOK": "kr", "DKK": "kr",
+}
+
+SUPPORTED_TIMEZONES = [
+    "UTC", "Europe/Berlin", "Europe/London", ...
+]
+```
+
+To add a new currency: append the ISO code to `SUPPORTED_CURRENCIES` and add its symbol to `CURRENCY_SYMBOLS`. No DB migration needed — currency/timezone values are stored as plain strings.
+
+To add a new timezone: append the IANA name to `SUPPORTED_TIMEZONES`. Verify Python's `zoneinfo` module recognizes it: `from zoneinfo import ZoneInfo; ZoneInfo("Your/Zone")` (raises `ZoneInfoNotFoundError` if invalid).
+
+**`fmt_currency(amount, currency)`** — formats a numeric amount with the correct symbol:
+```python
+fmt_currency(49.99, "EUR")  # → "€49.99"
+fmt_currency(49.99, "JPY")  # → "¥49.99"
+```
+
+**`fmt_datetime_tz(iso_str, tz_name)`** — converts a UTC ISO string to local time for display:
+```python
+fmt_datetime_tz("2026-06-16T10:00:00Z", "Europe/Berlin")  # → "2026-06-16 12:00"
+fmt_datetime_tz("2026-06-16T10:00:00Z", "America/New_York")  # → "2026-06-16 06:00"
+```
+
+Falls back to `fmt_datetime(iso_str)` (UTC, no conversion) if `zoneinfo` raises or the tz_name is invalid. This prevents crashes when an unsupported timezone is stored in the DB.
+
+**Consuming regional settings in a new dashboard page:**
+```python
+_org = st.session_state.get("_org_settings", {})
+_currency = _org.get("currency", "USD")
+_tz       = _org.get("timezone", "UTC")
+
+# Then use:
+fmt_currency(invoice["total"], _currency)
+fmt_datetime_tz(invoice["created_at"], _tz)
+```
+
+`_org_settings` is loaded once per session by `require_auth()` and is always available by the time any page body runs.
 
 ### Adding a New Report Template
 
@@ -1325,6 +1403,23 @@ docker-compose build api dashboard && docker-compose up -d
 When using Docker Compose, `DATABASE_URL` must use `@db:5432` (service name), not `@localhost:5432`.
 `REDIS_URL` / `CELERY_BROKER_URL` must use `redis://redis:6379/...`.
 `SUPERADMIN_PASSWORD` is required — API container will exit immediately if missing.
+
+### Flask Reloader Stability (`use_reloader=False`)
+
+`app.run()` sets `use_reloader=False` permanently:
+
+```python
+app.run(
+    host=os.getenv("API_HOST", "0.0.0.0"),
+    port=int(os.getenv("API_PORT", 5000)),
+    debug=os.getenv("FLASK_DEBUG", "1") == "1",
+    use_reloader=False,
+)
+```
+
+**Why:** Flask's default `watchdog` reloader monitors all files reachable via `sys.path`, including Redis/Memurai's site-packages (`resp2.py`, `resp3.py`, etc.). Memurai writes to these files during normal operation, causing Flask to restart every ~30 seconds — killing in-flight network scan threads, resetting all connections, and returning 500/connection-reset errors to the dashboard.
+
+`use_reloader=False` eliminates these restarts. Code changes require a manual API restart during development. In production, this is the expected behavior regardless.
 
 ### Security hardening applied at startup (`api/app.py`)
 
