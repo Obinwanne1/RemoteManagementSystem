@@ -28,7 +28,7 @@ if not online_devices:
     st.markdown(
         '<div style="text-align:center;padding:3rem;background:#FFFFFF;border-radius:12px;'
         'border:1px solid #DDE8DD;color:#6B7B6B">'
-        '<div style="font-size:2.5rem;margin-bottom:0.75rem">🔧</div>'
+        '<div style="font-size:2rem;margin-bottom:0.75rem"><i class="fa-solid fa-wrench" style="color:#6B7B6B"></i></div>'
         '<div style="font-size:1rem;font-weight:600;color:#1A2B1A;margin-bottom:0.4rem">No online devices</div>'
         '<div style="font-size:0.85rem">At least one device must be online to perform maintenance actions.</div>'
         '</div>',
@@ -106,20 +106,20 @@ st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 # Row 1
 r1c1, r1c2, r1c3 = st.columns(3)
 with r1c1:
-    reboot_btn = st.button("🔄 Reboot", use_container_width=True, key=f"reboot_{selected['id']}")
+    reboot_btn = st.button("Reboot", icon=":material/restart_alt:", use_container_width=True, key=f"reboot_{selected['id']}")
 with r1c2:
-    shutdown_btn = st.button("⏹ Shutdown", use_container_width=True, key=f"shut_{selected['id']}")
+    shutdown_btn = st.button("Shutdown", icon=":material/power_settings_new:", use_container_width=True, key=f"shut_{selected['id']}")
 with r1c3:
-    restore_btn = st.button("📸 Create Restore Point", use_container_width=True, key=f"restore_{selected['id']}")
+    restore_btn = st.button("Create Restore Point", icon=":material/backup:", use_container_width=True, key=f"restore_{selected['id']}")
 
 # Row 2
 r2c1, r2c2, r2c3 = st.columns(3)
 with r2c1:
-    temp_btn = st.button("🗑️ Delete Temp Files", use_container_width=True, key=f"temp_{selected['id']}")
+    temp_btn = st.button("Delete Temp Files", icon=":material/delete_sweep:", use_container_width=True, key=f"temp_{selected['id']}")
 with r2c2:
-    browser_btn = st.button("🌐 Clear Browser History", use_container_width=True, key=f"browser_{selected['id']}")
+    browser_btn = st.button("Clear Browser History", icon=":material/public:", use_container_width=True, key=f"browser_{selected['id']}")
 with r2c3:
-    chkdsk_btn = st.button("🔍 Check Disk", use_container_width=True, key=f"chkdsk_{selected['id']}")
+    chkdsk_btn = st.button("Check Disk", icon=":material/health_and_safety:", use_container_width=True, key=f"chkdsk_{selected['id']}")
 
 # ── Action handlers ───────────────────────────────────────────────────────────
 if reboot_btn:
@@ -210,7 +210,7 @@ else:
         tool_col1, tool_col2 = st.columns([6, 1])
         with tool_col2:
             if queued_count > 0:
-                if st.button(f"🗑 Clear {queued_count} Queued", key="clear_queued", type="secondary"):
+                if st.button(f"Clear {queued_count} Queued", icon=":material/delete:", key="clear_queued", type="secondary"):
                     _, cerr = client.clear_queued_runs()
                     if cerr:
                         st.error(f"Failed: {cerr}")

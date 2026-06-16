@@ -52,7 +52,7 @@ st.markdown(
 if not customers:
     st.markdown(
         '<div style="' + CARD + ';text-align:center;padding:3rem 1.5rem">'
-        '<div style="font-size:2.5rem;margin-bottom:0.75rem">&#127970;</div>'
+        '<div style="font-size:2rem;margin-bottom:0.75rem"><i class="fa-solid fa-building" style="color:#6B7B6B"></i></div>'
         '<div style="font-size:1rem;font-weight:600;color:#1A1A1A;margin-bottom:0.25rem">No customers found</div>'
         '<div style="font-size:0.85rem;color:#6B7B6B">Add your first customer using the button above.</div>'
         '</div>',

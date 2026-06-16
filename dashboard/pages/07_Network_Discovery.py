@@ -28,8 +28,12 @@ CARD = (
 )
 
 PLATFORM_ICON = {
-    "ios": "📱", "android": "🤖", "windows": "🪟",
-    "mac": "🍎", "linux": "🐧", "unknown": "💻",
+    "ios":     '<i class="fa-brands fa-apple"></i>',
+    "android": '<i class="fa-brands fa-android"></i>',
+    "windows": '<i class="fa-brands fa-windows"></i>',
+    "mac":     '<i class="fa-brands fa-apple"></i>',
+    "linux":   '<i class="fa-brands fa-linux"></i>',
+    "unknown": '<i class="fa-solid fa-question"></i>',
 }
 
 # ── Session state ─────────────────────────────────────────────────────────────
@@ -86,7 +90,7 @@ if _can_scan:
 
     with ctrl3:
         st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-        run_scan = st.button("🔍 Scan Network", use_container_width=True, type="primary")
+        run_scan = st.button("Scan Network", icon=":material/wifi_find:", use_container_width=True, type="primary")
 else:
     st.info("You have view-only access. Contact an admin or technician to run a network scan.")
     run_scan = False
@@ -95,7 +99,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Clear stale agentless devices ─────────────────────────────────────────────
 if _can_scan:
-    with st.expander("🗑️ Clear stale devices from old networks"):
+    with st.expander("Clear stale devices from old networks"):
         import ipaddress as _ipmod2
         _current_subnet = st.session_state.get("nd_detected_subnet", "")
         st.caption(f"Current detected subnet: **{_current_subnet}**")
@@ -211,7 +215,7 @@ if scan_result:
         # Save All button
         save_col, _ = st.columns([2, 5])
         with save_col:
-            if st.button("💾 Save All to Devices", type="primary", use_container_width=True):
+            if st.button("Save All to Devices", icon=":material/save:", type="primary", use_container_width=True):
                 result, err = client.upsert_agentless_devices(
                     hosts=hosts,
                     customer_id=selected_cust_id,
@@ -302,7 +306,7 @@ elif not st.session_state["nd_polling"]:
         st.markdown(
             '<div style="text-align:center;padding:3rem;background:#FFFFFF;border-radius:12px;'
             'border:1px solid #DDE8DD;color:#6B7B6B;margin-top:0.5rem">'
-            '<div style="font-size:2.5rem;margin-bottom:0.75rem">📡</div>'
+            '<div style="font-size:2rem;margin-bottom:0.75rem"><i class="fa-solid fa-satellite-dish" style="color:#6B7B6B"></i></div>'
             '<div style="font-size:1rem;font-weight:600;color:#1A2B1A;margin-bottom:0.4rem">No scans yet</div>'
             '<div style="font-size:0.85rem">Enter your subnet above and click <b>Scan Network</b>.<br>'
             'Works on any WiFi or LAN subnet — phones, laptops, IoT devices all appear.</div>'

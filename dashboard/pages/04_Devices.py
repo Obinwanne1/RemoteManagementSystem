@@ -22,8 +22,17 @@ All registered endpoints — agent-managed and agentless (WiFi discovered)</p>
 """, unsafe_allow_html=True)
 
 PLATFORM_ICON = {
-    "windows": "🪟", "mac": "🍎", "linux": "🐧",
-    "android": "🤖", "ios": "📱", "unknown": "💻",
+    "windows": "Win", "mac": "Mac", "linux": "Lin",
+    "android": "And", "ios": "iOS", "unknown": "—",
+}
+
+PLATFORM_ICON_HTML = {
+    "windows": '<i class="fa-brands fa-windows"></i>',
+    "mac":     '<i class="fa-brands fa-apple"></i>',
+    "linux":   '<i class="fa-brands fa-linux"></i>',
+    "android": '<i class="fa-brands fa-android"></i>',
+    "ios":     '<i class="fa-brands fa-apple"></i>',
+    "unknown": '<i class="fa-solid fa-question"></i>',
 }
 
 # ── Load all devices + platform counts ────────────────────────────────────────
@@ -54,7 +63,7 @@ if _linked_device_id:
 sf1, sf2, sf3, sf4 = st.columns([2, 1.2, 1.2, 0.9])
 with sf1:
     _default_search = _linked_hostname if _linked_device_id and _linked_hostname else ""
-    search = st.text_input("🔍  Search hostname / IP", value=_default_search, placeholder="e.g. DESKTOP- or 192.168.", label_visibility="collapsed")
+    search = st.text_input("Search hostname / IP", value=_default_search, placeholder="e.g. DESKTOP- or 192.168.", label_visibility="collapsed")
 with sf2:
     status_filter = st.selectbox("Status", ["All statuses", "healthy", "warning", "critical", "offline"],
                                   label_visibility="collapsed")
@@ -113,12 +122,12 @@ if _filtered_all:
 # ── OS Tabs ───────────────────────────────────────────────────────────────────
 tab_labels = [
     f"All ({total})",
-    f"🪟 Windows ({pc.get('windows', 0)})",
-    f"🍎 macOS ({pc.get('mac', 0)})",
-    f"🐧 Linux ({pc.get('linux', 0)})",
-    f"🤖 Android ({pc.get('android', 0)})",
-    f"📱 iOS ({pc.get('ios', 0)})",
-    f"📡 Agentless ({ag})",
+    f"Windows ({pc.get('windows', 0)})",
+    f"macOS ({pc.get('mac', 0)})",
+    f"Linux ({pc.get('linux', 0)})",
+    f"Android ({pc.get('android', 0)})",
+    f"iOS ({pc.get('ios', 0)})",
+    f"Agentless ({ag})",
 ]
 tab_names = ["All", "Windows", "macOS", "Linux", "Android", "iOS", "Agentless"]
 tabs = st.tabs(tab_labels)
@@ -141,7 +150,7 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
 
     with st.expander(
         f'{icon}  {device.get("hostname", device.get("ip_address", "—"))}   '
-        f'{"🟢 Online" if is_online else "⚫ Offline"}  ·  '
+        f'{"● Online" if is_online else "○ Offline"}  ·  '
         f'{device.get("vendor") or "Unknown vendor"}  ·  '
         f'{platform.upper()}  ·  AGENTLESS',
     ):
@@ -160,7 +169,7 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
         <tr><td style="color:#6B7B6B;padding:2px 0">Vendor</td>
             <td style="color:#1A1A1A">{device.get('vendor','Unknown')}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Platform</td>
-            <td style="color:#1A1A1A">{icon} {platform}</td></tr>
+            <td style="color:#1A1A1A">{PLATFORM_ICON_HTML.get(platform, "")} {platform}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Device type</td>
             <td style="color:#1A1A1A;text-transform:capitalize">{dev_type}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Last seen</td>
@@ -214,11 +223,11 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
                     st.rerun()
         with ca3:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("✏️ Edit", key=f"edit_{tab_key}_{device['id']}", use_container_width=True):
+            if st.button("Edit", icon=":material/edit:", key=f"edit_{tab_key}_{device['id']}", use_container_width=True):
                 st.session_state[f"ag_edit_{device['id']}"] = not st.session_state.get(f"ag_edit_{device['id']}", False)
         with ca4:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("🔔 Ping", key=f"ping_{tab_key}_{device['id']}", use_container_width=True):
+            if st.button("Ping", icon=":material/wifi_tethering:", key=f"ping_{tab_key}_{device['id']}", use_container_width=True):
                 result, e = client.ping_check_device(device["id"])
                 if e:
                     st.error(f"Ping failed: {e}")
@@ -245,7 +254,7 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
                         st.session_state.pop(_confirm_key, None)
                         st.rerun()
             else:
-                if st.button("🗑", key=f"del_{tab_key}_{device['id']}", use_container_width=True):
+                if st.button("", icon=":material/delete:", key=f"del_{tab_key}_{device['id']}", use_container_width=True):
                     st.session_state[_confirm_key] = True
                     st.rerun()
 
@@ -297,7 +306,7 @@ def _render_agent_row(device: dict, tab_key: str = ""):
     selected = st.session_state.get("selected_device_id")
 
     with st.expander(
-        f'{icon} {"🟢" if is_online else "⚫"}  {device.get("hostname","—")}   '
+        f'{icon} {"●" if is_online else "○"}  {device.get("hostname","—")}   '
         f'CPU {cpu:.0f}%  ·  RAM {ram:.0f}%  ·  Disk {disk:.0f}%  '
         f'·  {status.upper()}',
         expanded=(device.get("id") == selected),
@@ -315,7 +324,7 @@ def _render_agent_row(device: dict, tab_key: str = ""):
         <tr><td style="color:#6B7B6B;padding:2px 0">IP</td>
             <td style="color:#1A1A1A">{device.get('ip_address','—')}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">OS</td>
-            <td style="color:#1A1A1A">{icon} {(device.get('os_name') or '—')} {device.get('os_version','')}</td></tr>
+            <td style="color:#1A1A1A">{PLATFORM_ICON_HTML.get(platform, "")} {(device.get('os_name') or '—')} {device.get('os_version','')}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Platform</td>
             <td style="color:#1A1A1A">{device.get('platform','—')}</td></tr>
     </table>
@@ -406,13 +415,13 @@ def _render_agent_row(device: dict, tab_key: str = ""):
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         ab1, ab2, ab3, ab4 = st.columns([1.5, 1, 1, 3])
         with ab1:
-            show_hist = st.button("📊 Metrics History", key=f"hist_{tab_key}_{device['id']}")
+            show_hist = st.button("Metrics History", icon=":material/bar_chart:", key=f"hist_{tab_key}_{device['id']}")
         with ab2:
-            if is_online and st.button("🔄 Reboot", key=f"reboot_{tab_key}_{device['id']}"):
+            if is_online and st.button("Reboot", icon=":material/restart_alt:", key=f"reboot_{tab_key}_{device['id']}"):
                 _, e = client.reboot_device(device["id"])
                 st.error(e) if e else st.success("Reboot queued")
         with ab3:
-            if is_online and st.button("⏹ Shutdown", key=f"shut_{tab_key}_{device['id']}"):
+            if is_online and st.button("Shutdown", icon=":material/power_settings_new:", key=f"shut_{tab_key}_{device['id']}"):
                 _, e = client.shutdown_device(device["id"])
                 st.error(e) if e else st.success("Shutdown queued")
 
@@ -461,15 +470,21 @@ def _render_agent_row(device: dict, tab_key: str = ""):
 
 # ── Render each tab ───────────────────────────────────────────────────────────
 def _empty_state(tab_name: str):
-    icon = {"Windows": "🪟", "macOS": "🍎", "Linux": "🐧",
-            "Android": "🤖", "iOS": "📱", "Agentless": "📡"}.get(tab_name, "💻")
+    icon_html = {
+        "Windows":  '<i class="fa-brands fa-windows"></i>',
+        "macOS":    '<i class="fa-brands fa-apple"></i>',
+        "Linux":    '<i class="fa-brands fa-linux"></i>',
+        "Android":  '<i class="fa-brands fa-android"></i>',
+        "iOS":      '<i class="fa-brands fa-apple"></i>',
+        "Agentless": '<i class="fa-solid fa-satellite-dish"></i>',
+    }.get(tab_name, '<i class="fa-solid fa-desktop"></i>')
     msg = {
         "Agentless": "No agentless devices yet. Run a <b>Network Discovery</b> scan to detect phones and other devices.",
     }.get(tab_name, f"No {tab_name} devices registered. Install and run the agent on a {tab_name} machine.")
     st.markdown(
         f'<div style="text-align:center;padding:2.5rem;background:#FFF;border-radius:12px;'
         f'border:1px solid #DDE8DD;color:#6B7B6B;margin-top:0.5rem">'
-        f'<div style="font-size:2rem;margin-bottom:0.5rem">{icon}</div>'
+        f'<div style="font-size:2rem;margin-bottom:0.5rem">{icon_html}</div>'
         f'<div style="font-size:0.95rem;font-weight:600;color:#1A2B1A;margin-bottom:0.3rem">No devices</div>'
         f'<div style="font-size:0.82rem">{msg}</div>'
         f'</div>',

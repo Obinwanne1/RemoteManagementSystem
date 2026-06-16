@@ -40,7 +40,7 @@ if not online_devices:
     st.markdown(
         '<div style="text-align:center;padding:3rem;background:#FFFFFF;border-radius:12px;'
         'border:1px solid #DDE8DD;color:#6B7B6B">'
-        '<div style="font-size:2.5rem;margin-bottom:0.75rem">💻</div>'
+        '<div style="font-size:2rem;margin-bottom:0.75rem"><i class="fa-solid fa-desktop" style="color:#6B7B6B"></i></div>'
         '<div style="font-size:1rem;font-weight:600;color:#1A2B1A;margin-bottom:0.4rem">No online devices</div>'
         '<div style="font-size:0.85rem">At least one device must be online to view software.</div>'
         '</div>',
@@ -61,7 +61,7 @@ with left_col:
     st.markdown(
         '<div style="font-size:0.78rem;color:#6B7B6B;background:#F5F8F5;border-left:3px solid #407E3C;'
         'border-radius:4px;padding:0.5rem 0.75rem;margin-bottom:0.75rem">'
-        '⚠️ Only agent-managed devices appear here. Mobile, agentless, and network-discovered devices '
+        '<i class="fa-solid fa-triangle-exclamation"></i> Only agent-managed devices appear here. Mobile, agentless, and network-discovered devices '
         '(Android, iOS, etc.) cannot report installed software — they have no local agent to query.'
         '</div>',
         unsafe_allow_html=True
@@ -86,7 +86,7 @@ with left_col:
 
     st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
 
-    if st.button("🔄 Check for Updates", use_container_width=True):
+    if st.button("Check for Updates", icon=":material/refresh:", use_container_width=True):
         st.info("Winget / Chocolatey integration — Phase 6. Update checking will be available once the patch engine is deployed.")
 
 with right_col:
@@ -114,7 +114,7 @@ with right_col:
             st.markdown(
                 '<div style="text-align:center;padding:2rem;background:#FFFFFF;border-radius:12px;'
                 'border:1px solid #DDE8DD;color:#6B7B6B">'
-                '<div style="font-size:1.75rem;margin-bottom:0.5rem">🔍</div>'
+                '<div style="font-size:1.75rem;margin-bottom:0.5rem"><i class="fa-solid fa-magnifying-glass" style="color:#6B7B6B"></i></div>'
                 '<div style="font-size:0.9rem;font-weight:600;color:#1A2B1A;margin-bottom:0.3rem">No packages found</div>'
                 '<div style="font-size:0.8rem">No software data available for this device.</div>'
                 '</div>',

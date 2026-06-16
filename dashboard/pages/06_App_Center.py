@@ -24,7 +24,7 @@ if err:
 devices = data.get("items", [])
 
 if not devices:
-    st.markdown('<div style="text-align:center;padding:3rem;background:#FFFFFF;border-radius:12px;border:1px solid #DDE8DD;color:#6B7B6B"><div style="font-size:2.5rem;margin-bottom:0.75rem">📦</div><div style="font-size:1rem;font-weight:600;color:#1A2B1A;margin-bottom:0.4rem">No devices registered</div><div style="font-size:0.85rem">Deploy the agent to register endpoints.</div></div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center;padding:3rem;background:#FFFFFF;border-radius:12px;border:1px solid #DDE8DD;color:#6B7B6B"><div style="font-size:2rem;margin-bottom:0.75rem"><i class="fa-solid fa-box" style="color:#6B7B6B"></i></div><div style="font-size:1rem;font-weight:600;color:#1A2B1A;margin-bottom:0.4rem">No devices registered</div><div style="font-size:0.85rem">Deploy the agent to register endpoints.</div></div>', unsafe_allow_html=True)
     st.stop()
 
 # ── Toolbar ───────────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ if selected_device:
         st.markdown(
             '<div style="text-align:center;padding:2.5rem;background:#FFFFFF;border-radius:12px;'
             'border:1px solid #DDE8DD;color:#6B7B6B;margin-top:0.75rem">'
-            '<div style="font-size:2rem;margin-bottom:0.5rem">🔍</div>'
+            '<div style="font-size:2rem;margin-bottom:0.5rem"><i class="fa-solid fa-magnifying-glass" style="color:#6B7B6B"></i></div>'
             '<div style="font-size:0.95rem;font-weight:600;color:#1A2B1A;margin-bottom:0.3rem">No software found</div>'
             '<div style="font-size:0.82rem">Try a different search term or select another device.</div>'
             '</div>',

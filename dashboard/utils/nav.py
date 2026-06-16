@@ -64,7 +64,7 @@ def render_sidebar() -> None:
 
         # ── Admin shortcut (top, admin only) ─────────────────────────────────
         if role in ("admin", "superadmin"):
-            if st.button("🔧  Admin Panel", use_container_width=True, key="nav_admin"):
+            if st.button("Admin Panel", use_container_width=True, key="nav_admin", icon=":material/admin_panel_settings:"):
                 st.switch_page("pages/10_Admin.py")
             st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
 
@@ -84,33 +84,33 @@ def render_sidebar() -> None:
             )
 
         nav_section("MONITORING", first=True)
-        st.page_link("pages/01_Dashboard.py",        label="Overview",          icon="📊")
-        st.page_link("pages/04_Devices.py",          label="Devices",           icon="💻")
-        st.page_link("pages/05_Alerts.py",           label="Alerts",            icon="🔔")
+        st.page_link("pages/01_Dashboard.py",        label="Overview",          icon=":material/bar_chart:")
+        st.page_link("pages/04_Devices.py",          label="Devices",           icon=":material/computer:")
+        st.page_link("pages/05_Alerts.py",           label="Alerts",            icon=":material/notifications:")
 
         nav_section("MANAGEMENT")
-        st.page_link("pages/02_Tickets.py",          label="Tickets",           icon="🎫")
-        st.page_link("pages/03_Customers.py",        label="Customers",         icon="🏢")
-        st.page_link("pages/11_Automation.py",       label="Automation",        icon="⚙️")
+        st.page_link("pages/02_Tickets.py",          label="Tickets",           icon=":material/confirmation_number:")
+        st.page_link("pages/03_Customers.py",        label="Customers",         icon=":material/groups:")
+        st.page_link("pages/11_Automation.py",       label="Automation",        icon=":material/smart_toy:")
 
         nav_section("PATCHING")
-        st.page_link("pages/12_OS_Patches.py",       label="OS Patches",        icon="🔧")
-        st.page_link("pages/13_Software_Patches.py", label="Software Patches",  icon="📦")
+        st.page_link("pages/12_OS_Patches.py",       label="OS Patches",        icon=":material/system_update:")
+        st.page_link("pages/13_Software_Patches.py", label="Software Patches",  icon=":material/inventory_2:")
 
         nav_section("TOOLS")
-        st.page_link("pages/16_Scripts.py",          label="Scripts",           icon="📝")
-        st.page_link("pages/14_Disk_Management.py",  label="Disk Management",   icon="💾")
-        st.page_link("pages/15_Maintenance.py",      label="Maintenance",       icon="🔨")
-        st.page_link("pages/07_Network_Discovery.py",label="Network Discovery", icon="🌐")
+        st.page_link("pages/16_Scripts.py",          label="Scripts",           icon=":material/code:")
+        st.page_link("pages/14_Disk_Management.py",  label="Disk Management",   icon=":material/storage:")
+        st.page_link("pages/15_Maintenance.py",      label="Maintenance",       icon=":material/build:")
+        st.page_link("pages/07_Network_Discovery.py",label="Network Discovery", icon=":material/wifi_find:")
 
         if role in ("admin", "superadmin", "technician"):
             nav_section("BUSINESS")
-            st.page_link("pages/08_Reports.py",      label="Reports",           icon="📈")
-            st.page_link("pages/09_Billing.py",      label="Billing",           icon="💰")
+            st.page_link("pages/08_Reports.py",      label="Reports",           icon=":material/bar_chart:")
+            st.page_link("pages/09_Billing.py",      label="Billing",           icon=":material/payments:")
 
         nav_section("ACCOUNT")
-        st.page_link("pages/17_Profile.py", label="My Profile", icon="👤")
+        st.page_link("pages/17_Profile.py", label="My Profile", icon=":material/person:")
 
         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-        if st.button("⎋  Sign Out", use_container_width=True, key="sidebar_signout"):
+        if st.button("Sign Out", use_container_width=True, key="sidebar_signout", icon=":material/logout:"):
             logout()
