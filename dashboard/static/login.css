@@ -1,0 +1,50 @@
+.stApp {
+    background: #F4F6F4 !important;
+}
+.login-card {
+    background: #FFFFFF;
+    border: 1px solid #DDE8DD;
+    border-radius: 16px;
+    padding: 2.25rem 2.25rem 1.75rem;
+    box-shadow: 0 8px 48px rgba(0,0,0,0.5);
+}
+.login-card label {
+    color: #2D5C29 !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+}
+.login-card input {
+    background: #F4F6F4 !important;
+    border: 1.5px solid #DDE8DD !important;
+    color: #1A1A1A !important;
+    border-radius: 8px !important;
+}
+.login-card input:focus {
+    border-color: #407E3C !important;
+    box-shadow: 0 0 0 3px rgba(64,126,60,0.18) !important;
+}
+.login-card input::placeholder { color: #9BA89B !important; }
+.login-card .stButton > button {
+    background: linear-gradient(135deg, rgb(19,91,42), #407E3C) !important;
+    color: #FFFFFF !important;
+    font-size: 0.95rem !important;
+    font-weight: 600 !important;
+    padding: 0.6rem 1rem !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 14px rgba(64,126,60,0.4) !important;
+    border: none !important;
+    margin-top: 0.25rem;
+}
+.login-card .stButton > button:hover {
+    background: linear-gradient(135deg, #407E3C, rgb(79,173,84)) !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 6px 24px rgba(64,126,60,0.65) !important;
+    transform: translateY(-1px);
+}
+.brand-title {
+    color: #1A2B1A !important;
+    font-size: 1.95rem !important;
+    font-weight: 800 !important;
+    margin: 0 !important;
+    letter-spacing: -0.02em !important;
+}

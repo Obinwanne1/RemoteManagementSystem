@@ -27,48 +27,41 @@ inject_css()
 
 # ── Login ─────────────────────────────────────────────────────────────────────
 def _login_css() -> str:
-    """Generate login page CSS with white-label primary color substitution."""
+    """Write login CSS to static file, return <link> tag (Streamlit 1.36+ compatible)."""
+    import hashlib
+    import pathlib
     from utils.styles import _hex_to_rgb
     branding = st.session_state.get("_branding", {})
     p = (branding.get("primary_color") or "#407E3C").strip()
     r, g, b = _hex_to_rgb(p)
-    # Derive a slightly darker shade for gradient start
     rd, gd, bd = max(0, r - 45), max(0, g - 35), max(0, b - 18)
-    # Derive a slightly lighter shade for hover
     rl, gl, bl = min(255, r + 15), min(255, g + 47), min(255, b + 24)
-    return f"""
-<style>
-/* Dark page background — targets the whole app shell */
-.stApp {{
-    background: linear-gradient(160deg, #0A1409 0%, #0F1B10 60%, #0c1a0d 100%) !important;
+    css = f""".stApp {{
+    background: #F4F6F4 !important;
 }}
-/* Login card */
 .login-card {{
-    background: #152416;
-    border: 1px solid #1E3A20;
+    background: #FFFFFF;
+    border: 1px solid #DDE8DD;
     border-radius: 16px;
     padding: 2.25rem 2.25rem 1.75rem;
-    box-shadow: 0 24px 64px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+    box-shadow: 0 8px 48px rgba(0,0,0,0.5);
 }}
-/* Form labels white */
 .login-card label {{
-    color: #7EA87E !important;
+    color: #2D5C29 !important;
     font-size: 0.82rem !important;
     font-weight: 600 !important;
 }}
-/* Form inputs dark */
 .login-card input {{
-    background: rgba(255,255,255,0.04) !important;
-    border: 1.5px solid #1E3A20 !important;
-    color: #E0F0E0 !important;
+    background: #F4F6F4 !important;
+    border: 1.5px solid #DDE8DD !important;
+    color: #1A1A1A !important;
     border-radius: 8px !important;
 }}
 .login-card input:focus {{
     border-color: {p} !important;
     box-shadow: 0 0 0 3px rgba({r},{g},{b},0.18) !important;
 }}
-.login-card input::placeholder {{ color: #2A4A2A !important; }}
-/* Submit button */
+.login-card input::placeholder {{ color: #9BA89B !important; }}
 .login-card .stButton > button {{
     background: linear-gradient(135deg, rgb({rd},{gd},{bd}), {p}) !important;
     color: #FFFFFF !important;
@@ -87,14 +80,18 @@ def _login_css() -> str:
     transform: translateY(-1px);
 }}
 .brand-title {{
-    color: #FFFFFF !important;
+    color: #1A2B1A !important;
     font-size: 1.95rem !important;
     font-weight: 800 !important;
     margin: 0 !important;
     letter-spacing: -0.02em !important;
 }}
-</style>
 """
+    static_dir = pathlib.Path(__file__).parent / "static"
+    static_dir.mkdir(exist_ok=True)
+    (static_dir / "login.css").write_text(css, encoding="utf-8")
+    v = hashlib.md5(css.encode()).hexdigest()[:8]
+    return f'<link rel="stylesheet" href="/app/static/login.css?v={v}">'
 
 
 def show_login():

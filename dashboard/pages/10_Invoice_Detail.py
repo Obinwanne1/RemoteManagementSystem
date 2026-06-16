@@ -6,6 +6,7 @@ from datetime import datetime
 from utils.auth import require_auth
 from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, BRAND
+from utils.formatters import fmt_currency
 
 st.set_page_config(page_title="Invoice — RMM", layout="wide")
 inject_css()
@@ -34,6 +35,7 @@ if inv_err:
 
 inv = inv_data
 org = org_data or {}
+_currency = org.get("currency") or st.session_state.get("_org_settings", {}).get("currency", "USD")
 
 # Load customer name for display
 cust_data, _ = client.list_customers(per_page=200)
@@ -140,10 +142,7 @@ def _fmt_date(s):
         return s[:10]
 
 def _fmt_money(v):
-    try:
-        return f"${float(v):,.2f}"
-    except Exception:
-        return "—"
+    return fmt_currency(v, _currency)
 
 company_name    = org.get("company_name") or ""
 company_address = org.get("company_address") or ""

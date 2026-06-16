@@ -1,7 +1,7 @@
 import os
 import streamlit as st
 from utils.styles import inject_css, badge, BRAND, STATUS_COLORS
-from utils.formatters import fmt_datetime
+from utils.formatters import fmt_datetime, SUPPORTED_CURRENCIES, SUPPORTED_TIMEZONES
 from utils.auth import require_auth, current_user
 from utils.nav import render_sidebar
 
@@ -694,3 +694,57 @@ with tab_org:
                     else:
                         st.success("Logo removed.")
                         st.rerun()
+
+    # ── Regional Settings ─────────────────────────────────────────────────────
+    st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0.75rem">Regional Settings</div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.form("regional_form"):
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            _cur_currency = org.get("currency", "USD")
+            currency_labels = {
+                "USD": "USD — US Dollar ($)",
+                "EUR": "EUR — Euro (€)",
+                "GBP": "GBP — British Pound (£)",
+                "CHF": "CHF — Swiss Franc (Fr)",
+                "CAD": "CAD — Canadian Dollar (CA$)",
+                "AUD": "AUD — Australian Dollar (A$)",
+                "JPY": "JPY — Japanese Yen (¥)",
+                "SEK": "SEK — Swedish Krona (kr)",
+                "NOK": "NOK — Norwegian Krone (kr)",
+                "DKK": "DKK — Danish Krone (kr)",
+            }
+            currency_opts = list(currency_labels.values())
+            cur_idx = SUPPORTED_CURRENCIES.index(_cur_currency) if _cur_currency in SUPPORTED_CURRENCIES else 0
+            sel_currency_label = st.selectbox(
+                "Currency",
+                currency_opts,
+                index=cur_idx,
+                help="Used on invoices and billing totals throughout the dashboard.",
+            )
+            sel_currency = SUPPORTED_CURRENCIES[currency_opts.index(sel_currency_label)]
+
+        with rc2:
+            _cur_tz = org.get("timezone", "UTC")
+            tz_idx = SUPPORTED_TIMEZONES.index(_cur_tz) if _cur_tz in SUPPORTED_TIMEZONES else 0
+            sel_timezone = st.selectbox(
+                "Timezone",
+                SUPPORTED_TIMEZONES,
+                index=tz_idx,
+                help="Timestamps in alerts, audit log, and reports will display in this timezone.",
+            )
+
+        save_regional = st.form_submit_button("Save Regional Settings", use_container_width=False)
+
+    if save_regional:
+        _, rerr = client.update_org_settings({"currency": sel_currency, "timezone": sel_timezone})
+        if rerr:
+            st.error(f"Failed: {rerr}")
+        else:
+            st.session_state.pop("_org_settings", None)
+            st.success(f"Saved — currency: {sel_currency}, timezone: {sel_timezone}. Reload pages to apply.")

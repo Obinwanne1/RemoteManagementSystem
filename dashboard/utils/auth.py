@@ -61,6 +61,11 @@ def require_auth() -> RMMClient:
             st.session_state.pop("access_token", None)
             _redirect_to_login()
         st.session_state["user"] = data.get("user", data)
+    # Load org settings once per session (currency, timezone, branding)
+    if not st.session_state.get("_org_settings"):
+        _org, _ = client.get_org_settings()
+        if _org:
+            st.session_state["_org_settings"] = _org
     # Re-stamp tokens to URL so F5 / browser reload restores the session.
     # Streamlit wipes session state on every full reload — URL params are
     # the only way to survive it.

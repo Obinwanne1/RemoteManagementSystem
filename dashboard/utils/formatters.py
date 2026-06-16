@@ -1,6 +1,63 @@
 """Display formatting utilities."""
 from datetime import datetime
 
+CURRENCY_SYMBOLS = {
+    "USD": "$",
+    "EUR": "€",
+    "GBP": "£",
+    "CHF": "Fr",
+    "CAD": "CA$",
+    "AUD": "A$",
+    "JPY": "¥",
+    "SEK": "kr",
+    "NOK": "kr",
+    "DKK": "kr",
+}
+
+SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "CHF", "CAD", "AUD", "JPY", "SEK", "NOK", "DKK"]
+
+SUPPORTED_TIMEZONES = [
+    "UTC",
+    "Europe/Berlin",
+    "Europe/London",
+    "Europe/Paris",
+    "Europe/Amsterdam",
+    "Europe/Zurich",
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Los_Angeles",
+    "America/Toronto",
+    "America/Sao_Paulo",
+    "Australia/Sydney",
+    "Australia/Melbourne",
+    "Asia/Tokyo",
+    "Asia/Singapore",
+    "Asia/Dubai",
+    "Asia/Kolkata",
+    "Africa/Lagos",
+]
+
+
+def fmt_currency(amount, currency: str = "USD") -> str:
+    sym = CURRENCY_SYMBOLS.get(currency, currency + " ")
+    try:
+        return f"{sym}{float(amount):,.2f}"
+    except Exception:
+        return "—"
+
+
+def fmt_datetime_tz(iso_str: str, tz_name: str = "UTC") -> str:
+    if not iso_str:
+        return "—"
+    try:
+        from zoneinfo import ZoneInfo
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        local_dt = dt.astimezone(ZoneInfo(tz_name))
+        return local_dt.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return fmt_datetime(iso_str)
+
 
 STATUS_COLORS = {
     "healthy": "#22C55E",

@@ -78,6 +78,23 @@ def create_app(config_name=None):
             ensure_org_settings()
         except Exception:
             app.logger.warning("Could not ensure org settings (DB may not be ready yet)")
+        try:
+            from models.audit import NetworkScan
+            from datetime import datetime, timezone, timedelta
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+            stale = NetworkScan.query.filter(
+                NetworkScan.status == "running",
+                NetworkScan.started_at < cutoff,
+            ).all()
+            for s in stale:
+                s.status = "failed"
+                s.completed_at = datetime.now(timezone.utc)
+                s.discovered_hosts = [{"error": "Scan interrupted (server restarted)"}]
+            if stale:
+                db.session.commit()
+                app.logger.info("Marked %d stale running scan(s) as failed", len(stale))
+        except Exception:
+            app.logger.warning("Could not clean up stale network scans")
 
     # Register blueprints
     from routes.auth import auth_bp
@@ -207,4 +224,5 @@ if __name__ == "__main__":
         host=os.getenv("API_HOST", "0.0.0.0"),
         port=int(os.getenv("API_PORT", 5000)),
         debug=os.getenv("FLASK_DEBUG", "1") == "1",
+        use_reloader=False,
     )
