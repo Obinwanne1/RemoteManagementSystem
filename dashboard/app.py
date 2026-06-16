@@ -13,7 +13,7 @@ _brand_early = fetch_branding_early()
 
 st.set_page_config(
     page_title=_brand_early.get("app_name", "RMM System"),
-    page_icon="🖥️",
+    page_icon=":material/computer:",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -136,7 +136,7 @@ def show_login():
                             background:linear-gradient(135deg,#1A3C18,#2D5C29);
                             border-radius:18px;font-size:2rem;
                             box-shadow:0 8px 24px rgba(64,126,60,0.4)">
-                    🖥️
+                    <i class="fa-solid fa-desktop" style="color:#5DB85A;font-size:2rem"></i>
                 </div>
                 <h1 class="brand-title">{_app_name}</h1>
                 <p style="color:#8EC88E;font-size:0.88rem;margin:6px 0 0;font-weight:500">
@@ -264,37 +264,37 @@ def show_dashboard_home():
         role = user.get("role", "")
 
         if role in ("admin", "superadmin"):
-            if st.button("🔧  Admin Panel", use_container_width=True, key="nav_admin"):
+            if st.button("Admin Panel", use_container_width=True, key="nav_admin", icon=":material/admin_panel_settings:"):
                 st.switch_page("pages/10_Admin.py")
             st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
 
         nav_section("MONITORING", first=True)
-        st.page_link("pages/01_Dashboard.py",         label="Overview",          icon="📊")
-        st.page_link("pages/04_Devices.py",           label="Devices",           icon="💻")
-        st.page_link("pages/05_Alerts.py",            label="Alerts",            icon="🔔")
+        st.page_link("pages/01_Dashboard.py",         label="Overview",          icon=":material/bar_chart:")
+        st.page_link("pages/04_Devices.py",           label="Devices",           icon=":material/computer:")
+        st.page_link("pages/05_Alerts.py",            label="Alerts",            icon=":material/notifications:")
 
         nav_section("MANAGEMENT")
-        st.page_link("pages/02_Tickets.py",           label="Tickets",           icon="🎫")
-        st.page_link("pages/03_Customers.py",         label="Customers",         icon="🏢")
-        st.page_link("pages/11_Automation.py",        label="Automation",        icon="⚙️")
+        st.page_link("pages/02_Tickets.py",           label="Tickets",           icon=":material/confirmation_number:")
+        st.page_link("pages/03_Customers.py",         label="Customers",         icon=":material/groups:")
+        st.page_link("pages/11_Automation.py",        label="Automation",        icon=":material/smart_toy:")
 
         nav_section("PATCHING")
-        st.page_link("pages/12_OS_Patches.py",        label="OS Patches",        icon="🔧")
-        st.page_link("pages/13_Software_Patches.py",  label="Software Patches",  icon="📦")
+        st.page_link("pages/12_OS_Patches.py",        label="OS Patches",        icon=":material/system_update:")
+        st.page_link("pages/13_Software_Patches.py",  label="Software Patches",  icon=":material/inventory_2:")
 
         nav_section("TOOLS")
-        st.page_link("pages/16_Scripts.py",           label="Scripts",           icon="📝")
-        st.page_link("pages/14_Disk_Management.py",   label="Disk Management",   icon="💾")
-        st.page_link("pages/15_Maintenance.py",       label="Maintenance",       icon="🔨")
-        st.page_link("pages/07_Network_Discovery.py", label="Network Discovery", icon="🌐")
+        st.page_link("pages/16_Scripts.py",           label="Scripts",           icon=":material/code:")
+        st.page_link("pages/14_Disk_Management.py",   label="Disk Management",   icon=":material/storage:")
+        st.page_link("pages/15_Maintenance.py",       label="Maintenance",       icon=":material/build:")
+        st.page_link("pages/07_Network_Discovery.py", label="Network Discovery", icon=":material/wifi_find:")
 
         if role in ("admin", "superadmin", "technician"):
             nav_section("BUSINESS")
-            st.page_link("pages/08_Reports.py",       label="Reports",           icon="📈")
-            st.page_link("pages/09_Billing.py",       label="Billing",           icon="💰")
+            st.page_link("pages/08_Reports.py",       label="Reports",           icon=":material/bar_chart:")
+            st.page_link("pages/09_Billing.py",       label="Billing",           icon=":material/payments:")
 
         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-        if st.button("⎋  Sign Out", use_container_width=True, key="home_signout"):
+        if st.button("Sign Out", use_container_width=True, key="home_signout", icon=":material/logout:"):
             logout()
 
     # Main
@@ -319,31 +319,31 @@ def show_dashboard_home():
 
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
-        st.markdown(stat_card("Total Devices", d["total"], icon="💻"), unsafe_allow_html=True)
+        st.markdown(stat_card("Total Devices", d["total"], icon="<i class='fa-solid fa-desktop'></i>"), unsafe_allow_html=True)
     with c2:
         offline = d.get("offline", 0)
         st.markdown(stat_card("Online", d["online"],
                                f"{offline} offline" if offline else "all online",
-                               BRAND["success"], "🟢"), unsafe_allow_html=True)
+                               BRAND["success"], "<i class='fa-solid fa-circle' style='color:#22C55E'></i>"), unsafe_allow_html=True)
     with c3:
         crit = d.get("critical", 0)
         st.markdown(stat_card("Critical", crit,
                                "needs attention" if crit else "all clear",
                                BRAND["danger"] if crit else BRAND["success"],
-                               "🔴" if crit else "✅"), unsafe_allow_html=True)
+                               "<i class='fa-solid fa-circle' style='color:#EF4444'></i>" if crit else "<i class='fa-solid fa-circle-check' style='color:#22C55E'></i>"), unsafe_allow_html=True)
     with c4:
         open_a = a["open"]
         st.markdown(stat_card("Open Alerts", open_a,
                                f"{a.get('critical',0)} critical" if open_a else "none active",
                                BRAND["warning"] if open_a else BRAND["success"],
-                               "🔔"), unsafe_allow_html=True)
+                               "<i class='fa-solid fa-bell'></i>"), unsafe_allow_html=True)
     with c5:
-        st.markdown(stat_card("Open Tickets", t["open"], icon="🎫"), unsafe_allow_html=True)
+        st.markdown(stat_card("Open Tickets", t["open"], icon="<i class='fa-solid fa-clipboard-list'></i>"), unsafe_allow_html=True)
 
     st.markdown("""
     <div style="margin-top:1.5rem;padding:0.9rem 1.1rem;background:#F0F7F0;
                 border-radius:10px;border:1px solid #DDE8DD;color:#2D5C29;font-size:0.87rem">
-        📌 Use the sidebar to navigate. Go to <b>Overview</b> for live charts and device health.
+        <i class="fa-solid fa-thumbtack"></i>&nbsp;Use the sidebar to navigate. Go to <b>Overview</b> for live charts and device health.
     </div>
     """, unsafe_allow_html=True)
 
@@ -362,7 +362,7 @@ def show_mfa_step():
                         background:linear-gradient(135deg,#1A3C18,#2D5C29);
                         border-radius:18px;font-size:2rem;
                         box-shadow:0 8px 24px rgba(64,126,60,0.4)">
-                🔐
+                <i class="fa-solid fa-shield-halved" style="color:#5DB85A;font-size:2rem"></i>
             </div>
             <h1 class="brand-title">Two-Factor Auth</h1>
             <p style="color:#8EC88E;font-size:0.88rem;margin:6px 0 0;font-weight:500">
@@ -417,7 +417,7 @@ def show_force_change_password():
                         background:linear-gradient(135deg,#1A3C18,#2D5C29);
                         border-radius:18px;font-size:2rem;
                         box-shadow:0 8px 24px rgba(64,126,60,0.4)">
-                🔑
+                <i class="fa-solid fa-key" style="color:#5DB85A;font-size:2rem"></i>
             </div>
             <h1 class="brand-title">Set New Password</h1>
             <p style="color:#8EC88E;font-size:0.88rem;margin:6px 0 0;font-weight:500">
@@ -471,7 +471,7 @@ def show_reset_password_form(reset_token: str):
                         background:linear-gradient(135deg,#1A3C18,#2D5C29);
                         border-radius:18px;font-size:2rem;
                         box-shadow:0 8px 24px rgba(64,126,60,0.4)">
-                🔑
+                <i class="fa-solid fa-key" style="color:#5DB85A;font-size:2rem"></i>
             </div>
             <h1 class="brand-title">Reset Password</h1>
             <p style="color:#8EC88E;font-size:0.88rem;margin:6px 0 0;font-weight:500">

@@ -131,7 +131,7 @@ if not tickets:
         '<div style="background:#FFFFFF;border-radius:12px;padding:2.5rem 1.5rem;'
         'border:1px solid #DDE8DD;box-shadow:0 2px 8px rgba(0,0,0,0.05);'
         'margin-bottom:1rem;text-align:center">'
-        '<div style="font-size:2.5rem;margin-bottom:0.5rem">🎫</div>'
+        '<div style="font-size:2rem;margin-bottom:0.5rem"><i class="fa-solid fa-ticket" style="color:#6B7B6B"></i></div>'
         '<div style="font-size:1rem;font-weight:600;color:#1A1A1A;margin-bottom:0.25rem">No tickets found</div>'
         '<div style="font-size:0.85rem;color:#6B7B6B">Try adjusting your filters or create a new ticket above.</div>'
         '</div>',

@@ -23,7 +23,7 @@ with st.spinner("Loading dashboard..."):
     summary, err = client.get_summary()
 if err:
     st.warning(f"Could not load dashboard summary — {err}")
-    if st.button("🔄 Retry"):
+    if st.button("Retry", icon=":material/refresh:"):
         st.cache_data.clear()
         st.rerun()
     st.stop()
@@ -44,7 +44,7 @@ with _title_col:
     """, unsafe_allow_html=True)
 with _refresh_col:
     st.markdown("<div style='padding-top:0.6rem'></div>", unsafe_allow_html=True)
-    if st.button("⟳ Refresh", key="dash_refresh", type="primary", use_container_width=True):
+    if st.button("Refresh", key="dash_refresh", type="primary", use_container_width=True, icon=":material/refresh:"):
         st.rerun()
 
 st.divider()
@@ -55,25 +55,25 @@ crit_d = d.get("critical", 0)
 warn_d = d.get("warning", 0)
 
 with c1:
-    st.markdown(stat_card("Total Devices", d["total"], icon="💻"), unsafe_allow_html=True)
+    st.markdown(stat_card("Total Devices", d["total"], icon="<i class='fa-solid fa-desktop'></i>"), unsafe_allow_html=True)
 with c2:
     st.markdown(stat_card("Online", d["online"],
                            f"{d.get('offline',0)} offline",
-                           BRAND["success"], "🟢"), unsafe_allow_html=True)
+                           BRAND["success"], "<i class='fa-solid fa-circle' style='color:#22C55E'></i>"), unsafe_allow_html=True)
 with c3:
     st.markdown(stat_card("Warning", warn_d,
                            "degraded performance" if warn_d else "none",
                            BRAND["warning"] if warn_d else BRAND["success"],
-                           "⚠️" if warn_d else "✅"), unsafe_allow_html=True)
+                           "<i class='fa-solid fa-triangle-exclamation'></i>" if warn_d else "<i class='fa-solid fa-circle-check'></i>"), unsafe_allow_html=True)
 with c4:
     st.markdown(stat_card("Critical", crit_d,
                            "needs attention" if crit_d else "all clear",
                            BRAND["danger"] if crit_d else BRAND["success"],
-                           "🔴" if crit_d else "✅"), unsafe_allow_html=True)
+                           "<i class='fa-solid fa-circle-xmark'></i>" if crit_d else "<i class='fa-solid fa-circle-check'></i>"), unsafe_allow_html=True)
 with c5:
     st.markdown(stat_card("Open Tickets", t["open"],
                            f"{a.get('critical',0)} critical alerts",
-                           BRAND["info"], "🎫"), unsafe_allow_html=True)
+                           BRAND["info"], "<i class='fa-solid fa-ticket'></i>"), unsafe_allow_html=True)
 
 st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
 
@@ -174,7 +174,7 @@ with right:
                     online = dev.get("is_online", False)
                     status = dev.get("status", "unknown")
                     hostname = dev.get("hostname", "—")
-                    dot = "🟢" if online else "⚫"
+                    dot = "●" if online else "○"
                     label = f"{dot} **{hostname}**\n{status.upper()}"
                     if st.button(label, key=f"hm_{dev.get('id',f'{i}{j}')}",
                                  use_container_width=True,
@@ -204,7 +204,7 @@ with col_a:
     elif not alerts:
         st.markdown("""
         <div style="text-align:center;padding:1.5rem;color:#22C55E;font-size:0.9rem">
-            ✅ No recent alerts — all systems healthy
+            <i class="fa-solid fa-circle-check" style="color:#22C55E"></i>&nbsp;No recent alerts — all systems healthy
         </div>
         """, unsafe_allow_html=True)
     else:

@@ -66,11 +66,12 @@ with action_cols:
         pdf_bytes, pdf_err = client.get_invoice_pdf_bytes(inv_id)
         inv_num = inv.get("invoice_number") or inv_id[:8]
         if pdf_err:
-            st.button("⬇ PDF", disabled=True, help=f"PDF unavailable: {pdf_err}",
+            st.button("PDF", icon=":material/download:", disabled=True, help=f"PDF unavailable: {pdf_err}",
                       use_container_width=True)
         else:
             st.download_button(
-                "⬇ PDF",
+                "PDF",
+                icon=":material/download:",
                 data=pdf_bytes,
                 file_name=f"invoice-{inv_num}.pdf",
                 mime="application/pdf",
@@ -80,7 +81,7 @@ with action_cols:
     # Send email
     with a2:
         cust_email = customer.get("email") or ""
-        email_label = f"✉ Email" if cust_email else "✉ No Email"
+        email_label = "Email" if cust_email else "No Email"
         if st.button(email_label, use_container_width=True,
                      disabled=not cust_email,
                      help=f"Send to {cust_email}" if cust_email else "Customer has no email"):
@@ -110,7 +111,7 @@ with action_cols:
 
     # Delete
     with a5:
-        if st.button("🗑 Delete", use_container_width=True):
+        if st.button("Delete", icon=":material/delete:", use_container_width=True):
             if st.session_state.get("_del_inv_confirm"):
                 _, e = client.delete_invoice(inv_id)
                 if not e:
@@ -124,7 +125,7 @@ with action_cols:
                 st.rerun()
 
 if st.session_state.get("_del_inv_confirm"):
-    st.warning("Click 🗑 Delete again to confirm permanent deletion.")
+    st.warning("Click Delete again to confirm permanent deletion.")
 
 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 

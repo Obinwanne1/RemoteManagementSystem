@@ -27,7 +27,7 @@ if not devices:
     st.markdown(
         '<div style="text-align:center;padding:3rem;background:#FFFFFF;border-radius:12px;'
         'border:1px solid #DDE8DD;color:#6B7B6B">'
-        '<div style="font-size:2.5rem;margin-bottom:0.75rem">💾</div>'
+        '<div style="font-size:2rem;margin-bottom:0.75rem"><i class="fa-solid fa-hard-drive" style="color:#6B7B6B"></i></div>'
         '<div style="font-size:1rem;font-weight:600;color:#1A2B1A;margin-bottom:0.4rem">No devices registered</div>'
         '<div style="font-size:0.85rem">Deploy the agent to register endpoints.</div>'
         '</div>',
@@ -50,7 +50,7 @@ if not disks:
     st.markdown(
         '<div style="text-align:center;padding:2.5rem;background:#FFFFFF;border-radius:12px;'
         'border:1px solid #DDE8DD;color:#6B7B6B;margin-top:0.5rem">'
-        '<div style="font-size:2rem;margin-bottom:0.5rem">💾</div>'
+        '<div style="font-size:2rem;margin-bottom:0.5rem"><i class="fa-solid fa-hard-drive" style="color:#6B7B6B"></i></div>'
         '<div style="font-size:0.95rem;font-weight:600;color:#1A2B1A;margin-bottom:0.3rem">No disk metrics available for this device</div>'
         '<div style="font-size:0.82rem">Disk data will appear once the agent reports metrics.</div>'
         '</div>',
@@ -175,7 +175,7 @@ else:
 
     act1, act2, act3 = st.columns(3)
     with act1:
-        if st.button("🔧 Defragment", use_container_width=True):
+        if st.button("Defragment", icon=":material/settings:", use_container_width=True):
             with st.spinner("Queuing defragment..."):
                 _, err = client.queue_device_task(selected_device["id"], "defrag", timeout=1800)
             if err:
@@ -183,7 +183,7 @@ else:
             else:
                 st.success("Defragment queued. Agent will execute on next poll.")
     with act2:
-        if st.button("🩺 Check Disk", use_container_width=True):
+        if st.button("Check Disk", icon=":material/health_and_safety:", use_container_width=True):
             with st.spinner("Queuing chkdsk..."):
                 _, err = client.queue_device_task(selected_device["id"], "check_disk")
             if err:
@@ -191,7 +191,7 @@ else:
             else:
                 st.success("Check Disk (chkdsk) queued. Agent will execute on next poll.")
     with act3:
-        if st.button("🗑️ Clean Temp Files", use_container_width=True):
+        if st.button("Clean Temp Files", icon=":material/delete_sweep:", use_container_width=True):
             with st.spinner("Queuing cleanup..."):
                 _, err = client.queue_device_task(selected_device["id"], "clean_temp")
             if err:

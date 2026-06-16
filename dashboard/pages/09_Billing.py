@@ -63,7 +63,7 @@ if not invoices:
     st.markdown(
         '<div style="text-align:center;padding:3rem;background:#FFFFFF;border-radius:12px;'
         'border:1px solid #DDE8DD;color:#6B7B6B">'
-        '<div style="font-size:2.5rem;margin-bottom:0.75rem">🧾</div>'
+        '<div style="font-size:2rem;margin-bottom:0.75rem"><i class="fa-solid fa-file-invoice" style="color:#6B7B6B"></i></div>'
         '<div style="font-size:1rem;font-weight:600;color:#1A2B1A;margin-bottom:0.4rem">No invoices found</div>'
         '<div style="font-size:0.85rem">Generate an invoice below to get started.</div>'
         '</div>',
@@ -130,7 +130,7 @@ else:
                 btn_cols[1].markdown(badge("paid", STATUS_BADGE_COLORS["paid"]), unsafe_allow_html=True)
 
             # Delete
-            if btn_cols[3].button("🗑", key=f"del_inv_{inv_id}_{i}", help="Delete invoice"):
+            if btn_cols[3].button("", icon=":material/delete:", key=f"del_inv_{inv_id}_{i}", help="Delete invoice"):
                 if st.session_state.get(f"_del_confirm_{inv_id}"):
                     _, e = client.delete_invoice(inv_id)
                     st.session_state.pop(f"_del_confirm_{inv_id}", None)
@@ -140,7 +140,7 @@ else:
                     st.rerun()
 
             if st.session_state.get(f"_del_confirm_{inv_id}"):
-                st.warning(f"Delete {total} invoice? Click 🗑 again to confirm.")
+                st.warning(f"Delete {total} invoice? Click Delete again to confirm.")
 
         if i < len(invoices) - 1:
             st.markdown("<hr style='margin:0.2rem 0;border-color:#EEF2EE'>", unsafe_allow_html=True)

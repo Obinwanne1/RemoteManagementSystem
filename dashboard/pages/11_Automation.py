@@ -54,7 +54,7 @@ with tab1:
                 st.markdown(name_html, unsafe_allow_html=True)
             with col_btn:
                 st.markdown('<div style="margin-top:0.6rem"></div>', unsafe_allow_html=True)
-                if st.button("▶ Run Now", key=f"run_{profile['id']}"):
+                if st.button("Run Now", icon=":material/play_arrow:", key=f"run_{profile['id']}"):
                     result, run_err = client.run_profile_now(profile["id"])
                     if run_err:
                         st.error(run_err)
@@ -201,7 +201,7 @@ with tab2:
     # --- Save / Delete buttons ---
     btn_col1, btn_col2, btn_col3 = st.columns([2, 1, 1])
     with btn_col1:
-        save = st.button("💾 Save Profile", type="primary")
+        save = st.button("Save Profile", icon=":material/save:", type="primary")
     with btn_col2:
         if existing:
             disable_btn = st.button("Disable" if existing["is_active"] else "Enable")
@@ -209,7 +209,7 @@ with tab2:
             disable_btn = False
     with btn_col3:
         if existing:
-            delete_btn = st.button("🗑️ Delete", type="secondary")
+            delete_btn = st.button("Delete", icon=":material/delete:", type="secondary")
         else:
             delete_btn = False
 

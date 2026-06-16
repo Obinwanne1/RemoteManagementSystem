@@ -54,7 +54,7 @@ with tab1:
         else:
             for script in scripts:
                 ft = script.get("file_type", "").lower()
-                tag = "📌 Built-in" if script.get("is_builtin") else "📝 Custom"
+                tag = "[Built-in]" if script.get("is_builtin") else "[Custom]"
                 ft_badge_html = ftype_badge(ft)
                 expander_label = f'{tag}  {script["name"]}  [{ft.upper()}]'
 
@@ -84,7 +84,7 @@ with tab1:
                         timeout = st.number_input("Timeout (s)", 10, 900, 300, key=f"to_{script['id']}")
                     with col_run:
                         st.markdown("<div style='margin-top:1.75rem'></div>", unsafe_allow_html=True)
-                        if st.button("▶ Run", key=f"run_{script['id']}"):
+                        if st.button("Run", icon=":material/play_arrow:", key=f"run_{script['id']}"):
                             if not selected_devs:
                                 st.warning("Select at least one device")
                             else:
@@ -114,7 +114,7 @@ with tab2:
             height=300,
             placeholder="Write your script here…"
         )
-        submitted = st.form_submit_button("⬆️ Upload Script", type="primary")
+        submitted = st.form_submit_button("Upload Script", type="primary")
     st.markdown("</div>", unsafe_allow_html=True)
 
     if submitted:
@@ -143,11 +143,11 @@ with tab3:
             st.info("No script runs yet.")
         else:
             STATUS_ICONS = {
-                "success": "✅",
-                "failed":  "❌",
-                "queued":  "⏳",
-                "running": "🔄",
-                "timeout": "⏰",
+                "success": "[OK]",
+                "failed":  "[FAIL]",
+                "queued":  "[QUEUE]",
+                "running": "[RUN]",
+                "timeout": "[TIMEOUT]",
             }
             STATUS_COLORS_RUN = {
                 "success": BRAND["success"],
@@ -158,7 +158,7 @@ with tab3:
             }
             for run in runs:
                 status = run.get("status", "queued")
-                icon = STATUS_ICONS.get(status, "❓")
+                icon = STATUS_ICONS.get(status, "[?]")
                 status_color = STATUS_COLORS_RUN.get(status, "#6B7B6B")
                 script_name = run.get("script_name") or f'script:{run.get("script_id","")[:8]}'
                 hostname = run.get("device_hostname") or run.get("device_id", "")[:8]

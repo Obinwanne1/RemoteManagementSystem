@@ -113,7 +113,7 @@ with tab_hist:
         st.markdown(
             '<div style="text-align:center;padding:3rem;background:#FFFFFF;border-radius:12px;'
             'border:1px solid #DDE8DD;color:#6B7B6B">'
-            '<div style="font-size:2.5rem;margin-bottom:0.75rem">📄</div>'
+            '<div style="font-size:2rem;margin-bottom:0.75rem"><i class="fa-solid fa-file" style="color:#6B7B6B"></i></div>'
             '<div style="font-size:1rem;font-weight:600;color:#1A2B1A;margin-bottom:0.4rem">No reports yet</div>'
             '<div style="font-size:0.85rem">Generate your first report from the Generate tab.</div>'
             '</div>',
@@ -155,7 +155,8 @@ with tab_hist:
                             file_bytes = fh.read()
                         fname = r_file.split("/")[-1].split("\\")[-1]
                         st.download_button(
-                            label="⬇ Download",
+                            label="Download",
+                            icon=":material/download:",
                             data=file_bytes,
                             file_name=fname,
                             mime="application/octet-stream",
@@ -163,6 +164,6 @@ with tab_hist:
                             use_container_width=True,
                         )
                     except Exception:
-                        st.button("⬇ Download", disabled=True, key=f"dl_dis_{rpt.get('id', r_name)}", use_container_width=True)
+                        st.button("Download", icon=":material/download:", disabled=True, key=f"dl_dis_{rpt.get('id', r_name)}", use_container_width=True)
                 else:
-                    st.button("⬇ Download", disabled=True, key=f"dl_none_{rpt.get('id', r_name)}", use_container_width=True)
+                    st.button("Download", icon=":material/download:", disabled=True, key=f"dl_none_{rpt.get('id', r_name)}", use_container_width=True)

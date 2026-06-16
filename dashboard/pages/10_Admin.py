@@ -226,7 +226,7 @@ with tab_audit:
     elif not feed:
         st.markdown(
             f'<div style="{CARD};text-align:center;padding:2.5rem 1.5rem">'
-            f'<div style="font-size:1.8rem;margin-bottom:0.5rem">&#128221;</div>'
+            f'<div style="font-size:1.8rem;margin-bottom:0.5rem"><i class="fa-solid fa-pen-to-square" style="color:#6B7B6B"></i></div>'
             f'<div style="font-size:0.95rem;font-weight:600;color:#1A1A1A">No audit events yet</div>'
             f'</div>',
             unsafe_allow_html=True,

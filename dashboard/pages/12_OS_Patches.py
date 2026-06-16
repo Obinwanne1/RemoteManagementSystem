@@ -19,15 +19,15 @@ summary, _ = client.get_patch_summary()
 if summary:
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.markdown(stat_card("Pending", summary.get("pending", 0), icon="⏳", accent=BRAND["warning"]), unsafe_allow_html=True)
+        st.markdown(stat_card("Pending", summary.get("pending", 0), icon="<i class='fa-solid fa-clock'></i>", accent=BRAND["warning"]), unsafe_allow_html=True)
     with c2:
-        st.markdown(stat_card("Approved", summary.get("approved", 0), icon="✅", accent=BRAND["info"]), unsafe_allow_html=True)
+        st.markdown(stat_card("Approved", summary.get("approved", 0), icon="<i class='fa-solid fa-circle-check'></i>", accent=BRAND["info"]), unsafe_allow_html=True)
     with c3:
-        st.markdown(stat_card("Deployed", summary.get("deployed", 0), icon="🚀", accent=BRAND["primary"]), unsafe_allow_html=True)
+        st.markdown(stat_card("Deployed", summary.get("deployed", 0), icon="<i class='fa-solid fa-rocket'></i>", accent=BRAND["primary"]), unsafe_allow_html=True)
     with c4:
         compliance = summary.get("compliance_pct", 0)
         compliance_color = BRAND["success"] if compliance >= 90 else (BRAND["warning"] if compliance >= 70 else BRAND["danger"])
-        st.markdown(stat_card("Compliance", f"{compliance}%", icon="📊", accent=compliance_color), unsafe_allow_html=True)
+        st.markdown(stat_card("Compliance", f"{compliance}%", icon="<i class='fa-solid fa-chart-bar'></i>", accent=compliance_color), unsafe_allow_html=True)
     st.markdown("<div style='margin-bottom:0.5rem'></div>", unsafe_allow_html=True)
 
 # Patch type → color mapping
@@ -82,7 +82,7 @@ with tab1:
 
         st.markdown("<div style='margin-top:0.5rem'></div>", unsafe_allow_html=True)
         approve_label = f"Approve Selected ({len(selected_ids)})" if selected_ids else "Approve Selected"
-        if st.button(f"✅ {approve_label}", type="primary", disabled=len(selected_ids) == 0):
+        if st.button(approve_label, icon=":material/check_circle:", type="primary", disabled=len(selected_ids) == 0):
             _, approve_err = client.approve_patches(selected_ids)
             if approve_err:
                 st.error(approve_err)
@@ -132,7 +132,7 @@ with tab3:
     st.markdown(
         f'<div style="{CARD}">'
         f'<div style="display:flex;align-items:center;gap:0.75rem">'
-        f'<span style="font-size:1.5rem">⚙️</span>'
+        f'<span style="font-size:1.5rem"><i class="fa-solid fa-gear"></i></span>'
         f'<div><div style="font-weight:600;color:#1A1A1A;font-size:0.95rem">Patch Policies</div>'
         f'<div style="color:#6B7B6B;font-size:0.83rem;margin-top:2px">Configure granular patch approval policies, maintenance windows, and exclusions via Automation Profiles.</div>'
         f'</div></div>'
