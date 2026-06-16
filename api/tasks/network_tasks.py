@@ -380,19 +380,24 @@ def ping_agentless_devices(self):
             Device.ip_address.isnot(None)
         ).all()
 
-        for device in devices:
-            alive = _ping_host(device.ip_address)
-            if alive:
-                device.is_online = True
-                device.last_seen = now
-            else:
-                if device.last_seen:
-                    age_seconds = (now - device.last_seen.replace(tzinfo=timezone.utc)
-                                   if device.last_seen.tzinfo is None
-                                   else (now - device.last_seen)).total_seconds()
-                    if age_seconds > 600:
-                        device.is_online = False
+        def _check(device):
+            return device.ip_address, _ping_host(device.ip_address)
+
+        ip_to_device = {d.ip_address: d for d in devices}
+        with ThreadPoolExecutor(max_workers=min(50, len(devices) or 1)) as pool:
+            for ip, alive in pool.map(_check, devices):
+                device = ip_to_device[ip]
+                if alive:
+                    device.is_online = True
+                    device.last_seen = now
                 else:
-                    device.is_online = False
+                    if device.last_seen:
+                        age_seconds = (now - device.last_seen.replace(tzinfo=timezone.utc)
+                                       if device.last_seen.tzinfo is None
+                                       else (now - device.last_seen)).total_seconds()
+                        if age_seconds > 600:
+                            device.is_online = False
+                    else:
+                        device.is_online = False
 
         db.session.commit()

@@ -75,17 +75,19 @@ def approve_patches():
 @patches_bp.route("/summary", methods=["GET"])
 @jwt_required()
 def patch_summary():
-    total = PatchRecord.query.count()
-    pending = PatchRecord.query.filter_by(status="pending").count()
-    approved = PatchRecord.query.filter_by(status="approved").count()
-    deployed = PatchRecord.query.filter_by(status="deployed").count()
-    failed = PatchRecord.query.filter_by(status="failed").count()
+    from sqlalchemy import func
+    rows = db.session.query(
+        PatchRecord.status, func.count(PatchRecord.id)
+    ).group_by(PatchRecord.status).all()
+    counts = dict(rows)
+    total = sum(counts.values())
+    deployed = counts.get("deployed", 0)
     return jsonify({
         "total": total,
-        "pending": pending,
-        "approved": approved,
+        "pending": counts.get("pending", 0),
+        "approved": counts.get("approved", 0),
         "deployed": deployed,
-        "failed": failed,
+        "failed": counts.get("failed", 0),
         "compliance_pct": round((deployed / total * 100) if total else 0, 1),
     }), 200
 
