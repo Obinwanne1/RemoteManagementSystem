@@ -44,11 +44,11 @@ def _login_css() -> str:
 }}
 /* Login card */
 .login-card {{
-    background: #152416;
-    border: 1px solid #1E3A20;
+    background: #1E3A22;
+    border: 1px solid rgba(93,184,90,0.35);
     border-radius: 16px;
     padding: 2.25rem 2.25rem 1.75rem;
-    box-shadow: 0 24px 64px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+    box-shadow: 0 0 48px rgba(64,126,60,0.25), 0 24px 64px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06);
 }}
 /* Form labels white */
 .login-card label {{
