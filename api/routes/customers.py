@@ -3,6 +3,8 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from extensions import db
 from models.customer import Customer, DeviceGroup
 from models.audit import AuditLog
+from utils.validation import validate_body
+from schemas.customers import CustomerCreateSchema, CustomerUpdateSchema, DeviceGroupCreateSchema
 import uuid
 import re
 
@@ -45,6 +47,7 @@ def list_customers():
 
 @customers_bp.route("/", methods=["POST"])
 @jwt_required()
+@validate_body(CustomerCreateSchema)
 def create_customer():
     err = _require_role("admin", "technician")
     if err:
@@ -86,6 +89,7 @@ def get_customer(customer_id):
 
 @customers_bp.route("/<customer_id>", methods=["PUT"])
 @jwt_required()
+@validate_body(CustomerUpdateSchema)
 def update_customer(customer_id):
     err = _require_role("admin", "technician")
     if err:
@@ -147,6 +151,7 @@ def list_groups():
 
 @customers_bp.route("/groups", methods=["POST"])
 @jwt_required()
+@validate_body(DeviceGroupCreateSchema)
 def create_group():
     err = _require_role("admin", "technician")
     if err:

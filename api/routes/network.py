@@ -4,6 +4,8 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from extensions import db
 from models.audit import NetworkScan
+from utils.validation import validate_body
+from schemas.network import NetworkScanSchema, AgentlessDevicesSchema
 
 network_bp = Blueprint("network", __name__)
 
@@ -11,7 +13,7 @@ network_bp = Blueprint("network", __name__)
 def _require_role(*roles):
     claims = get_jwt()
     if claims.get("role") == "superadmin":
-        return None  # superadmin bypasses all role checks
+        return None
     if claims.get("role") not in roles:
         return jsonify({"error": "Insufficient permissions"}), 403
     return None
@@ -19,6 +21,7 @@ def _require_role(*roles):
 
 @network_bp.route("/scan", methods=["POST"])
 @jwt_required()
+@validate_body(NetworkScanSchema)
 def trigger_scan():
     err = _require_role("admin", "technician")
     if err:
@@ -50,6 +53,7 @@ def trigger_scan():
 
 @network_bp.route("/agentless_devices", methods=["POST"])
 @jwt_required()
+@validate_body(AgentlessDevicesSchema)
 def upsert_agentless_devices():
     """Persist a batch of discovered hosts as agentless Device records."""
     err = _require_role("admin", "technician")

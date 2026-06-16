@@ -3,6 +3,8 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from extensions import db
 from models.alert import Alert, AlertRule
+from utils.validation import validate_body
+from schemas.alerts import AlertRuleCreateSchema, AlertRuleUpdateSchema
 
 alerts_bp = Blueprint("alerts", __name__)
 
@@ -10,7 +12,7 @@ alerts_bp = Blueprint("alerts", __name__)
 def _require_role(*roles):
     claims = get_jwt()
     if claims.get("role") == "superadmin":
-        return None  # superadmin bypasses all role checks
+        return None
     if claims.get("role") not in roles:
         return jsonify({"error": "Insufficient permissions"}), 403
     return None
@@ -27,6 +29,7 @@ def list_rules():
 
 @alerts_bp.route("/alert_rules", methods=["POST"])
 @jwt_required()
+@validate_body(AlertRuleCreateSchema)
 def create_rule():
     err = _require_role("admin", "technician")
     if err:
@@ -61,6 +64,7 @@ def get_rule(rule_id):
 
 @alerts_bp.route("/alert_rules/<rule_id>", methods=["PUT"])
 @jwt_required()
+@validate_body(AlertRuleUpdateSchema)
 def update_rule(rule_id):
     err = _require_role("admin", "technician")
     if err:

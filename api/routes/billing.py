@@ -14,6 +14,8 @@ from extensions import db
 from models.billing import Invoice
 from models.customer import Customer
 from models.device import Device
+from utils.validation import validate_body
+from schemas.billing import GenerateInvoiceSchema, InvoiceStatusSchema
 
 logger = logging.getLogger(__name__)
 billing_bp = Blueprint("billing", __name__)
@@ -50,6 +52,7 @@ def list_invoices():
 
 @billing_bp.route("/invoices/generate", methods=["POST"])
 @jwt_required()
+@validate_body(GenerateInvoiceSchema)
 def generate_invoice():
     err = _require_role("admin")
     if err:
@@ -66,7 +69,6 @@ def generate_invoice():
     tax = subtotal * tax_rate
     total = subtotal + tax
 
-    # Period dates
     period_start = (
         datetime.fromisoformat(data["period_start"])
         if data.get("period_start") else datetime.now(timezone.utc)
@@ -76,7 +78,6 @@ def generate_invoice():
         if data.get("period_end") else datetime.now(timezone.utc)
     )
 
-    # Due date — default 30 days after period_end
     due_date_raw = data.get("due_date")
     if due_date_raw:
         due_date = datetime.fromisoformat(due_date_raw)
@@ -191,7 +192,6 @@ def send_invoice_email(invoice_id):
         msg["Subject"] = subject
         msg.attach(MIMEText(body_html, "html"))
 
-        # Attach PDF
         part = MIMEBase("application", "pdf")
         part.set_payload(pdf_bytes)
         encoders.encode_base64(part)
@@ -229,6 +229,7 @@ def send_invoice(invoice_id):
 
 @billing_bp.route("/invoices/<invoice_id>/status", methods=["PATCH"])
 @jwt_required()
+@validate_body(InvoiceStatusSchema)
 def update_invoice_status(invoice_id):
     """Set invoice status to: sent | paid | overdue | draft."""
     err = _require_role("admin")

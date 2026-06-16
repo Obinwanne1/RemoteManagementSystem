@@ -13,6 +13,11 @@ from extensions import db, limiter
 from models.device import Device, DeviceMetrics, InstalledSoftware
 from models.audit import AgentToken
 from models.customer import Customer
+from utils.validation import validate_body
+from schemas.agents import (
+    AgentRegisterSchema, AgentHeartbeatSchema, AgentTaskResultSchema,
+    AgentSoftwareSchema, AgentPatchesSchema,
+)
 
 agents_bp = Blueprint("agents", __name__)
 
@@ -51,6 +56,7 @@ def _get_device_by_token(device_id: str):
 
 @agents_bp.route("/register", methods=["POST"])
 @limiter.limit("10 per minute")
+@validate_body(AgentRegisterSchema)
 def register():
     """Agent first-time registration. Returns device_id + agent_token."""
     data = request.get_json(silent=True) or {}
@@ -134,6 +140,7 @@ def register():
 
 
 @agents_bp.route("/<device_id>/heartbeat", methods=["POST"])
+@validate_body(AgentHeartbeatSchema)
 def heartbeat(device_id):
     """Receive metrics payload from agent. Updates device status."""
     device, agent_token = _get_device_by_token(device_id)
@@ -252,6 +259,7 @@ def get_tasks(device_id):
 
 
 @agents_bp.route("/<device_id>/task_result", methods=["POST"])
+@validate_body(AgentTaskResultSchema)
 def task_result(device_id):
     """Agent posts completed task result."""
     device, _ = _get_device_by_token(device_id)
@@ -277,6 +285,7 @@ def task_result(device_id):
 
 
 @agents_bp.route("/<device_id>/patches", methods=["PUT"])
+@validate_body(AgentPatchesSchema)
 def update_patches(device_id):
     """Agent reports pending Windows Update patches."""
     device, _ = _get_device_by_token(device_id)
@@ -315,6 +324,7 @@ def update_patches(device_id):
 
 
 @agents_bp.route("/<device_id>/software", methods=["PUT"])
+@validate_body(AgentSoftwareSchema)
 def update_software(device_id):
     """Agent posts full installed software list (replaces previous)."""
     device, _ = _get_device_by_token(device_id)

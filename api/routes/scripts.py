@@ -4,6 +4,8 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from extensions import db, limiter
 from models.script import Script, ScriptRun
 from models.device import Device
+from utils.validation import validate_body
+from schemas.scripts import ScriptCreateSchema, ScriptUpdateSchema, RunScriptSchema
 
 scripts_bp = Blueprint("scripts", __name__)
 
@@ -14,7 +16,7 @@ MAX_SCRIPT_SIZE = 512 * 1024  # 512KB
 def _require_role(*roles):
     claims = get_jwt()
     if claims.get("role") == "superadmin":
-        return None  # superadmin bypasses all role checks
+        return None
     if claims.get("role") not in roles:
         return jsonify({"error": "Insufficient permissions"}), 403
     return None
@@ -38,6 +40,7 @@ def list_scripts():
 
 @scripts_bp.route("/", methods=["POST"])
 @jwt_required()
+@validate_body(ScriptCreateSchema)
 def create_script():
     err = _require_role("admin", "technician")
     if err:
@@ -77,6 +80,7 @@ def get_script(script_id):
 
 @scripts_bp.route("/<script_id>", methods=["PUT"])
 @jwt_required()
+@validate_body(ScriptUpdateSchema)
 def update_script(script_id):
     err = _require_role("admin", "technician")
     if err:
@@ -109,6 +113,7 @@ def delete_script(script_id):
 @scripts_bp.route("/<script_id>/run", methods=["POST"])
 @jwt_required()
 @limiter.limit("5 per minute")
+@validate_body(RunScriptSchema)
 def run_script(script_id):
     err = _require_role("admin", "technician")
     if err:
@@ -119,7 +124,6 @@ def run_script(script_id):
     if not device_ids:
         return jsonify({"error": "device_ids required"}), 400
 
-    # Batch-fetch all target devices in one query (eliminates N+1)
     valid_devices = {
         d.id for d in Device.query.filter(Device.id.in_(device_ids)).all()
     }

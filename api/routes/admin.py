@@ -7,6 +7,8 @@ from extensions import db
 from models.user import User
 from models.audit import AuditLog
 from utils.password import password_error_response
+from utils.validation import validate_body
+from schemas.admin import CreateUserSchema, UpdateUserSchema
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -41,7 +43,6 @@ def list_users():
 
     include_inactive = request.args.get("include_inactive", "false").lower() == "true"
     query = User.query if include_inactive else User.query.filter_by(is_active=True)
-    # Always exclude hard-deleted (scrambled email)
     query = query.filter(~User.email.like("__deleted__%"))
     users = query.order_by(User.created_at.desc()).all()
     return jsonify({"users": [u.to_dict() for u in users], "total": len(users)})
@@ -49,6 +50,7 @@ def list_users():
 
 @admin_bp.route("/users", methods=["POST"])
 @jwt_required()
+@validate_body(CreateUserSchema)
 def create_user():
     admin, err, code = _require_admin()
     if err:
@@ -81,6 +83,7 @@ def create_user():
 
 @admin_bp.route("/users/<user_id>", methods=["PUT"])
 @jwt_required()
+@validate_body(UpdateUserSchema)
 def update_user(user_id):
     admin, err, code = _require_admin()
     if err:
@@ -232,7 +235,6 @@ def server_ips():
                 ips.append(ip)
     except Exception:
         pass
-    # Fallback: UDP trick to get the outbound IP
     if not ips:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
