@@ -91,7 +91,6 @@ header[data-testid="stHeader"] {
 [data-testid="stSidebar"] span,
 [data-testid="stSidebar"] li,
 [data-testid="stSidebar"] a,
-[data-testid="stSidebar"] div,
 [data-testid="stSidebar"] label {
     color: #C8DCC8 !important;
 }
@@ -122,10 +121,11 @@ nav[data-testid="stSidebarNav"] { display: none !important; }
 [data-testid="stSidebarNavLink"][aria-selected="true"] div {
     color: #FFFFFF !important;
 }
-.stButton > button {
-    background: #407E3C;
-    color: #FFFFFF;
-    border: none;
+.stButton > button,
+[data-testid="stFormSubmitButton"] > button {
+    background: #407E3C !important;
+    color: #FFFFFF !important;
+    border: none !important;
     border-radius: 7px;
     padding: 0.45rem 1.1rem;
     font-weight: 600;
@@ -133,13 +133,15 @@ nav[data-testid="stSidebarNav"] { display: none !important; }
     transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
     box-shadow: 0 1px 3px rgba(64,126,60,0.25);
 }
-.stButton > button:hover {
-    background: #4E9848;
-    color: #FFFFFF;
+.stButton > button:hover,
+[data-testid="stFormSubmitButton"] > button:hover {
+    background: #4E9848 !important;
+    color: #FFFFFF !important;
     transform: translateY(-1px);
     box-shadow: 0 4px 10px rgba(64,126,60,0.3);
 }
-.stButton > button:active { transform: translateY(0); }
+.stButton > button:active,
+[data-testid="stFormSubmitButton"] > button:active { transform: translateY(0); }
 [data-testid="stSidebar"] .stButton > button {
     background: transparent;
     border: 1px solid #1E3320;
