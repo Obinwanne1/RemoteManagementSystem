@@ -51,7 +51,7 @@ def render_sidebar() -> None:
                             color:#FFF;font-weight:700;font-size:0.9rem;
                             box-shadow:0 2px 8px rgba(64,126,60,0.4)">{avatar}</div>
                 <div style="min-width:0">
-                    <div style="color:#E0F0E0;font-weight:600;font-size:0.86rem;
+                    <div style="color:#FFFFFF;font-weight:600;font-size:0.86rem;
                                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                         {name}</div>
                     <span style="background:{rb};color:{rc};padding:2px 8px;border-radius:20px;

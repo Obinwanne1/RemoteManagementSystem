@@ -1,30 +1,30 @@
 .stApp {
     background: #F4F6F4 !important;
 }
-.login-card {
+[data-testid="stForm"] {
     background: #FFFFFF;
-    border: 1px solid #DDE8DD;
-    border-radius: 16px;
-    padding: 2.25rem 2.25rem 1.75rem;
-    box-shadow: 0 8px 48px rgba(0,0,0,0.5);
+    border: 1px solid #DDE8DD !important;
+    border-radius: 16px !important;
+    padding: 2.25rem 2.25rem 1.75rem !important;
+    box-shadow: 0 8px 48px rgba(0,0,0,0.12) !important;
 }
-.login-card label {
+[data-testid="stForm"] label {
     color: #2D5C29 !important;
     font-size: 0.82rem !important;
     font-weight: 600 !important;
 }
-.login-card input {
+[data-testid="stForm"] input {
     background: #F4F6F4 !important;
     border: 1.5px solid #DDE8DD !important;
     color: #1A1A1A !important;
     border-radius: 8px !important;
 }
-.login-card input:focus {
+[data-testid="stForm"] input:focus {
     border-color: #407E3C !important;
     box-shadow: 0 0 0 3px rgba(64,126,60,0.18) !important;
 }
-.login-card input::placeholder { color: #9BA89B !important; }
-.login-card .stButton > button {
+[data-testid="stForm"] input::placeholder { color: #9BA89B !important; }
+[data-testid="stFormSubmitButton"] > button {
     background: linear-gradient(135deg, rgb(19,91,42), #407E3C) !important;
     color: #FFFFFF !important;
     font-size: 0.95rem !important;
@@ -34,8 +34,9 @@
     box-shadow: 0 4px 14px rgba(64,126,60,0.4) !important;
     border: none !important;
     margin-top: 0.25rem;
+    width: 100% !important;
 }
-.login-card .stButton > button:hover {
+[data-testid="stFormSubmitButton"] > button:hover {
     background: linear-gradient(135deg, #407E3C, rgb(79,173,84)) !important;
     color: #FFFFFF !important;
     box-shadow: 0 6px 24px rgba(64,126,60,0.65) !important;
@@ -47,4 +48,34 @@
     font-weight: 800 !important;
     margin: 0 !important;
     letter-spacing: -0.02em !important;
+}
+@media (max-width: 768px) {
+    .main .block-container {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        padding-top: 0 !important;
+    }
+    [data-testid="stForm"] {
+        padding: 1.5rem 1.1rem 1.25rem !important;
+        border-radius: 10px !important;
+    }
+    .brand-title {
+        font-size: 1.5rem !important;
+    }
+    [data-testid="stFormSubmitButton"] > button {
+        min-height: 48px !important;
+        font-size: 1rem !important;
+    }
+    [data-testid="stForm"] input {
+        min-height: 44px !important;
+        font-size: 1rem !important;
+    }
+    [data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+    }
+    [data-testid="column"] {
+        width: 100% !important;
+        min-width: 100% !important;
+        flex: 1 1 100% !important;
+    }
 }

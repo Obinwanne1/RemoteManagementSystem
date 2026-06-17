@@ -220,9 +220,11 @@ def _register_error_handlers(app):
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(
-        host=os.getenv("API_HOST", "0.0.0.0"),
-        port=int(os.getenv("API_PORT", 5000)),
-        debug=os.getenv("FLASK_DEBUG", "1") == "1",
-        use_reloader=False,
-    )
+    host = os.getenv("API_HOST", "0.0.0.0")
+    port = int(os.getenv("API_PORT", 5000))
+    if os.getenv("FLASK_DEBUG", "1") == "1":
+        app.run(host=host, port=port, debug=True, use_reloader=False)
+    else:
+        from waitress import serve
+        print(f" * Serving on http://{host}:{port} (waitress)")
+        serve(app, host=host, port=port, threads=8)

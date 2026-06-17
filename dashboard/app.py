@@ -39,30 +39,30 @@ def _login_css() -> str:
     css = f""".stApp {{
     background: #F4F6F4 !important;
 }}
-.login-card {{
+[data-testid="stForm"] {{
     background: #FFFFFF;
-    border: 1px solid #DDE8DD;
-    border-radius: 16px;
-    padding: 2.25rem 2.25rem 1.75rem;
-    box-shadow: 0 8px 48px rgba(0,0,0,0.5);
+    border: 1px solid #DDE8DD !important;
+    border-radius: 16px !important;
+    padding: 2.25rem 2.25rem 1.75rem !important;
+    box-shadow: 0 8px 48px rgba(0,0,0,0.12) !important;
 }}
-.login-card label {{
+[data-testid="stForm"] label {{
     color: #2D5C29 !important;
     font-size: 0.82rem !important;
     font-weight: 600 !important;
 }}
-.login-card input {{
+[data-testid="stForm"] input {{
     background: #F4F6F4 !important;
     border: 1.5px solid #DDE8DD !important;
     color: #1A1A1A !important;
     border-radius: 8px !important;
 }}
-.login-card input:focus {{
+[data-testid="stForm"] input:focus {{
     border-color: {p} !important;
     box-shadow: 0 0 0 3px rgba({r},{g},{b},0.18) !important;
 }}
-.login-card input::placeholder {{ color: #9BA89B !important; }}
-.login-card .stButton > button {{
+[data-testid="stForm"] input::placeholder {{ color: #9BA89B !important; }}
+[data-testid="stFormSubmitButton"] > button {{
     background: linear-gradient(135deg, rgb({rd},{gd},{bd}), {p}) !important;
     color: #FFFFFF !important;
     font-size: 0.95rem !important;
@@ -72,8 +72,9 @@ def _login_css() -> str:
     box-shadow: 0 4px 14px rgba({r},{g},{b},0.4) !important;
     border: none !important;
     margin-top: 0.25rem;
+    width: 100% !important;
 }}
-.login-card .stButton > button:hover {{
+[data-testid="stFormSubmitButton"] > button:hover {{
     background: linear-gradient(135deg, {p}, rgb({rl},{gl},{bl})) !important;
     color: #FFFFFF !important;
     box-shadow: 0 6px 24px rgba({r},{g},{b},0.65) !important;
@@ -92,19 +93,19 @@ def _login_css() -> str:
         padding-right: 0.5rem !important;
         padding-top: 0 !important;
     }}
-    .login-card {{
+    [data-testid="stForm"] {{
         padding: 1.5rem 1.1rem 1.25rem !important;
         border-radius: 10px !important;
     }}
     .brand-title {{
         font-size: 1.5rem !important;
     }}
-    .login-card .stButton > button {{
+    [data-testid="stFormSubmitButton"] > button {{
         min-height: 48px !important;
         font-size: 1rem !important;
     }}
-    .login-card .stTextInput > div > div > input {{
-        min-height: 48px !important;
+    [data-testid="stForm"] input {{
+        min-height: 44px !important;
         font-size: 1rem !important;
     }}
     [data-testid="stHorizontalBlock"] {{
@@ -172,16 +173,11 @@ def show_login():
             </div>
             """, unsafe_allow_html=True)
 
-        # Card wrapper — single markdown block containing only styling div
-        st.markdown('<div class="login-card">', unsafe_allow_html=True)
-
         with st.form("login_form"):
             email    = st.text_input("Email address", placeholder="admin@company.com")
             password = st.text_input("Password", type="password", placeholder="••••••••")
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
             submitted = st.form_submit_button("Sign In →", use_container_width=True)
-
-        st.markdown("</div>", unsafe_allow_html=True)
 
         # Forgot password link
         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
@@ -191,12 +187,10 @@ def show_login():
 
         # Forgot password form
         if st.session_state.get("show_forgot_pw"):
-            st.markdown('<div class="login-card" style="margin-top:0.75rem">', unsafe_allow_html=True)
-            st.markdown("<p style='color:#8EC88E;font-size:0.85rem;margin:0 0 0.75rem'>Enter your email and we'll send a reset link (valid 1 hour).</p>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#6B7B6B;font-size:0.85rem;margin:0.75rem 0 0.5rem'>Enter your email and we'll send a reset link (valid 1 hour).</p>", unsafe_allow_html=True)
             with st.form("forgot_pw_form"):
                 reset_email = st.text_input("Email address", placeholder="your@email.com", key="reset_email_input")
                 sent = st.form_submit_button("Send Reset Link →", use_container_width=True)
-            st.markdown("</div>", unsafe_allow_html=True)
 
             if sent:
                 if not reset_email:
@@ -263,7 +257,7 @@ def show_dashboard_home():
                             color:#FFF;font-weight:700;font-size:0.9rem;
                             box-shadow:0 2px 8px rgba(64,126,60,0.4)">{avatar}</div>
                 <div style="min-width:0">
-                    <div style="color:#E0F0E0;font-weight:600;font-size:0.86rem;
+                    <div style="color:#FFFFFF;font-weight:600;font-size:0.86rem;
                                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                         {name}</div>
                     <span style="background:{rb};color:{rc};padding:2px 8px;border-radius:20px;
@@ -398,12 +392,10 @@ def show_mfa_step():
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown('<div class="login-card">', unsafe_allow_html=True)
         with st.form("mfa_login_form"):
             code = st.text_input("Authenticator Code", placeholder="123456", max_chars=6)
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
             submitted = st.form_submit_button("Verify →", use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
 
         if st.button("← Back to login", key="mfa_back"):
             st.session_state.pop("mfa_pending_token", None)
@@ -453,13 +445,11 @@ def show_force_change_password():
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown('<div class="login-card">', unsafe_allow_html=True)
         with st.form("force_pw_form"):
             new_pw  = st.text_input("New Password", type="password", placeholder="Min 8 characters")
             conf_pw = st.text_input("Confirm Password", type="password", placeholder="Repeat password")
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
             submitted = st.form_submit_button("Set Password →", use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
 
     if submitted:
         if len(new_pw) < 8:
@@ -507,13 +497,11 @@ def show_reset_password_form(reset_token: str):
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown('<div class="login-card">', unsafe_allow_html=True)
         with st.form("reset_pw_form"):
             new_pw  = st.text_input("New Password", type="password", placeholder="Min 8 characters")
             conf_pw = st.text_input("Confirm Password", type="password", placeholder="Repeat password")
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
             submitted = st.form_submit_button("Set New Password →", use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
 
     if submitted:
         if len(new_pw) < 8:
