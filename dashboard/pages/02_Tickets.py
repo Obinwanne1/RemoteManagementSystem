@@ -193,14 +193,26 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
         created = fmt_datetime(t.get("created_at", ""))
         tid = t["id"]
 
+        source_val = t.get("source", "manual")
+        source_label = {"email": "EMAIL", "client": "PORTAL", "alert": "ALERT"}.get(source_val, "MANUAL")
+        source_color = {"email": "#3B82F6", "client": "#407E3C", "alert": "#EF4444"}.get(source_val, "#8492A6")
+        requester_email = t.get("requester_email") or ""
+
         with st.expander(t.get("title", "Untitled"), expanded=False):
             # Header row
+            source_badge = f'<span style="background:{source_color}20;color:{source_color};padding:2px 7px;border-radius:10px;font-size:0.68rem;font-weight:700">{source_label}</span>'
+            requester_html = (
+                f'<span style="color:#6B7B6B;font-size:0.82rem">From: <b style="color:#3B82F6">{requester_email}</b></span>'
+                if requester_email else ""
+            )
             st.markdown(
-                '<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.75rem">'
+                '<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.75rem;flex-wrap:wrap">'
                 + badge(priority_val, p_color)
                 + badge(status_val, s_color)
                 + _sla_badge(t)
+                + source_badge
                 + f'<span style="color:#6B7B6B;font-size:0.82rem">Customer: <b style="color:#1A1A1A">{customer_name}</b></span>'
+                + requester_html
                 + f'<span style="color:#6B7B6B;font-size:0.82rem">Created: {created}</span>'
                 + '</div>',
                 unsafe_allow_html=True,

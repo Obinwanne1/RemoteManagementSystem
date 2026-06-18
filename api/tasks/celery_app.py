@@ -26,6 +26,7 @@ def make_celery(app=None):
             "tasks.automation_tasks",
             "tasks.network_tasks",
             "tasks.ticket_tasks",
+            "tasks.email_tasks",
         ],
     )
 
@@ -77,6 +78,10 @@ def make_celery(app=None):
             "check-sla-breaches-hourly": {
                 "task": "tasks.ticket_tasks.check_sla_breaches",
                 "schedule": 3600.0,
+            },
+            "poll-support-inbox-every-minute": {
+                "task": "tasks.email_tasks.poll_support_inbox",
+                "schedule": 60.0,
             },
         },
     )

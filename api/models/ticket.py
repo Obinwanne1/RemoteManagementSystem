@@ -25,6 +25,9 @@ class Ticket(db.Model):
     first_response_at = db.Column(db.DateTime(timezone=True), nullable=True)
     sla_breached = db.Column(db.Boolean, default=False, nullable=False)
     tags = db.Column(db.JSON, default=list)
+    email_thread_id = db.Column(db.String(500), nullable=True, index=True)
+    requester_email = db.Column(db.String(255), nullable=True)
+    requester_name = db.Column(db.String(255), nullable=True)
 
     comments = db.relationship("TicketComment", backref="ticket", lazy="dynamic",
                                cascade="all, delete-orphan")
@@ -49,6 +52,9 @@ class Ticket(db.Model):
             "sla_breached": self.sla_breached,
             "tags": self.tags,
             "department_id": self.department_id,
+            "email_thread_id": self.email_thread_id,
+            "requester_email": self.requester_email,
+            "requester_name": self.requester_name,
         }
         if include_comments:
             d["comments"] = [c.to_dict() for c in self.comments.order_by(TicketComment.created_at)]
@@ -60,7 +66,8 @@ class TicketComment(db.Model):
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     ticket_id = db.Column(db.String(36), db.ForeignKey("tickets.id"), nullable=False, index=True)
-    author_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
+    author_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True)
+    author_email = db.Column(db.String(255), nullable=True)
     body = db.Column(db.Text, nullable=False)
     is_internal = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -68,13 +75,17 @@ class TicketComment(db.Model):
     author = db.relationship("User", foreign_keys=[author_id], lazy="joined")
 
     def to_dict(self):
-        author_name = None
         if self.author:
             author_name = self.author.full_name or self.author.email
+        elif self.author_email:
+            author_name = self.author_email
+        else:
+            author_name = "Unknown"
         return {
             "id": self.id,
             "ticket_id": self.ticket_id,
             "author_id": self.author_id,
+            "author_email": self.author_email,
             "author_name": author_name,
             "body": self.body,
             "is_internal": self.is_internal,

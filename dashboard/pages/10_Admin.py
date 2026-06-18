@@ -40,7 +40,7 @@ API_URL = os.getenv("API_BASE_URL", "http://localhost:5000")
 DASH_URL = "http://localhost:8501"
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab_sysinfo, tab_audit, tab_users, tab_org = st.tabs(["System Info", "Audit Log", "Users", "Org Settings"])
+tab_sysinfo, tab_audit, tab_users, tab_depts, tab_org = st.tabs(["System Info", "Audit Log", "Users", "Departments", "Org Settings"])
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — System Info
@@ -65,6 +65,15 @@ with tab_sysinfo:
         )
 
     with col_system:
+        support_email = os.getenv("SUPPORT_IMAP_USER", "")
+        support_configured = bool(support_email and os.getenv("SUPPORT_IMAP_HOST", ""))
+        support_line = (
+            f'<div style="display:flex;gap:6px;margin-top:0.5rem"><span style="font-size:0.8rem;color:#6B7B6B;min-width:72px">Support</span>'
+            f'<span style="font-size:0.8rem;color:#407E3C;font-family:monospace">{support_email}</span></div>'
+            if support_configured else
+            f'<div style="display:flex;gap:6px;margin-top:0.5rem"><span style="font-size:0.8rem;color:#6B7B6B;min-width:72px">Support</span>'
+            f'<span style="font-size:0.8rem;color:#8492A6">not configured</span></div>'
+        )
         st.markdown(
             f'<div style="{CARD}">'
             f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#6B7B6B;margin-bottom:0.75rem">System</div>'
@@ -74,6 +83,7 @@ with tab_sysinfo:
             f'<span style="font-size:0.8rem;color:#407E3C;font-family:monospace;word-break:break-all">{DASH_URL}</span></div>'
             f'<div style="display:flex;gap:6px"><span style="font-size:0.8rem;color:#6B7B6B;min-width:72px">DB</span>'
             f'<span style="font-size:0.8rem;color:#1A1A1A;font-family:monospace">localhost:5432 / rmmdb</span></div>'
+            + support_line +
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -325,7 +335,16 @@ with tab_users:
         "admin": "#407E3C",
         "technician": "#3B82F6",
         "viewer": "#6B7B6B",
+        "client": "#F59E0B",
     }
+
+    # Pre-load customers + departments for the create/edit forms
+    _cust_raw, _ = client.list_customers(per_page=200)
+    _cust_list = (_cust_raw.get("items", []) if _cust_raw else [])
+    _cust_map = {c["name"]: c["id"] for c in _cust_list}
+    _dept_raw, _ = client.list_departments()
+    _dept_list = (_dept_raw.get("departments", []) if _dept_raw else [])
+    _dept_map = {"— None —": None, **{d["name"]: d["id"] for d in _dept_list}}
 
     # ── Create user form ──────────────────────────────────────────────────────
     with st.expander("+ Create New User", expanded=False):
@@ -335,25 +354,38 @@ with tab_users:
                 new_name  = st.text_input("Full Name")
                 new_email = st.text_input("Email")
             with c2:
-                new_role  = st.selectbox("Role", ["technician", "viewer", "admin"])
-                new_pass  = st.text_input("Password", type="password", help="Min 8 characters")
+                new_role  = st.selectbox("Role", ["technician", "viewer", "admin", "client"])
+                new_pass  = st.text_input("Password", type="password", help="Min 10 characters")
+            cc1, cc2 = st.columns(2)
+            with cc1:
+                new_dept_label = st.selectbox("Department", list(_dept_map.keys()), help="Assign to a department (optional for non-client roles)")
+            with cc2:
+                new_cust_label = st.selectbox(
+                    "Customer (required for client role)",
+                    ["— None —"] + list(_cust_map.keys()),
+                    help="Required when role = client",
+                )
             new_must_change = st.checkbox(
                 "Require password change on first login",
                 value=True,
-                help="User will be prompted to set a new password immediately after signing in.",
             )
             submitted = st.form_submit_button("Create User", use_container_width=True)
             if submitted:
                 if not new_name or not new_email or not new_pass:
                     st.error("Name, email, and password are required.")
+                elif new_role == "client" and new_cust_label == "— None —":
+                    st.error("Customer is required for client accounts.")
                 else:
-                    _, cerr = client.create_user({
+                    payload = {
                         "full_name": new_name,
                         "email": new_email,
                         "role": new_role,
                         "password": new_pass,
                         "must_change_password": new_must_change,
-                    })
+                        "department_id": _dept_map.get(new_dept_label),
+                        "customer_id": _cust_map.get(new_cust_label) if new_cust_label != "— None —" else None,
+                    }
+                    _, cerr = client.create_user(payload)
                     if cerr:
                         st.error(f"Failed: {cerr}")
                     else:
@@ -501,22 +533,37 @@ with tab_users:
                 if st.session_state.get(f"edit_open_{uid}"):
                     with st.form(f"edit_user_{uid}"):
                         ec1, ec2 = st.columns(2)
+                        _all_roles = ["technician", "viewer", "admin", "client"]
                         with ec1:
                             e_name = st.text_input("Full Name", value=uname)
-                            e_role = st.selectbox("Role", ["technician", "viewer", "admin"],
-                                                  index=["technician","viewer","admin"].index(urole) if urole in ["technician","viewer","admin"] else 0)
+                            e_role = st.selectbox("Role", _all_roles,
+                                                  index=_all_roles.index(urole) if urole in _all_roles else 0)
                         with ec2:
                             e_pass = st.text_input("New Password (leave blank to keep)", type="password",
-                                                   help="Min 8 chars · 1 uppercase · 1 number · 1 special char")
+                                                   help="Min 10 chars · 1 uppercase · 1 number · 1 special char")
+                        ecc1, ecc2 = st.columns(2)
+                        with ecc1:
+                            cur_dept_label = next((k for k, v in _dept_map.items() if v == u.get("department_id")), "— None —")
+                            e_dept_label = st.selectbox("Department", list(_dept_map.keys()),
+                                                        index=list(_dept_map.keys()).index(cur_dept_label) if cur_dept_label in _dept_map else 0)
+                        with ecc2:
+                            _cust_opts = ["— None —"] + list(_cust_map.keys())
+                            cur_cust = next((c["name"] for c in _cust_list if c["id"] == u.get("customer_id")), "— None —")
+                            e_cust_label = st.selectbox("Customer (client role)", _cust_opts,
+                                                        index=_cust_opts.index(cur_cust) if cur_cust in _cust_opts else 0)
                         e_must_change = st.checkbox(
                             "Require password change on next login",
                             value=u.get("must_change_password", False),
-                            help="Force user to set a new password on their next sign-in.",
                         )
                         save = st.form_submit_button("Save Changes", use_container_width=True)
                         if save:
-                            payload = {"full_name": e_name, "role": e_role,
-                                       "must_change_password": e_must_change}
+                            payload = {
+                                "full_name": e_name,
+                                "role": e_role,
+                                "must_change_password": e_must_change,
+                                "department_id": _dept_map.get(e_dept_label),
+                                "customer_id": _cust_map.get(e_cust_label) if e_cust_label != "— None —" else None,
+                            }
                             if e_pass:
                                 payload["password"] = e_pass
                             _, uerr = client.update_user(uid, payload)
@@ -528,7 +575,154 @@ with tab_users:
                                 st.rerun()
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — Org Settings
+# TAB 4 — Departments
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_depts:
+    st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
+
+    # ── Create department ─────────────────────────────────────────────────────
+    with st.expander("+ Create New Department", expanded=False):
+        with st.form("create_dept_form", clear_on_submit=True):
+            d1, d2, d3 = st.columns([3, 2, 1])
+            with d1:
+                nd_name = st.text_input("Department Name *")
+            with d2:
+                nd_desc = st.text_input("Description (optional)")
+            with d3:
+                nd_color = st.text_input("Color (hex)", value="#407E3C")
+            d_submit = st.form_submit_button("Create Department", use_container_width=True)
+            if d_submit:
+                if not nd_name.strip():
+                    st.error("Department name is required.")
+                else:
+                    _, derr = client.create_department({
+                        "name": nd_name.strip(),
+                        "description": nd_desc.strip() or None,
+                        "color": nd_color.strip() or "#407E3C",
+                    })
+                    if derr:
+                        st.error(f"Failed: {derr}")
+                    else:
+                        st.success(f"Department '{nd_name}' created.")
+                        st.rerun()
+
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+
+    # ── Department list ───────────────────────────────────────────────────────
+    depts_data, depts_err = client.list_departments()
+    if depts_err:
+        st.warning(f"Could not load departments — {depts_err}")
+    else:
+        depts = (depts_data.get("departments", []) if depts_data else [])
+        all_users_data, _ = client.list_users()
+        all_users_list = (all_users_data.get("users", []) if all_users_data else [])
+
+        if not depts:
+            st.info("No departments yet. Create one above.")
+        for dept in depts:
+            did = dept["id"]
+            dname = dept["name"]
+            dcolor = dept.get("color", "#407E3C")
+            ddesc = dept.get("description") or ""
+            dmembers = dept.get("members", [])
+            member_count = dept.get("member_count", len(dmembers))
+            is_helpdesk = dname == "Help Desk"
+
+            with st.expander(f"{dname}  ({member_count} member{'s' if member_count != 1 else ''})", expanded=False):
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.75rem">'
+                    f'<div style="width:14px;height:14px;border-radius:50%;background:{dcolor}"></div>'
+                    f'<span style="font-size:0.85rem;color:#6B7B6B">{ddesc or "No description"}</span>'
+                    + (f'<span style="background:#407E3C1A;color:#407E3C;padding:2px 8px;border-radius:5px;font-size:0.7rem;font-weight:700;border:1px solid #407E3C33">BUILT-IN</span>' if is_helpdesk else "")
+                    + '</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Edit name/color (not for Help Desk name change)
+                with st.form(f"edit_dept_{did}", clear_on_submit=False):
+                    ed1, ed2, ed3 = st.columns([3, 2, 1])
+                    with ed1:
+                        e_dname = st.text_input("Name", value=dname, disabled=is_helpdesk)
+                    with ed2:
+                        e_ddesc = st.text_input("Description", value=ddesc)
+                    with ed3:
+                        e_dcolor = st.text_input("Color", value=dcolor)
+                    de_save = st.form_submit_button("Save", use_container_width=True)
+                    if de_save:
+                        upd = {"description": e_ddesc, "color": e_dcolor}
+                        if not is_helpdesk:
+                            upd["name"] = e_dname
+                        _, ue = client.update_department(did, upd)
+                        if ue:
+                            st.error(f"Failed: {ue}")
+                        else:
+                            st.success("Department updated.")
+                            st.rerun()
+
+                # Member management
+                st.markdown(
+                    '<div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;'
+                    'letter-spacing:0.07em;color:#6B7B6B;margin:0.75rem 0 0.4rem">Members</div>',
+                    unsafe_allow_html=True,
+                )
+                member_ids = {m["id"] for m in dmembers}
+                non_members = [u for u in all_users_list
+                               if u["id"] not in member_ids and u.get("role") != "superadmin"]
+
+                ma_col, mr_col = st.columns(2)
+                with ma_col:
+                    if non_members:
+                        add_opts = {u.get("full_name") or u.get("email"): u["id"] for u in non_members}
+                        add_label = st.selectbox("Add member", list(add_opts.keys()),
+                                                 key=f"add_member_sel_{did}",
+                                                 label_visibility="collapsed")
+                        if st.button("Add", key=f"add_member_btn_{did}", use_container_width=True):
+                            _, me = client.set_department_member(did, add_opts[add_label], "add")
+                            if me:
+                                st.error(f"Failed: {me}")
+                            else:
+                                st.rerun()
+                    else:
+                        st.caption("All users already assigned.")
+
+                with mr_col:
+                    if dmembers:
+                        rm_opts = {u.get("full_name") or u.get("email"): u["id"] for u in dmembers}
+                        rm_label = st.selectbox("Remove member", list(rm_opts.keys()),
+                                                key=f"rm_member_sel_{did}",
+                                                label_visibility="collapsed")
+                        if st.button("Remove", key=f"rm_member_btn_{did}", use_container_width=True):
+                            _, me = client.set_department_member(did, rm_opts[rm_label], "remove")
+                            if me:
+                                st.error(f"Failed: {me}")
+                            else:
+                                st.rerun()
+                    else:
+                        st.caption("No members yet.")
+
+                # Delete dept (not Help Desk)
+                if not is_helpdesk:
+                    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+                    if st.button("Delete Department", key=f"del_dept_{did}", type="secondary"):
+                        st.session_state[f"del_dept_confirm_{did}"] = True
+                    if st.session_state.get(f"del_dept_confirm_{did}"):
+                        st.warning(f"Delete **{dname}**? Members will be unassigned.")
+                        dc1, dc2 = st.columns(2)
+                        with dc1:
+                            if st.button("Yes, delete", key=f"del_dept_yes_{did}", use_container_width=True):
+                                _, de = client.delete_department(did)
+                                if de:
+                                    st.error(f"Failed: {de}")
+                                else:
+                                    st.session_state.pop(f"del_dept_confirm_{did}", None)
+                                    st.rerun()
+                        with dc2:
+                            if st.button("Cancel", key=f"del_dept_no_{did}", use_container_width=True):
+                                st.session_state.pop(f"del_dept_confirm_{did}", None)
+                                st.rerun()
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 5 — Org Settings
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_org:
     st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)

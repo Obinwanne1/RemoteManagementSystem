@@ -231,8 +231,7 @@ def update_ticket(ticket_id):
         new_status = data.get("status")
         if new_status in ("resolved", "closed") and old_status not in ("resolved", "closed"):
             client_emails = _get_client_emails(ticket.customer_id)
-            if client_emails:
-                send_ticket_resolved_client(ticket.title, ticket.id, client_emails)
+            send_ticket_resolved_client(ticket.title, ticket.id, client_emails, ticket.requester_email)
     except Exception:
         current_app.logger.warning("Ticket update notification failed for ticket %s", ticket.id)
 
@@ -298,8 +297,10 @@ def add_comment(ticket_id):
                         send_ticket_comment_to_assignee(ticket.title, ticket.id, data["body"], assignee.email)
             else:
                 client_emails = _get_client_emails(ticket.customer_id)
-                if client_emails:
-                    send_ticket_comment_to_client(ticket.title, ticket.id, data["body"], client_emails)
+                send_ticket_comment_to_client(
+                    ticket.title, ticket.id, data["body"],
+                    client_emails, ticket.requester_email,
+                )
     except Exception:
         current_app.logger.warning("Comment notification failed for ticket %s", ticket.id)
 
