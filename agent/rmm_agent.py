@@ -18,6 +18,8 @@ from collector import get_hardware_info, get_metrics, get_installed_software, ge
 from heartbeat import APIClient
 from executor import execute_task, flush_pending_queue
 from terminal_worker import TerminalWorker
+from version import __version__ as AGENT_VERSION
+from updater import check_for_update, download_and_apply, restart_agent
 
 CONFIG_PATH = Path(__file__).parent / "config.ini"
 LOG_PATH = Path(__file__).parent / "rmm_agent.log"
@@ -128,8 +130,12 @@ def main():
 
     last_software_sync = 0.0
     last_patch_sync = 0.0
+    last_update_check = 0.0
+    update_check_interval = config.getint("agent", "update_check_interval", fallback=21600)  # 6h
     patch_interval = config.getint("agent", "patch_interval", fallback=3600)
     _consecutive_failures = 0  # C-4
+
+    logger.info("Agent version %s", AGENT_VERSION)
 
     while True:
         try:
@@ -190,6 +196,30 @@ def main():
                 client.update_software(sw)
                 last_software_sync = now
                 logger.info("Software sync complete: %d packages", len(sw))
+
+            # Auto-update check every 6h
+            if now - last_update_check >= update_check_interval:
+                last_update_check = now
+                try:
+                    update = check_for_update(client.session, api_url, AGENT_VERSION)
+                    if update:
+                        logger.info(
+                            "Update available: %s → %s. Downloading...",
+                            AGENT_VERSION, update["latest_version"],
+                        )
+                        ok = download_and_apply(
+                            update["download_url"],
+                            update.get("checksum_sha256", ""),
+                            client.session,
+                        )
+                        if ok:
+                            restart_agent()  # replaces process — does not return
+                        else:
+                            logger.error("Update download/apply failed — staying on %s", AGENT_VERSION)
+                    else:
+                        logger.debug("No update available (running %s)", AGENT_VERSION)
+                except Exception as exc:
+                    logger.warning("Update check error: %s", exc)
 
             # Sync pending patches periodically
             if now - last_patch_sync >= patch_interval:
