@@ -25,6 +25,9 @@ def _require_role(*roles):
 @scripts_bp.route("/", methods=["GET"])
 @jwt_required()
 def list_scripts():
+    err = _require_role("admin", "technician", "viewer")
+    if err:
+        return err
     is_builtin = request.args.get("is_builtin")
     file_type = request.args.get("file_type")
 

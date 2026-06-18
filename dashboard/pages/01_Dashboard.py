@@ -66,14 +66,42 @@ with c3:
                            BRAND["warning"] if warn_d else BRAND["success"],
                            "<i class='fa-solid fa-triangle-exclamation'></i>" if warn_d else "<i class='fa-solid fa-circle-check'></i>"), unsafe_allow_html=True)
 with c4:
-    st.markdown(stat_card("Critical", crit_d,
+    st.markdown(stat_card("Critical Devices", crit_d,
                            "needs attention" if crit_d else "all clear",
                            BRAND["danger"] if crit_d else BRAND["success"],
                            "<i class='fa-solid fa-circle-xmark'></i>" if crit_d else "<i class='fa-solid fa-circle-check'></i>"), unsafe_allow_html=True)
 with c5:
-    st.markdown(stat_card("Open Tickets", t["open"],
-                           f"{a.get('critical',0)} critical alerts",
+    open_a = a.get("open", 0)
+    st.markdown(stat_card("Open Alerts", open_a,
+                           f"{a.get('critical',0)} critical" if open_a else "none active",
+                           BRAND["warning"] if open_a else BRAND["success"],
+                           "<i class='fa-solid fa-bell'></i>"), unsafe_allow_html=True)
+
+st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+
+# ── Ticket health strip ───────────────────────────────────────────────────────
+t_unassigned  = t.get("unassigned", 0)
+t_sla         = t.get("sla_breached", 0)
+t_critical    = t.get("critical", 0)
+_tc1, _tc2, _tc3, _tc4 = st.columns(4)
+with _tc1:
+    st.markdown(stat_card("Open Tickets", t["open"], "active workload",
                            BRAND["info"], "<i class='fa-solid fa-ticket'></i>"), unsafe_allow_html=True)
+with _tc2:
+    st.markdown(stat_card("Unassigned", t_unassigned,
+                           "needs owner" if t_unassigned else "all assigned",
+                           BRAND["warning"] if t_unassigned else BRAND["success"],
+                           "<i class='fa-solid fa-user-slash'></i>" if t_unassigned else "<i class='fa-solid fa-user-check'></i>"), unsafe_allow_html=True)
+with _tc3:
+    st.markdown(stat_card("SLA Breached", t_sla,
+                           "past due" if t_sla else "all on time",
+                           BRAND["danger"] if t_sla else BRAND["success"],
+                           "<i class='fa-solid fa-clock'></i>"), unsafe_allow_html=True)
+with _tc4:
+    st.markdown(stat_card("Critical Tickets", t_critical,
+                           "urgent priority" if t_critical else "none critical",
+                           BRAND["danger"] if t_critical else BRAND["success"],
+                           "<i class='fa-solid fa-fire'></i>"), unsafe_allow_html=True)
 
 st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
 

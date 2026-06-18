@@ -42,6 +42,9 @@ def _next_invoice_number():
 @billing_bp.route("/invoices", methods=["GET"])
 @jwt_required()
 def list_invoices():
+    err = _require_role("admin", "technician", "viewer")
+    if err:
+        return err
     customer_id = request.args.get("customer_id")
     query = Invoice.query
     if customer_id:

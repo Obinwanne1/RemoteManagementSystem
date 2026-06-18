@@ -34,14 +34,14 @@ def summary():
         ).select_from(Alert)
     ).one()
 
-    # Ticket counts — 1 query instead of 2
+    # Ticket counts — 1 query
+    _active = Ticket.status.in_(["open", "in_progress"])
     tkt = db.session.execute(
         db.select(
-            func.sum(case((Ticket.status.in_(["open", "in_progress"]), 1), else_=0)).label("open"),
-            func.sum(case(
-                (and_(Ticket.status.in_(["open", "in_progress"]), Ticket.priority == "critical"), 1),
-                else_=0,
-            )).label("critical"),
+            func.sum(case((_active, 1), else_=0)).label("open"),
+            func.sum(case((and_(_active, Ticket.priority == "critical"), 1), else_=0)).label("critical"),
+            func.sum(case((and_(_active, Ticket.assignee_id == None), 1), else_=0)).label("unassigned"),  # noqa: E711
+            func.sum(case((and_(_active, Ticket.sla_breached == True), 1), else_=0)).label("sla_breached"),  # noqa: E712
         ).select_from(Ticket)
     ).one()
 
@@ -67,6 +67,8 @@ def summary():
         "tickets": {
             "open": tkt.open or 0,
             "critical": tkt.critical or 0,
+            "unassigned": tkt.unassigned or 0,
+            "sla_breached": tkt.sla_breached or 0,
         },
         "customers": {
             "total": total_customers or 0,

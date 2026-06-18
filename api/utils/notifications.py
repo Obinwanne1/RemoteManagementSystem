@@ -8,6 +8,34 @@ from email.mime.multipart import MIMEMultipart
 logger = logging.getLogger(__name__)
 
 
+def _smtp_send(subject: str, body: str, recipients: list) -> bool:
+    """Shared SMTP sender. Silently skips if SMTP_HOST not set or recipients empty."""
+    smtp_host = os.getenv("SMTP_HOST", "")
+    if not smtp_host or not recipients:
+        return False
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASSWORD", "")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user or "rmm@localhost")
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = smtp_from
+        msg["To"] = ", ".join(recipients)
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.ehlo()
+            if smtp_port != 25:
+                server.starttls()
+            if smtp_user:
+                server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, recipients, msg.as_string())
+        return True
+    except Exception as exc:
+        logger.warning("SMTP send failed [%s]: %s", subject, exc)
+        return False
+
+
 def send_alert_notification(rule_name: str, device_hostname: str, message: str, emails: list) -> bool:
     """Send email notification for a triggered alert. Silently skips if SMTP not configured."""
     if not emails:
@@ -318,3 +346,92 @@ def send_password_expiry_warning(to_email: str, days_left: int) -> bool:
     except Exception as exc:
         logger.warning("Failed to send expiry warning to '%s': %s", to_email, exc)
         return False
+
+
+# ── Ticket notifications ───────────────────────────────────────────────────────
+
+def send_ticket_created_client(ticket_title: str, ticket_id: str, priority: str, client_emails: list) -> bool:
+    """Confirm to client(s) that their ticket was received."""
+    subject = f"[Support] Ticket received: {ticket_title}"
+    body = (
+        f"Your support request has been received.\n\n"
+        f"  Subject:  {ticket_title}\n"
+        f"  Priority: {priority.capitalize()}\n"
+        f"  Ref:      {ticket_id[:8].upper()}\n\n"
+        f"Our team will review your request and respond shortly.\n\n"
+        f"---\nRMM Support System\n"
+    )
+    ok = _smtp_send(subject, body, client_emails)
+    if ok:
+        logger.info("Ticket created confirmation sent to %d client(s) for ticket %s", len(client_emails), ticket_id)
+    return ok
+
+
+def send_ticket_assigned(ticket_title: str, ticket_id: str, customer_name: str, priority: str, assignee_email: str) -> bool:
+    """Notify technician they were assigned a ticket."""
+    subject = f"[RMM] Ticket assigned to you: {ticket_title}"
+    body = (
+        f"A ticket has been assigned to you.\n\n"
+        f"  Subject:  {ticket_title}\n"
+        f"  Customer: {customer_name}\n"
+        f"  Priority: {priority.capitalize()}\n"
+        f"  Ref:      {ticket_id[:8].upper()}\n\n"
+        f"Log in to the RMM dashboard to view and action this ticket.\n\n"
+        f"---\nRMM System\n"
+    )
+    ok = _smtp_send(subject, body, [assignee_email])
+    if ok:
+        logger.info("Ticket assigned notification sent to '%s' for ticket %s", assignee_email, ticket_id)
+    return ok
+
+
+def send_ticket_resolved_client(ticket_title: str, ticket_id: str, client_emails: list) -> bool:
+    """Notify client(s) their ticket was resolved."""
+    subject = f"[Support] Your ticket has been resolved: {ticket_title}"
+    body = (
+        f"Your support ticket has been resolved.\n\n"
+        f"  Subject: {ticket_title}\n"
+        f"  Ref:     {ticket_id[:8].upper()}\n\n"
+        f"If you are still experiencing issues, please submit a new support request.\n\n"
+        f"---\nRMM Support System\n"
+    )
+    ok = _smtp_send(subject, body, client_emails)
+    if ok:
+        logger.info("Ticket resolved notification sent to %d client(s) for ticket %s", len(client_emails), ticket_id)
+    return ok
+
+
+def send_ticket_comment_to_client(ticket_title: str, ticket_id: str, comment_body: str, client_emails: list) -> bool:
+    """Notify client(s) that staff replied to their ticket."""
+    subject = f"[Support] Update on your ticket: {ticket_title}"
+    body = (
+        f"There is a new update on your support ticket.\n\n"
+        f"  Subject: {ticket_title}\n"
+        f"  Ref:     {ticket_id[:8].upper()}\n\n"
+        f"Staff reply:\n"
+        f"  {comment_body}\n\n"
+        f"Log in to the support portal to reply or view the full thread.\n\n"
+        f"---\nRMM Support System\n"
+    )
+    ok = _smtp_send(subject, body, client_emails)
+    if ok:
+        logger.info("Comment notification sent to %d client(s) for ticket %s", len(client_emails), ticket_id)
+    return ok
+
+
+def send_ticket_comment_to_assignee(ticket_title: str, ticket_id: str, comment_body: str, assignee_email: str) -> bool:
+    """Notify assignee that the client replied to their ticket."""
+    subject = f"[RMM] Client replied on ticket: {ticket_title}"
+    body = (
+        f"The client has replied on a ticket assigned to you.\n\n"
+        f"  Subject: {ticket_title}\n"
+        f"  Ref:     {ticket_id[:8].upper()}\n\n"
+        f"Client reply:\n"
+        f"  {comment_body}\n\n"
+        f"Log in to the RMM dashboard to respond.\n\n"
+        f"---\nRMM System\n"
+    )
+    ok = _smtp_send(subject, body, [assignee_email])
+    if ok:
+        logger.info("Client reply notification sent to '%s' for ticket %s", assignee_email, ticket_id)
+    return ok

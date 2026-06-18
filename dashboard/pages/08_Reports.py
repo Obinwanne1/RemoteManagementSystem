@@ -26,6 +26,7 @@ TEMPLATE_TYPES = {
     "Patch Compliance":       "patch_compliance",
     "Alert Summary":          "alert_summary",
     "Software Inventory":     "software_inventory",
+    "Ticket Summary":         "ticket_summary",
 }
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
@@ -91,7 +92,8 @@ with tab_gen:
             '<b>Device Health Summary</b> — CPU, RAM, disk usage per device<br>'
             '<b>Patch Compliance</b> — Pending and applied patches per device<br>'
             '<b>Alert Summary</b> — Triggered alerts by severity and status<br>'
-            '<b>Software Inventory</b> — All installed software across fleet'
+            '<b>Software Inventory</b> — All installed software across fleet<br>'
+            '<b>Ticket Summary</b> — Open/resolved tickets by customer and priority'
             '</div></div>',
             unsafe_allow_html=True
         )

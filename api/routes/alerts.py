@@ -23,6 +23,9 @@ def _require_role(*roles):
 @alerts_bp.route("/alert_rules", methods=["GET"])
 @jwt_required()
 def list_rules():
+    err = _require_role("admin", "technician", "viewer")
+    if err:
+        return err
     rules = AlertRule.query.order_by(AlertRule.name).all()
     return jsonify([r.to_dict() for r in rules]), 200
 

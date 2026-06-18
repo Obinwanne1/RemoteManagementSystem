@@ -89,6 +89,9 @@ def upsert_agentless_devices():
 @network_bp.route("/scans", methods=["GET"])
 @jwt_required()
 def list_scans():
+    err = _require_role("admin", "technician", "viewer")
+    if err:
+        return err
     customer_id = request.args.get("customer_id")
     query = NetworkScan.query
     if customer_id:
@@ -100,6 +103,9 @@ def list_scans():
 @network_bp.route("/scans/<scan_id>", methods=["GET"])
 @jwt_required()
 def get_scan(scan_id):
+    err = _require_role("admin", "technician", "viewer")
+    if err:
+        return err
     scan = NetworkScan.query.get_or_404(scan_id)
     return jsonify({
         **scan.to_dict(),

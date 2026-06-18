@@ -17,6 +17,8 @@ class TicketCreateSchema(Schema):
     status = fields.String(load_default="open", validate=validate.OneOf(_STATUSES))
     source = fields.String(load_default="manual", validate=validate.Length(max=50))
     alert_id = fields.String(load_default=None, allow_none=True)
+    department_id = fields.String(load_default=None, allow_none=True)
+    due_date = fields.DateTime(load_default=None, allow_none=True)
     tags = fields.List(fields.String(), load_default=[])
 
 
@@ -27,8 +29,10 @@ class TicketUpdateSchema(Schema):
     title = fields.String(validate=validate.Length(min=1, max=500))
     description = fields.String(allow_none=True)
     assignee_id = fields.String(allow_none=True)
+    department_id = fields.String(allow_none=True)
     priority = fields.String(validate=validate.OneOf(_PRIORITIES))
     status = fields.String(validate=validate.OneOf(_STATUSES))
+    due_date = fields.DateTime(allow_none=True)
     tags = fields.List(fields.String())
 
 
