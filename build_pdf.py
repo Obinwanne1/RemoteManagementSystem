@@ -532,7 +532,7 @@ def cover_page() -> list:
         Paragraph("Complete reference for all staff — from first login to advanced automation",
                   styles["cover_sub"]),
         Spacer(1, 6 * mm),
-        Paragraph("Version 3.0 · June 2026", styles["cover_ver"]),
+        Paragraph("Version 4.0 · June 2026", styles["cover_ver"]),
         Spacer(1, 8 * mm),
         HRFlowable(width="30%", thickness=0.5, color=MUTED,
                    hAlign='CENTER', spaceAfter=4),
