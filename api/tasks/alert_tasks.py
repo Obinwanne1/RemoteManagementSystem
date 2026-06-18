@@ -104,6 +104,17 @@ def evaluate_all_rules(self):
                         from utils.notifications import send_alert_notification
                         send_alert_notification(rule.name, device.hostname, alert.message, emails)
 
+                    try:
+                        from utils.events import publish_event
+                        publish_event("new_alert", {
+                            "rule": rule.name,
+                            "device": device.hostname,
+                            "severity": rule.severity,
+                            "message": alert.message,
+                        })
+                    except Exception:
+                        pass
+
             db.session.commit()
 
         except OperationalError as exc:
@@ -157,6 +168,15 @@ def mark_offline_devices(self):
                             message=f"{device.hostname} has gone offline (last seen: {last_seen_str})",
                         )
                         db.session.add(alert)
+
+                try:
+                    from utils.events import publish_event
+                    publish_event("device_offline", {
+                        "device_id": device.id,
+                        "hostname": device.hostname,
+                    })
+                except Exception:
+                    pass
 
             db.session.commit()
             return len(stale_devices)
