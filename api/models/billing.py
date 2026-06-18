@@ -24,6 +24,8 @@ class Invoice(db.Model):
     sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
     paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    stripe_checkout_session_id = db.Column(db.String(200), nullable=True)
+    stripe_payment_intent_id   = db.Column(db.String(200), nullable=True)
 
     def to_dict(self):
         return {
@@ -45,4 +47,6 @@ class Invoice(db.Model):
             "sent_at": self.sent_at.isoformat() if self.sent_at else None,
             "paid_at": self.paid_at.isoformat() if self.paid_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "stripe_checkout_session_id": self.stripe_checkout_session_id,
+            "stripe_payment_intent_id": self.stripe_payment_intent_id,
         }

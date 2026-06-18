@@ -466,6 +466,9 @@ class RMMClient:
     def send_invoice_email(self, invoice_id: str):
         return self._post(f"/api/billing/invoices/{invoice_id}/send-email")
 
+    def get_payment_link(self, invoice_id: str):
+        return self._post(f"/api/billing/invoices/{invoice_id}/payment_link")
+
     # --- Org Settings ---
     def get_org_settings(self):
         return self._get("/api/admin/org-settings")

@@ -17,3 +17,4 @@ openpyxl==3.1.5
 python-dateutil==2.9.0
 requests==2.32.3
 Pillow==11.2.1
+stripe==12.3.0

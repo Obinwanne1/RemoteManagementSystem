@@ -263,3 +263,65 @@ def delete_invoice(invoice_id):
     db.session.delete(invoice)
     db.session.commit()
     return jsonify({"message": "Invoice deleted"}), 200
+
+
+@billing_bp.route("/invoices/<invoice_id>/payment_link", methods=["POST"])
+@jwt_required()
+def get_payment_link(invoice_id):
+    """Generate a Stripe Checkout URL for this invoice."""
+    err = _require_role("admin", "technician")
+    if err:
+        return err
+
+    from utils.stripe_client import create_checkout_session, stripe_configured
+    if not stripe_configured():
+        return jsonify({"error": "Stripe not configured — add STRIPE_SECRET_KEY to .env"}), 503
+
+    invoice = Invoice.query.get_or_404(invoice_id)
+    if invoice.status == "paid":
+        return jsonify({"error": "Invoice already paid"}), 400
+
+    customer = Customer.query.get(invoice.customer_id)
+    customer_email = customer.email if customer else None
+
+    url, err_msg = create_checkout_session(invoice, customer_email)
+    if err_msg:
+        return jsonify({"error": err_msg}), 500
+
+    # Store session ID for later webhook matching
+    invoice.stripe_checkout_session_id = url.split("/")[-1] if url else None
+    db.session.commit()
+
+    return jsonify({"checkout_url": url, "invoice_id": invoice_id}), 200
+
+
+@billing_bp.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    """Stripe webhook — no JWT, verified by signature."""
+    from utils.stripe_client import verify_webhook
+
+    payload    = request.get_data()
+    sig_header = request.headers.get("Stripe-Signature", "")
+
+    event, err_msg = verify_webhook(payload, sig_header)
+    if err_msg:
+        logger.warning("Stripe webhook verify failed: %s", err_msg)
+        return jsonify({"error": err_msg}), 400
+
+    event_type = event.get("type", "")
+    logger.info("Stripe webhook received: %s", event_type)
+
+    if event_type == "checkout.session.completed":
+        session    = event["data"]["object"]
+        invoice_id = (session.get("metadata") or {}).get("invoice_id")
+        if invoice_id:
+            invoice = Invoice.query.get(invoice_id)
+            if invoice and invoice.status != "paid":
+                invoice.status                   = "paid"
+                invoice.paid_at                  = datetime.now(timezone.utc)
+                invoice.stripe_checkout_session_id = session.get("id")
+                invoice.stripe_payment_intent_id   = session.get("payment_intent")
+                db.session.commit()
+                logger.info("Invoice %s marked paid via Stripe", invoice_id)
+
+    return jsonify({"received": True}), 200
