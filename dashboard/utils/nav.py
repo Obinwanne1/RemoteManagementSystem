@@ -99,6 +99,8 @@ def render_sidebar() -> None:
 
         nav_section("TOOLS")
         st.page_link("pages/16_Scripts.py",          label="Scripts",           icon=":material/code:")
+        if role in ("admin", "technician", "superadmin"):
+            st.page_link("pages/14_Terminal.py",     label="Remote Terminal",   icon=":material/terminal:")
         st.page_link("pages/14_Disk_Management.py",  label="Disk Management",   icon=":material/storage:")
         st.page_link("pages/15_Maintenance.py",      label="Maintenance",       icon=":material/build:")
         st.page_link("pages/07_Network_Discovery.py",label="Network Discovery", icon=":material/wifi_find:")

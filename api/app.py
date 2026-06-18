@@ -62,7 +62,7 @@ def create_app(config_name=None):
     # Import models so Alembic detects them
     with app.app_context():
         from models import user, device, customer, alert, ticket, patch, script, automation, report, billing, audit  # noqa
-        from models import org_settings, user_session  # noqa
+        from models import org_settings, user_session, department, terminal  # noqa
         try:
             from utils.builtin_scripts import ensure_builtin_scripts
             ensure_builtin_scripts()
@@ -78,6 +78,11 @@ def create_app(config_name=None):
             ensure_org_settings()
         except Exception:
             app.logger.warning("Could not ensure org settings (DB may not be ready yet)")
+        try:
+            from utils.helpdesk_dept import ensure_helpdesk_department
+            ensure_helpdesk_department()
+        except Exception:
+            app.logger.warning("Could not ensure Help Desk department (DB may not be ready yet)")
         try:
             from models.audit import NetworkScan
             from datetime import datetime, timezone, timedelta
@@ -112,6 +117,7 @@ def create_app(config_name=None):
     from routes.dashboard import dashboard_bp
     from routes.admin import admin_bp
     from routes.org_settings import org_settings_bp
+    from routes.terminal import terminal_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(agents_bp, url_prefix="/api/agents")
@@ -128,6 +134,7 @@ def create_app(config_name=None):
     app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
     app.register_blueprint(org_settings_bp, url_prefix="/api/admin")
+    app.register_blueprint(terminal_bp, url_prefix="/api/terminal")
 
     @app.route("/api/health")
     def health():
