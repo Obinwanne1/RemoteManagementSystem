@@ -521,6 +521,19 @@ class RMMClient:
     def delete_customer(self, customer_id: str):
         return self._delete(f"/api/customers/{customer_id}")
 
+    # --- Terminal ---
+    def create_terminal_session(self, device_id: str):
+        return self._post("/api/terminal/sessions", {"device_id": device_id})
+
+    def get_terminal_output(self, session_id: str, after: int = 0):
+        return self._get(f"/api/terminal/sessions/{session_id}/output?after={after}")
+
+    def send_terminal_command(self, session_id: str, command: str):
+        return self._post(f"/api/terminal/sessions/{session_id}/commands", {"command": command})
+
+    def close_terminal_session(self, session_id: str):
+        return self._delete(f"/api/terminal/sessions/{session_id}")
+
     # --- Public (no auth) ---
     @staticmethod
     def get_branding() -> dict:

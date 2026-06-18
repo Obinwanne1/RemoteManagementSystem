@@ -17,6 +17,7 @@ import psutil
 from collector import get_hardware_info, get_metrics, get_installed_software, get_pending_patches
 from heartbeat import APIClient
 from executor import execute_task, flush_pending_queue
+from terminal_worker import TerminalWorker
 
 CONFIG_PATH = Path(__file__).parent / "config.ini"
 LOG_PATH = Path(__file__).parent / "rmm_agent.log"
@@ -116,6 +117,11 @@ def main():
     # C-7: stamp device_id on all log records after identity is known
     _device_filter.device_id = device_id
     logger.info("Agent started. device_id=%s api=%s", device_id, api_url)
+
+    # Start remote terminal worker (daemon thread — polls API for shell commands)
+    agent_token = config.get("agent", "agent_token")
+    terminal_worker = TerminalWorker(api_url, device_id, agent_token)
+    terminal_worker.start()
 
     # C-1: prime CPU counter; first non-blocking sample is always 0.0 otherwise
     psutil.cpu_percent(interval=None)
