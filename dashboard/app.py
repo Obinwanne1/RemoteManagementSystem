@@ -452,8 +452,12 @@ def show_force_change_password():
             submitted = st.form_submit_button("Set Password →", use_container_width=True)
 
     if submitted:
+        import re as _re
+        _pw_re = _re.compile(r'^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()\-_=+\[\]{};:\'",.<>?/\\|`~]).{8,}$')
         if len(new_pw) < 8:
             st.error("Password must be at least 8 characters.")
+        elif not _pw_re.match(new_pw):
+            st.error("Password must include at least 1 uppercase letter, 1 number, and 1 special character.")
         elif new_pw != conf_pw:
             st.error("Passwords do not match.")
         else:
@@ -504,8 +508,12 @@ def show_reset_password_form(reset_token: str):
             submitted = st.form_submit_button("Set New Password →", use_container_width=True)
 
     if submitted:
+        import re as _re
+        _pw_re = _re.compile(r'^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()\-_=+\[\]{};:\'",.<>?/\\|`~]).{8,}$')
         if len(new_pw) < 8:
             st.error("Password must be at least 8 characters.")
+        elif not _pw_re.match(new_pw):
+            st.error("Password must include at least 1 uppercase letter, 1 number, and 1 special character.")
         elif new_pw != conf_pw:
             st.error("Passwords do not match.")
         else:

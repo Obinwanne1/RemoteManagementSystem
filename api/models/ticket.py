@@ -14,12 +14,16 @@ class Ticket(db.Model):
     assignee_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True)
     priority = db.Column(db.String(20), default="medium")  # low/medium/high/critical
     status = db.Column(db.String(30), default="open")  # open/in_progress/resolved/closed
-    source = db.Column(db.String(30), default="manual")  # manual/alert
+    source = db.Column(db.String(30), default="manual")  # manual/alert/client
+    department_id = db.Column(db.String(36), db.ForeignKey("departments.id"), nullable=True)
     alert_id = db.Column(db.String(36), db.ForeignKey("alerts.id"), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
     resolved_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    due_date = db.Column(db.DateTime(timezone=True), nullable=True)
+    first_response_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    sla_breached = db.Column(db.Boolean, default=False, nullable=False)
     tags = db.Column(db.JSON, default=list)
 
     comments = db.relationship("TicketComment", backref="ticket", lazy="dynamic",
@@ -40,7 +44,11 @@ class Ticket(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
+            "due_date": self.due_date.isoformat() if self.due_date else None,
+            "first_response_at": self.first_response_at.isoformat() if self.first_response_at else None,
+            "sla_breached": self.sla_breached,
             "tags": self.tags,
+            "department_id": self.department_id,
         }
         if include_comments:
             d["comments"] = [c.to_dict() for c in self.comments.order_by(TicketComment.created_at)]
@@ -57,11 +65,17 @@ class TicketComment(db.Model):
     is_internal = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
+    author = db.relationship("User", foreign_keys=[author_id], lazy="joined")
+
     def to_dict(self):
+        author_name = None
+        if self.author:
+            author_name = self.author.full_name or self.author.email
         return {
             "id": self.id,
             "ticket_id": self.ticket_id,
             "author_id": self.author_id,
+            "author_name": author_name,
             "body": self.body,
             "is_internal": self.is_internal,
             "created_at": self.created_at.isoformat() if self.created_at else None,

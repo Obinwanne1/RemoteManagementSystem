@@ -1,16 +1,22 @@
 """
-Admin routes — user management and system config (admin-only).
+Admin routes — user management, department management, and system config (admin-only).
 """
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
 from models.user import User
+from models.department import Department
 from models.audit import AuditLog
 from utils.password import password_error_response
 from utils.validation import validate_body
-from schemas.admin import CreateUserSchema, UpdateUserSchema
+from schemas.admin import (
+    CreateUserSchema, UpdateUserSchema,
+    DepartmentCreateSchema, DepartmentUpdateSchema,
+)
 
 admin_bp = Blueprint("admin", __name__)
+
+_VALID_STAFF_ROLES = ("admin", "technician", "viewer", "client")
 
 
 def _require_admin():
@@ -33,6 +39,8 @@ def _audit(action, admin_id, resource_id=None, payload=None):
     )
     db.session.add(log)
 
+
+# ── Users ─────────────────────────────────────────────────────────────────────
 
 @admin_bp.route("/users", methods=["GET"])
 @jwt_required()
@@ -64,8 +72,10 @@ def create_user():
 
     if not email or not full_name or not password:
         return jsonify({"error": "email, full_name, and password are required"}), 400
-    if role not in ("admin", "technician", "viewer"):
-        return jsonify({"error": "role must be admin, technician, or viewer"}), 400
+    if role not in _VALID_STAFF_ROLES:
+        return jsonify({"error": f"role must be one of: {', '.join(_VALID_STAFF_ROLES)}"}), 400
+    if role == "client" and not data.get("customer_id"):
+        return jsonify({"error": "customer_id is required for client accounts"}), 400
     errors, msg = password_error_response(password)
     if errors:
         return jsonify({"error": msg}), 400
@@ -73,7 +83,14 @@ def create_user():
         return jsonify({"error": "Email already in use"}), 409
 
     must_change = bool(data.get("must_change_password", False))
-    user = User(email=email, full_name=full_name, role=role, must_change_password=must_change)
+    user = User(
+        email=email,
+        full_name=full_name,
+        role=role,
+        must_change_password=must_change,
+        department_id=data.get("department_id") or None,
+        customer_id=data.get("customer_id") or None,
+    )
     user.set_password(password)
     db.session.add(user)
     _audit("CREATE", admin.id, payload={"email": email, "role": role})
@@ -100,9 +117,13 @@ def update_user(user_id):
         user.full_name = data["full_name"].strip()
     if "role" in data:
         role = data["role"].strip().lower()
-        if role not in ("admin", "technician", "viewer"):
-            return jsonify({"error": "role must be admin, technician, or viewer"}), 400
+        if role not in _VALID_STAFF_ROLES:
+            return jsonify({"error": f"role must be one of: {', '.join(_VALID_STAFF_ROLES)}"}), 400
         user.role = role
+    if "department_id" in data:
+        user.department_id = data["department_id"] or None
+    if "customer_id" in data:
+        user.customer_id = data["customer_id"] or None
     if "is_active" in data:
         user.is_active = bool(data["is_active"])
     if data.get("password"):
@@ -207,10 +228,119 @@ def unlock_user(user_id):
     return jsonify({"message": "Account unlocked", "user": user.to_dict()})
 
 
+# ── Departments ────────────────────────────────────────────────────────────────
+
+@admin_bp.route("/departments", methods=["GET"])
+@jwt_required()
+def list_departments():
+    admin, err, code = _require_admin()
+    if err:
+        return err, code
+    depts = Department.query.order_by(Department.name).all()
+    return jsonify({"departments": [d.to_dict(include_members=True) for d in depts]})
+
+
+@admin_bp.route("/departments", methods=["POST"])
+@jwt_required()
+@validate_body(DepartmentCreateSchema)
+def create_department():
+    admin, err, code = _require_admin()
+    if err:
+        return err, code
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    if Department.query.filter_by(name=name).first():
+        return jsonify({"error": "Department name already in use"}), 409
+
+    dept = Department(
+        name=name,
+        description=data.get("description"),
+        color=data.get("color", "#407E3C"),
+    )
+    db.session.add(dept)
+    db.session.commit()
+    return jsonify(dept.to_dict(include_members=True)), 201
+
+
+@admin_bp.route("/departments/<dept_id>", methods=["PUT"])
+@jwt_required()
+@validate_body(DepartmentUpdateSchema)
+def update_department(dept_id):
+    admin, err, code = _require_admin()
+    if err:
+        return err, code
+
+    dept = Department.query.get_or_404(dept_id)
+    data = request.get_json(silent=True) or {}
+
+    if "name" in data:
+        new_name = data["name"].strip()
+        conflict = Department.query.filter(
+            Department.name == new_name, Department.id != dept_id
+        ).first()
+        if conflict:
+            return jsonify({"error": "Department name already in use"}), 409
+        dept.name = new_name
+    if "description" in data:
+        dept.description = data["description"]
+    if "color" in data:
+        dept.color = data["color"]
+
+    db.session.commit()
+    return jsonify(dept.to_dict(include_members=True))
+
+
+@admin_bp.route("/departments/<dept_id>", methods=["DELETE"])
+@jwt_required()
+def delete_department(dept_id):
+    admin, err, code = _require_admin()
+    if err:
+        return err, code
+
+    dept = Department.query.get_or_404(dept_id)
+    if dept.name == "Help Desk":
+        return jsonify({"error": "The Help Desk department cannot be deleted"}), 400
+
+    # Unlink members before deleting
+    User.query.filter_by(department_id=dept_id).update({"department_id": None})
+    db.session.delete(dept)
+    db.session.commit()
+    return jsonify({"message": "Department deleted"})
+
+
+@admin_bp.route("/departments/<dept_id>/members", methods=["POST"])
+@jwt_required()
+def set_department_member(dept_id):
+    """Assign or remove a user from a department. Body: {user_id, action: 'add'|'remove'}"""
+    admin, err, code = _require_admin()
+    if err:
+        return err, code
+
+    Department.query.get_or_404(dept_id)
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    action = data.get("action", "add")
+
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    user.department_id = dept_id if action == "add" else None
+    db.session.commit()
+    return jsonify({"message": f"User {action}ed", "user": user.to_dict()})
+
+
+# ── System ─────────────────────────────────────────────────────────────────────
+
 @admin_bp.route("/org-token", methods=["GET"])
 @jwt_required()
 def get_org_token():
-    """Return the org registration token. Admin-only."""
     _, err, code = _require_admin()
     if err:
         return err, code
@@ -221,7 +351,6 @@ def get_org_token():
 @admin_bp.route("/server_ips", methods=["GET"])
 @jwt_required()
 def server_ips():
-    """Return the server's LAN IP addresses for agent setup. Admin-only."""
     _, err, code = _require_admin()
     if err:
         return err, code

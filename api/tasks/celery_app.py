@@ -25,6 +25,7 @@ def make_celery(app=None):
             "tasks.report_tasks",
             "tasks.automation_tasks",
             "tasks.network_tasks",
+            "tasks.ticket_tasks",
         ],
     )
 
@@ -72,6 +73,10 @@ def make_celery(app=None):
             "prune-old-data-daily": {
                 "task": "tasks.maintenance_tasks.prune_old_data",
                 "schedule": 86400.0,
+            },
+            "check-sla-breaches-hourly": {
+                "task": "tasks.ticket_tasks.check_sla_breaches",
+                "schedule": 3600.0,
             },
         },
     )

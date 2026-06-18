@@ -141,6 +141,32 @@ else:
                         st.success("Customer updated.")
                         st.rerun()
 
+            # ── Delete customer ──
+            user = current_user()
+            if user.get("role") in ("admin", "superadmin"):
+                st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+                confirm_key = f"del_confirm_{cid}"
+                if st.session_state.get(confirm_key):
+                    st.warning(f"**Delete '{name}'?** This removes all linked devices, tickets, and invoices. This cannot be undone.")
+                    dc1, dc2 = st.columns(2)
+                    with dc1:
+                        if st.button("Yes, delete permanently", key=f"del_yes_{cid}", type="primary", use_container_width=True):
+                            _, derr = client.delete_customer(cid)
+                            if derr:
+                                st.error(f"Delete failed: {derr}")
+                            else:
+                                st.session_state.pop(confirm_key, None)
+                                st.success(f"Customer '{name}' deleted.")
+                                st.rerun()
+                    with dc2:
+                        if st.button("Cancel", key=f"del_no_{cid}", use_container_width=True):
+                            st.session_state.pop(confirm_key, None)
+                            st.rerun()
+                else:
+                    if st.button("Delete Customer", key=f"del_btn_{cid}", use_container_width=True):
+                        st.session_state[confirm_key] = True
+                        st.rerun()
+
 # ── Add Customer (collapsible at bottom) ──────────────────────────────────────
 st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 

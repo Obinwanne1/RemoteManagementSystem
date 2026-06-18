@@ -398,6 +398,23 @@ class RMMClient:
     def get_org_token(self):
         return self._get("/api/admin/org-token")
 
+    # --- Departments ---
+    def list_departments(self):
+        return self._get("/api/admin/departments")
+
+    def create_department(self, data: dict):
+        return self._post("/api/admin/departments", data)
+
+    def update_department(self, dept_id: str, data: dict):
+        return self._put(f"/api/admin/departments/{dept_id}", data)
+
+    def delete_department(self, dept_id: str):
+        return self._delete(f"/api/admin/departments/{dept_id}")
+
+    def set_department_member(self, dept_id: str, user_id: str, action: str = "add"):
+        return self._post(f"/api/admin/departments/{dept_id}/members",
+                          {"user_id": user_id, "action": action})
+
     # --- Device tasks ---
     def queue_device_task(self, device_id: str, task_type: str, timeout: int = 300):
         return self._post(f"/api/devices/{device_id}/queue_task",
@@ -495,14 +512,11 @@ class RMMClient:
             payload["customer_id"] = customer_id
         return self._post("/api/network/scan", payload)
 
-    def get_server_ips(self):
-        return self._get("/api/admin/server_ips")
-
-    def update_device(self, device_id: str, data: dict):
-        return self._put(f"/api/devices/{device_id}", data)
-
     def delete_device(self, device_id: str):
         return self._delete(f"/api/devices/{device_id}")
+
+    def delete_customer(self, customer_id: str):
+        return self._delete(f"/api/customers/{customer_id}")
 
     # --- Public (no auth) ---
     @staticmethod
