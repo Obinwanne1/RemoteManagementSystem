@@ -8,7 +8,7 @@ Version 1.0 — Built exclusively for Faiyke-AI Agency
 **Prepared for:** Faiyke-AI Agency
 **System URL:** http://localhost:8501
 **API URL:** http://localhost:5000
-**Document version:** 3.0 (API validation, CI/CD pipeline, load testing)
+**Document version:** 4.0 (Remote Terminal, Real-time Events, Agent Auto-Update, Email-to-Ticket)
 
 ---
 
@@ -103,6 +103,12 @@ This document is written in plain language. Technical jargon is explained when f
 - Chapter 33: API Input Validation
 - Chapter 34: Continuous Integration (CI/CD)
 - Chapter 35: Load Testing
+
+**PART IX — ADVANCED FEATURES**
+- Chapter 36: Support Inbox — Email-to-Ticket
+- Chapter 37: Remote Terminal
+- Chapter 38: Real-time Event Feed
+- Chapter 39: Agent Auto-Update
 
 **Appendix A: Glossary**
 **Appendix B: Quick Reference Cards**
@@ -3640,6 +3646,289 @@ After each run, add the results to `tests/load/README.md` using the results temp
 
 ---
 
+# PART IX — ADVANCED FEATURES
+
+---
+
+## Chapter 36: Support Inbox — Email-to-Ticket
+
+### Who uses this chapter
+
+Administrators who want to connect a support email address so that inbound customer emails automatically create help-desk tickets. Also useful for technicians to understand where "Email" source tickets come from.
+
+### What it does
+
+The Support Inbox feature polls a dedicated email mailbox (Gmail, Outlook, or any IMAP-compatible mail server) every 60 seconds. When a new email arrives:
+
+1. A ticket is created automatically in the Tickets system.
+2. An auto-reply is sent to the sender confirming the ticket number.
+3. If the sender's email matches a known customer contact, the ticket is linked to that customer. Unknown senders are assigned to the default customer configured in `.env`.
+4. If a reply email references an existing ticket's Message-ID thread header, the reply is added as a comment on that ticket rather than creating a duplicate.
+
+The feature is entirely config-gated — it does nothing if the IMAP environment variables are absent.
+
+### Activation: Setting up the email connection
+
+All configuration is in the `.env` file on the RMM server. Open it with a text editor and fill in the IMAP section:
+
+```
+SUPPORT_IMAP_HOST=imap.gmail.com
+SUPPORT_IMAP_PORT=993
+SUPPORT_IMAP_USER=support@yourcompany.com
+SUPPORT_IMAP_PASSWORD=your-app-password
+DEFAULT_INBOUND_CUSTOMER_ID=
+```
+
+| Variable | What to put here |
+|---|---|
+| `SUPPORT_IMAP_HOST` | Your mail server's IMAP hostname. Gmail: `imap.gmail.com`. Outlook: `outlook.office365.com` |
+| `SUPPORT_IMAP_PORT` | IMAP SSL port. Almost always `993` |
+| `SUPPORT_IMAP_USER` | The full email address of the support inbox (e.g. `support@yourcompany.com`) |
+| `SUPPORT_IMAP_PASSWORD` | An **app password** — not your account password (see note below) |
+| `DEFAULT_INBOUND_CUSTOMER_ID` | UUID of the customer to assign when sender is unknown. Find it in Admin → Customers. Leave blank to discard emails from unrecognised senders |
+
+> **IMPORTANT:** Gmail and Microsoft 365 require an **app password** rather than your main account password. For Gmail: Google Account → Security → 2-Step Verification → App passwords. For Outlook: Microsoft Account → Security → Advanced security options → App passwords. Using your main password will result in authentication failures.
+
+After editing `.env`, restart the Flask API and Celery worker. The inbox poller starts automatically with Celery beat — no further configuration is needed.
+
+### How tickets appear
+
+Tickets created from inbound email have:
+
+- **Source:** `email` (shown as a tag on the Tickets page)
+- **Title:** the email Subject line
+- **Description:** the email body (plain text)
+- **Customer:** matched by sender email address, or the default customer
+- **Priority:** `medium` by default
+- **Status:** `open`
+
+The sender receives an automatic reply: *"Your message has been received and logged as ticket #NNNN. We will respond shortly."*
+
+### Threading: keeping replies together
+
+When a customer replies to the auto-reply email (or any ticket email), their reply includes a `References` or `In-Reply-To` header containing the original Message-ID. The system uses this to attach the reply as a comment on the existing ticket rather than creating a new one. This works automatically without any action from the technician.
+
+> **NOTE:** If a customer composes a brand-new email on the same topic instead of replying, the system has no way to link it to the existing ticket — it will create a new ticket. Technicians can manually merge or close duplicates from the Tickets page.
+
+### Turning it off
+
+Remove or blank out `SUPPORT_IMAP_HOST` in `.env` and restart Celery beat. The poller silently does nothing when the host variable is absent.
+
+---
+
+## Chapter 37: Remote Terminal
+
+### Who uses this chapter
+
+Administrators and technicians who need to run commands directly on a managed Windows machine without physically accessing it or using a separate remote-desktop tool.
+
+### What it is
+
+Remote Terminal gives you a browser-based command shell into any online Windows device with an RMM agent installed. You type a command in the dashboard, press Enter, and see the output appear within seconds — as if you were sitting at that machine's command prompt.
+
+Access is restricted to **admin**, **technician**, and **superadmin** roles. Viewer and client roles cannot use Remote Terminal.
+
+### Opening a terminal session
+
+1. Click **Remote Terminal** in the sidebar (under the Tools section).
+2. Select the target device from the **Connect to device** dropdown. Only online, agent-managed devices appear.
+3. Click **Connect**. A session is established and the terminal panel appears.
+4. Type a command in the input box at the bottom and press **Enter** (or click **Send**).
+5. Output appears in the dark terminal panel within 1–3 seconds.
+6. When finished, click **Disconnect** to close the session cleanly.
+
+> **NOTE:** Only one terminal session can be active per device at a time. Opening a new session from the same or a different dashboard user will close any previous session on that device.
+
+### Reading the output
+
+The terminal panel uses colour coding:
+
+| Colour | Meaning |
+|---|---|
+| White (`#E2E8F0`) | Standard output (stdout) — normal command output |
+| Red (`#FF6B6B`) | Error output (stderr) — error messages and warnings |
+| Grey (`#94A3B8`) | System messages — session opened/closed, timeout notices |
+
+### Limitations and safety boundaries
+
+| Limit | Value | Reason |
+|---|---|---|
+| Command timeout | 120 seconds | Prevents runaway processes from blocking the agent |
+| Output cap | 512 KB per session | Prevents memory exhaustion from large command output |
+| Idle timeout | 30 minutes | Sessions with no activity are automatically closed |
+| Scope | Windows only | Agent uses Windows `cmd.exe` shell via `subprocess` |
+
+> **WARNING:** Commands run with the same privileges as the RMM agent process. If the agent is running as a local administrator (required for patch management), terminal commands also run as administrator. Use with caution — destructive commands (format, del /f /s, registry edits) take effect immediately.
+
+### Audit trail
+
+Every command sent through Remote Terminal is logged in the system audit log with:
+
+- The user who sent it
+- The device it was sent to
+- The command text
+- The timestamp
+
+Logs are viewable in **Admin → Audit Log**. This provides full accountability for all remote actions.
+
+### How it works (technical)
+
+Remote Terminal uses a polling architecture rather than WebSockets:
+
+- The agent's `TerminalWorker` thread polls the API every 3 seconds for pending commands on any active session.
+- The dashboard polls the API every 2 seconds for new output, then reruns to display it.
+- This approach works seamlessly within Streamlit's page model without requiring persistent connections.
+- Commands run via `subprocess.Popen(shell=True)` on the agent; stdout is streamed line by line, batched in groups of 20 lines, and posted back to the API.
+
+---
+
+## Chapter 38: Real-time Event Feed
+
+### Who uses this chapter
+
+All users who want to stay aware of what is happening across the managed device fleet without manually refreshing individual pages.
+
+### What it is
+
+The Real-time Event Feed is a live log of significant system events displayed at the bottom of the main Dashboard page. It shows the most recent 20 events and refreshes automatically every 30 seconds.
+
+Events shown include:
+
+| Event | What triggered it | Icon |
+|---|---|---|
+| Device Online | An agent that was offline sends its first successful heartbeat | 🟢 |
+| Device Offline | Celery marks a device offline after missing 3 heartbeats | 🔴 |
+| Device Status Changed | A device's status changes (e.g. healthy → warning) | 🟡 |
+| New Alert | An alert rule fires and creates a new alert | 🚨 |
+| New Ticket | A ticket is created (from the dashboard or via inbound email) | 🎫 |
+
+### Where to find it
+
+Scroll to the bottom of the **Dashboard** page (the first page after login). The Live Events panel appears below the Activity Feed section.
+
+### Requirements
+
+The Event Feed requires Redis to be running. If Redis is unavailable:
+
+- The Live Events panel shows an empty list (no error is displayed to the user).
+- All other dashboard functionality continues to work normally.
+- Events are not stored or queued while Redis is down; they are lost for that period.
+
+When Redis recovers, new events will begin appearing again automatically.
+
+### Event retention
+
+The system retains the last 100 events in Redis with a 1-hour expiry. The dashboard displays the most recent 20. Older events are not stored in the database and cannot be retrieved after the 1-hour window.
+
+### SSE endpoint for external integrations
+
+For third-party integrations (custom dashboards, monitoring tools, notification bots), the system exposes a Server-Sent Events (SSE) stream:
+
+```
+GET /api/events/stream?token=<jwt_token>
+```
+
+The stream sends a JSON event on every system event and a keepalive every 15 seconds. The connection automatically closes after 60 seconds; clients should reconnect (the browser EventSource API does this automatically).
+
+A polling alternative is also available for clients that cannot use SSE:
+
+```
+GET /api/events/recent?limit=20
+Authorization: Bearer <jwt_token>
+```
+
+> **NOTE:** The SSE token must be passed as a query parameter (`?token=`), not as a header, because the browser EventSource API does not support custom headers.
+
+---
+
+## Chapter 39: Agent Auto-Update
+
+### Who uses this chapter
+
+Administrators responsible for keeping the RMM agent software up to date across all managed devices.
+
+### What it is
+
+Agent Auto-Update allows the RMM server to push new agent code to all managed Windows devices automatically, without physically visiting each machine. Once configured, agents check for updates every 6 hours and self-update if a newer version is available.
+
+### How to push an update
+
+**Step 1 — Build the update package.**
+
+Collect the updated agent `.py` files into a folder and create a zip file:
+
+```powershell
+# From the project root
+Compress-Archive -Path agent\* -DestinationPath agent_update_v1.1.0.zip
+```
+
+Only `.py` and `.txt` files are applied by the agent during update. Configuration files (`config.ini`), logs (`rmm_agent.log`), and identity files (`device_id`, `agent_token`) are automatically preserved — agents keep their registered identity after updating.
+
+**Step 2 — Place the zip on the server.**
+
+Copy the zip to a stable path on the RMM server, for example:
+
+```
+C:\RMM\updates\agent_update_v1.1.0.zip
+```
+
+**Step 3 — Edit `.env` on the RMM server.**
+
+```
+LATEST_AGENT_VERSION=1.1.0
+AGENT_UPDATE_PATH=C:\RMM\updates\agent_update_v1.1.0.zip
+AGENT_CHANGELOG=Bug fixes and performance improvements
+```
+
+| Variable | What to set |
+|---|---|
+| `LATEST_AGENT_VERSION` | The new version string (e.g. `1.1.0`). Agents running an older version will download the update. |
+| `AGENT_UPDATE_PATH` | Absolute path to the zip file on the server. Leave blank to block downloads (agents will see `update_available=true` but cannot download). |
+| `AGENT_CHANGELOG` | One-line description shown in the dashboard. Optional. |
+
+**Step 4 — Restart the Flask API.**
+
+```powershell
+# Kill the API process then restart
+cd api
+python app.py
+```
+
+Within 6 hours (at each agent's next update check cycle), all online agents will download, verify, and apply the update and restart themselves.
+
+### Checking update status in the dashboard
+
+Open **Devices** and look at the agent version in each device's detail panel. Devices running an older agent version than `LATEST_AGENT_VERSION` show an orange **UPDATE** badge next to the version number. Once updated, the badge disappears.
+
+### How the update applies (technical)
+
+1. Agent calls `GET /api/agents/update/check?version=X.Y.Z` using its existing agent token.
+2. API compares the agent's version to `LATEST_AGENT_VERSION`. If the agent is behind, it returns the download URL and SHA256 checksum.
+3. Agent downloads the zip from `GET /api/agents/update/download`.
+4. Agent verifies the SHA256 checksum of the downloaded file. If verification fails, the update is aborted and the agent continues running the current version.
+5. Agent extracts the zip to a temp directory, then copies `.py` and `.txt` files to the agent folder (skipping config, log, and identity files).
+6. Agent calls `os.execv(sys.executable, [sys.executable] + sys.argv)` — this atomically replaces the running process with the new code. The new version starts with the same device identity and token.
+
+> **NOTE:** `os.execv` is an atomic process replacement — no zombie processes, no restart gap. The agent is never fully offline during an update; the gap is typically under one second.
+
+### Safety and rollback
+
+- The update is skipped entirely if the SHA256 checksum does not match.
+- Config, identity files, and logs are never overwritten.
+- There is no automatic rollback. To roll back, set `LATEST_AGENT_VERSION` back to the previous version and place the old zip at `AGENT_UPDATE_PATH`. Agents that updated will apply the rollback package at their next check.
+- Keep the previous zip file until the new version is confirmed working on all devices.
+
+### Update check schedule
+
+By default, agents check every **6 hours** (`update_check_interval = 21600` in `config.ini`). To change the interval on a specific agent, edit its `config.ini`:
+
+```ini
+[agent]
+update_check_interval = 3600   ; check every hour
+```
+
+---
+
 # APPENDIX A: GLOSSARY
 
 | Term | Definition |
@@ -4009,6 +4298,6 @@ Password must be at least 10 characters. No API restart needed.
 
 ---
 
-*End of RMM System Complete Handbook — Version 2.2*
+*End of RMM System Complete Handbook — Version 4.0*
 
 *For support with this guide, contact your system administrator or development team.*
