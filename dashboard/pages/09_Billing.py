@@ -119,17 +119,31 @@ else:
                 if btn_cols[1].button("Send", key=f"send_{inv_id}_{i}", help="Mark as Sent"):
                     _, e = client.update_invoice_status(inv_id, "sent")
                     st.rerun() if not e else st.error(e)
-            elif status_raw == "sent":
-                if btn_cols[1].button("Paid", key=f"paid_{inv_id}_{i}", help="Mark as Paid", type="primary"):
+            elif status_raw in ("sent", "overdue"):
+                if btn_cols[1].button("Paid", key=f"paid_{inv_id}_{i}", help="Mark as Paid manually", type="primary"):
                     _, e = client.update_invoice_status(inv_id, "paid")
                     st.rerun() if not e else st.error(e)
-                if btn_cols[2].button("Ovrd", key=f"ovd_{inv_id}_{i}", help="Mark as Overdue"):
-                    _, e = client.update_invoice_status(inv_id, "overdue")
-                    st.rerun() if not e else st.error(e)
-            elif status_raw == "overdue":
-                if btn_cols[1].button("Paid", key=f"paid_{inv_id}_{i}", help="Mark as Paid", type="primary"):
-                    _, e = client.update_invoice_status(inv_id, "paid")
-                    st.rerun() if not e else st.error(e)
+                if status_raw == "sent":
+                    if btn_cols[2].button("Ovrd", key=f"ovd_{inv_id}_{i}", help="Mark as Overdue"):
+                        _, e = client.update_invoice_status(inv_id, "overdue")
+                        st.rerun() if not e else st.error(e)
+                # Pay Now via Stripe
+                pay_key = f"_pay_url_{inv_id}"
+                if btn_cols[3 if status_raw == "overdue" else 3].button("Pay↗", key=f"pay_{inv_id}_{i}", help="Generate Stripe payment link"):
+                    pdata, perr = client.get_payment_link(inv_id)
+                    if perr:
+                        st.error(f"Stripe: {perr}")
+                    else:
+                        st.session_state[pay_key] = pdata.get("checkout_url", "")
+                if st.session_state.get(pay_key):
+                    st.markdown(
+                        f'<div style="margin-top:0.4rem;padding:0.5rem 0.75rem;background:#EFF6FF;'
+                        f'border:1px solid #BFDBFE;border-radius:6px;font-size:0.8rem">'
+                        f'<a href="{st.session_state[pay_key]}" target="_blank" style="color:#3B82F6;font-weight:600">'
+                        f'Open payment page ↗</a>'
+                        f'<span style="color:#6B7B6B;margin-left:8px">— share with client or open directly</span></div>',
+                        unsafe_allow_html=True,
+                    )
             else:
                 btn_cols[1].markdown(badge("paid", STATUS_BADGE_COLORS["paid"]), unsafe_allow_html=True)
 
