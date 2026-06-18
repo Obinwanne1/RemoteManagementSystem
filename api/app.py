@@ -119,6 +119,7 @@ def create_app(config_name=None):
     from routes.org_settings import org_settings_bp
     from routes.terminal import terminal_bp
     from routes.events import events_bp
+    from routes.update import update_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(agents_bp, url_prefix="/api/agents")
@@ -137,6 +138,7 @@ def create_app(config_name=None):
     app.register_blueprint(org_settings_bp, url_prefix="/api/admin")
     app.register_blueprint(terminal_bp, url_prefix="/api/terminal")
     app.register_blueprint(events_bp, url_prefix="/api/events")
+    app.register_blueprint(update_bp, url_prefix="/api/agents/update")
 
     @app.route("/api/health")
     def health():

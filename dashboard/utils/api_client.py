@@ -537,6 +537,9 @@ class RMMClient:
     def get_recent_events(self, limit: int = 20):
         return self._get(f"/api/events/recent?limit={limit}")
 
+    def get_agent_update_info(self):
+        return self._get("/api/agents/update/info")
+
     # --- Public (no auth) ---
     @staticmethod
     def get_branding() -> dict:

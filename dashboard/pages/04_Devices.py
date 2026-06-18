@@ -35,10 +35,14 @@ PLATFORM_ICON_HTML = {
     "unknown": '<i class="fa-solid fa-question"></i>',
 }
 
-# ── Load all devices + platform counts ────────────────────────────────────────
+# ── Load all devices + platform counts + update info ─────────────────────────
 with st.spinner("Loading devices..."):
     data, err = client.list_devices(per_page=200)
     counts_data, _ = client.get_platform_counts()
+    _upd_info, _ = client.get_agent_update_info()
+
+_latest_agent_version = (_upd_info or {}).get("latest_version", "")
+_download_available = (_upd_info or {}).get("download_available", False)
 
 if err:
     st.warning(f"Could not load devices — {err}")
@@ -287,8 +291,16 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
                         st.rerun()
 
 
+# ── Version comparison helper ─────────────────────────────────────────────────
+def _ver_tuple(v: str) -> tuple:
+    try:
+        return tuple(int(x) for x in (v or "").strip().split("."))
+    except Exception:
+        return (0,)
+
+
 # ── Agent device row (original full row) ─────────────────────────────────────
-def _render_agent_row(device: dict, tab_key: str = ""):
+def _render_agent_row(device: dict, tab_key: str = "", latest_version: str = ""):
     status   = device.get("status", "unknown")
     s_color  = STATUS_COLORS.get(status, "#8492A6")
     is_online = device.get("is_online", False)
@@ -303,12 +315,19 @@ def _render_agent_row(device: dict, tab_key: str = ""):
     ram_c  = pct_color(ram)
     disk_c = pct_color(disk)
 
+    agent_ver = device.get("agent_version") or ""
+    update_available = bool(
+        latest_version and agent_ver
+        and _ver_tuple(latest_version) > _ver_tuple(agent_ver)
+    )
+    update_tag = "  ⬆ UPDATE" if update_available else ""
+
     selected = st.session_state.get("selected_device_id")
 
     with st.expander(
         f'{icon} {"●" if is_online else "○"}  {device.get("hostname","—")}   '
         f'CPU {cpu:.0f}%  ·  RAM {ram:.0f}%  ·  Disk {disk:.0f}%  '
-        f'·  {status.upper()}',
+        f'·  {status.upper()}{update_tag}',
         expanded=(device.get("id") == selected),
     ):
         d1, d2, d3 = st.columns(3)
@@ -343,7 +362,7 @@ def _render_agent_row(device: dict, tab_key: str = ""):
         <tr><td style="color:#6B7B6B;padding:2px 0">RAM</td>
             <td style="color:#1A1A1A">{device.get('ram_gb','?')} GB</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Agent</td>
-            <td style="color:#1A1A1A">v{device.get('agent_version','?')}</td></tr>
+            <td style="color:#1A1A1A">v{agent_ver or '?'}{'&nbsp;<span style="background:#F59E0B;color:#FFF;font-size:0.65rem;font-weight:700;padding:1px 5px;border-radius:3px">UPDATE</span>' if update_available else ''}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Last seen</td>
             <td style="color:#1A1A1A">{fmt_datetime(device.get('last_seen'))}</td></tr>
     </table>
@@ -507,4 +526,4 @@ for tab, name in zip(tabs, tab_names):
                 if device.get("is_agentless"):
                     _render_agentless_row(device, tab_key=name)
                 else:
-                    _render_agent_row(device, tab_key=name)
+                    _render_agent_row(device, tab_key=name, latest_version=_latest_agent_version)
