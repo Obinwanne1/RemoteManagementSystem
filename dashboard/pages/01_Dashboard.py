@@ -264,3 +264,70 @@ with col_b:
         st.markdown(html, unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+# ── Live Events feed ──────────────────────────────────────────────────────────
+st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+st.markdown(
+    '<div style="background:#FFF;border-radius:12px;padding:1.25rem;'
+    'border:1px solid #DDE8DD;box-shadow:0 2px 8px rgba(0,0,0,0.05)">'
+    '<div style="font-size:0.85rem;font-weight:700;color:#1A2B1A;margin-bottom:0.75rem">'
+    '⚡ Live Events <span style="font-size:0.7rem;font-weight:400;color:#6B7B6B;margin-left:6px">'
+    '— last 20 system events (auto-refreshes every 30s)</span></div>',
+    unsafe_allow_html=True,
+)
+
+_ev_data, _ev_err = client.get_recent_events(limit=20)
+_events = _ev_data if isinstance(_ev_data, list) else []
+
+_EVENT_ICONS = {
+    "device_online":  ("🟢", "#22C55E"),
+    "device_offline": ("🔴", "#EF4444"),
+    "device_status":  ("🟡", "#F59E0B"),
+    "new_alert":      ("🚨", "#EF4444"),
+    "new_ticket":     ("🎫", "#3B82F6"),
+}
+
+if _ev_err or not _events:
+    st.markdown(
+        '<div style="text-align:center;padding:1.5rem;color:#6B7B6B;font-size:0.85rem">'
+        + ("No recent events. Redis may be unavailable." if _ev_err else "No events yet — events appear here in real time.")
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+else:
+    ev_html = []
+    for ev in _events:
+        ev_type = ev.get("type", "")
+        ev_data = ev.get("data", {})
+        ev_ts = (ev.get("ts") or "")[:19].replace("T", " ")
+        icon, color = _EVENT_ICONS.get(ev_type, ("ℹ️", "#6B7B6B"))
+
+        if ev_type == "device_online":
+            msg = f"{ev_data.get('hostname','?')} came online"
+        elif ev_type == "device_offline":
+            msg = f"{ev_data.get('hostname','?')} went offline"
+        elif ev_type == "device_status":
+            msg = f"{ev_data.get('hostname','?')} status → {ev_data.get('status','?')}"
+        elif ev_type == "new_alert":
+            msg = f"Alert: {ev_data.get('rule','?')} on {ev_data.get('device','?')} [{ev_data.get('severity','?')}]"
+        elif ev_type == "new_ticket":
+            msg = f"Ticket: {ev_data.get('title','?')} [{ev_data.get('priority','?')}]"
+        else:
+            msg = ev_type
+
+        ev_html.append(
+            f'<div style="display:flex;align-items:center;gap:10px;padding:0.35rem 0;'
+            f'border-bottom:1px solid #F0F4F0">'
+            f'<span style="font-size:1rem">{icon}</span>'
+            f'<span style="flex:1;font-size:0.82rem;color:#1A1A1A">{msg}</span>'
+            f'<span style="font-size:0.72rem;color:#8492A6;white-space:nowrap">{ev_ts} UTC</span>'
+            f'</div>'
+        )
+    st.markdown("".join(ev_html), unsafe_allow_html=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ── Auto-refresh every 30s ────────────────────────────────────────────────────
+import time as _time
+_time.sleep(30)
+st.rerun()

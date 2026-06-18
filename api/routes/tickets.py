@@ -170,6 +170,18 @@ def create_ticket():
     except Exception:
         current_app.logger.warning("Ticket create notification failed for ticket %s", ticket.id)
 
+    try:
+        from utils.events import publish_event
+        publish_event("new_ticket", {
+            "ticket_id": ticket.id,
+            "title": ticket.title,
+            "priority": ticket.priority,
+            "source": source,
+            "customer": _customer_name(ticket.customer_id),
+        })
+    except Exception:
+        pass
+
     return jsonify(ticket.to_dict()), 201
 
 

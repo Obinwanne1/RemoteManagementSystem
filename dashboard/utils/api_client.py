@@ -534,6 +534,9 @@ class RMMClient:
     def close_terminal_session(self, session_id: str):
         return self._delete(f"/api/terminal/sessions/{session_id}")
 
+    def get_recent_events(self, limit: int = 20):
+        return self._get(f"/api/events/recent?limit={limit}")
+
     # --- Public (no auth) ---
     @staticmethod
     def get_branding() -> dict:

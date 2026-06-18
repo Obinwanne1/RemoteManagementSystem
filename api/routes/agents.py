@@ -150,6 +150,9 @@ def heartbeat(device_id):
     data = request.get_json(silent=True) or {}
     now = datetime.now(timezone.utc)
 
+    # Capture pre-update status for transition events
+    _was_online = device.is_online
+
     # Update device online status
     device.last_seen = now
     device.is_online = True
@@ -161,6 +164,7 @@ def heartbeat(device_id):
     cpu = data.get("cpu_pct", 0)
     ram = data.get("ram_pct", 0)
     disk = data.get("disk_pct", 0)
+    _prev_status = device.status
     if cpu > 90 or ram > 90 or disk > 90:
         device.status = "critical"
     elif cpu > 75 or ram > 75 or disk > 80:
@@ -207,6 +211,25 @@ def heartbeat(device_id):
             ))
 
     db.session.commit()
+
+    # Publish SSE events on state transitions (best-effort, never block heartbeat)
+    try:
+        from utils.events import publish_event
+        if not _was_online:
+            publish_event("device_online", {
+                "device_id": device.id,
+                "hostname": device.hostname,
+                "status": device.status,
+            })
+        elif device.status != _prev_status:
+            publish_event("device_status", {
+                "device_id": device.id,
+                "hostname": device.hostname,
+                "status": device.status,
+                "prev_status": _prev_status,
+            })
+    except Exception:
+        pass
 
     resp = {"status": "ok", "server_time": now.isoformat()}
     if new_raw_token:
