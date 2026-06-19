@@ -6,6 +6,10 @@ import pandas as pd
 
 from utils.auth import require_auth
 from utils.nav import render_sidebar
+from utils.cached_calls import (
+    cached_summary, cached_health_map, cached_recent_alerts,
+    cached_activity_feed, cached_recent_events,
+)
 from utils.styles import (
     inject_css, stat_card, alert_row, activity_row,
     plotly_layout, section_header, BRAND, STATUS_COLORS,
@@ -18,9 +22,11 @@ inject_css()
 client = require_auth()
 render_sidebar()
 
+_tok = st.session_state.get("access_token", "")
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 with st.spinner("Loading dashboard..."):
-    summary, err = client.get_summary()
+    summary, err = cached_summary(_tok)
 if err:
     st.warning(f"Could not load dashboard summary — {err}")
     if st.button("Retry", icon=":material/refresh:"):
@@ -158,7 +164,7 @@ with right:
         </div>
     """, unsafe_allow_html=True)
 
-    health, herr = client.get_health_map()
+    health, herr = cached_health_map(_tok)
     if herr:
         st.warning(f"Health map unavailable: {herr}")
     elif not health:
@@ -226,7 +232,7 @@ with col_a:
         </div>
     """, unsafe_allow_html=True)
 
-    alerts, aerr = client.get_recent_alerts()
+    alerts, aerr = cached_recent_alerts(_tok)
     if aerr:
         st.warning(f"Could not load alerts: {aerr}")
     elif not alerts:
@@ -250,7 +256,7 @@ with col_b:
         </div>
     """, unsafe_allow_html=True)
 
-    feed, ferr = client.get_activity_feed()
+    feed, ferr = cached_activity_feed(_tok)
     if ferr:
         st.warning(f"Could not load activity: {ferr}")
     elif not feed:
@@ -276,7 +282,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-_ev_data, _ev_err = client.get_recent_events(limit=20)
+_ev_data, _ev_err = cached_recent_events(_tok, limit=20)
 _events = _ev_data if isinstance(_ev_data, list) else []
 
 _EVENT_ICONS = {

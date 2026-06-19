@@ -85,10 +85,16 @@ def list_devices():
 @jwt_required()
 def platform_counts():
     rows = db.session.execute(
-        db.select(Device.platform, func.count(Device.id)).group_by(Device.platform)
+        db.select(Device.platform, Device.is_agentless, func.count(Device.id))
+        .group_by(Device.platform, Device.is_agentless)
     ).all()
-    by_platform = {r[0]: r[1] for r in rows if r[0]}
-    agentless_count = Device.query.filter_by(is_agentless=True).count()
+    by_platform = {}
+    agentless_count = 0
+    for platform, is_agentless, count in rows:
+        if platform:
+            by_platform[platform] = by_platform.get(platform, 0) + count
+        if is_agentless:
+            agentless_count += count
     return jsonify({"by_platform": by_platform, "agentless": agentless_count}), 200
 
 

@@ -77,3 +77,19 @@ def cached_patch_summary(_token: str):
     if not client:
         return None, "Not authenticated"
     return client.get_patch_summary()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_activity_feed(_token: str):
+    client = get_client()
+    if not client:
+        return None, "Not authenticated"
+    return client.get_activity_feed()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_recent_events(_token: str, limit: int = 20):
+    client = get_client()
+    if not client:
+        return None, "Not authenticated"
+    return client.get_recent_events(limit=limit)
