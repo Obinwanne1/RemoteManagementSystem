@@ -79,7 +79,17 @@ def summary():
 @dashboard_bp.route("/health_map", methods=["GET"])
 @jwt_required()
 def health_map():
-    devices = Device.query.order_by(Device.hostname).limit(500).all()
+    from sqlalchemy.orm import load_only
+    devices = (
+        Device.query
+        .options(load_only(
+            Device.id, Device.hostname, Device.display_name,
+            Device.status, Device.is_online, Device.customer_id, Device.last_seen,
+        ))
+        .order_by(Device.hostname)
+        .limit(500)
+        .all()
+    )
     return jsonify([
         {
             "id": d.id,

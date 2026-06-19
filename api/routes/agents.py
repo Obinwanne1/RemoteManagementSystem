@@ -320,30 +320,35 @@ def update_patches(device_id):
 
     from models.patch import PatchRecord
 
-    # Build set of existing pending patch names to avoid duplicates
+    # Fetch only names column — no object hydration
     existing_names = {
-        p.patch_name
-        for p in PatchRecord.query.filter_by(device_id=device_id, status="pending").all()
+        row[0]
+        for row in db.session.execute(
+            db.select(PatchRecord.patch_name).where(
+                PatchRecord.device_id == device_id,
+                PatchRecord.status == "pending",
+            )
+        ).all()
     }
 
-    added = 0
+    new_patches = []
     for item in patch_list[:500]:
         name = (item.get("name") or "")[:500]
         if not name or name in existing_names:
             continue
-        patch = PatchRecord(
+        new_patches.append(PatchRecord(
             device_id=device_id,
             patch_name=name,
             kb_id=item.get("kb_id"),
             patch_type=item.get("patch_type", "feature"),
             source="wu",
-        )
-        db.session.add(patch)
+        ))
         existing_names.add(name)
-        added += 1
 
-    db.session.commit()
-    return jsonify({"status": "ok", "added": added}), 200
+    if new_patches:
+        db.session.bulk_save_objects(new_patches)
+        db.session.commit()
+    return jsonify({"status": "ok", "added": len(new_patches)}), 200
 
 
 @agents_bp.route("/<device_id>/software", methods=["PUT"])
@@ -357,11 +362,11 @@ def update_software(device_id):
     data = request.get_json(silent=True) or {}
     software_list = data.get("software", [])
 
-    # Delete old entries and replace
+    # Delete old entries and bulk-replace
     InstalledSoftware.query.filter_by(device_id=device_id).delete()
     now = datetime.now(timezone.utc)
-    for item in software_list[:2000]:  # cap at 2000 entries
-        sw = InstalledSoftware(
+    objects = [
+        InstalledSoftware(
             device_id=device_id,
             name=str(item.get("name", ""))[:500],
             version=str(item.get("version", ""))[:255] if item.get("version") else None,
@@ -370,7 +375,9 @@ def update_software(device_id):
             source=item.get("source", "registry"),
             last_seen=now,
         )
-        db.session.add(sw)
-
+        for item in software_list[:2000]
+    ]
+    if objects:
+        db.session.bulk_save_objects(objects)
     db.session.commit()
     return jsonify({"status": "ok", "count": len(software_list)}), 200
