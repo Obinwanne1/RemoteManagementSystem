@@ -11,7 +11,9 @@ class User(db.Model):
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
     full_name = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(50), nullable=False, default="technician")  # admin/technician/viewer
+    role = db.Column(db.String(50), nullable=False, default="technician")  # admin/technician/viewer/client
+    department_id = db.Column(db.String(36), db.ForeignKey("departments.id"), nullable=True)
+    customer_id = db.Column(db.String(36), db.ForeignKey("customers.id"), nullable=True)  # set for client-role users
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     mfa_secret = db.Column(db.String(255), nullable=True)
     mfa_enabled = db.Column(db.Boolean, default=False)
@@ -51,4 +53,6 @@ class User(db.Model):
             "is_locked": self.is_locked,
             "locked_until": self.locked_until.isoformat() if self.locked_until else None,
             "password_changed_at": self.password_changed_at.isoformat() if self.password_changed_at else None,
+            "department_id": self.department_id,
+            "customer_id": self.customer_id,
         }
