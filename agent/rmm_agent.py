@@ -21,8 +21,9 @@ from terminal_worker import TerminalWorker
 from version import __version__ as AGENT_VERSION
 from updater import check_for_update, download_and_apply, restart_agent
 
-CONFIG_PATH = Path(__file__).parent / "config.ini"
-LOG_PATH = Path(__file__).parent / "rmm_agent.log"
+_BASE_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+CONFIG_PATH = _BASE_DIR / "config.ini"
+LOG_PATH = _BASE_DIR / "rmm_agent.log"
 
 
 # ── C-7: structured logging with device_id stamp ─────────────────────────────

@@ -23,7 +23,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-_AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
+_AGENT_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
 
 
 def check_for_update(session: requests.Session, base_url: str, current_version: str) -> dict | None:

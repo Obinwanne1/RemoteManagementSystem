@@ -10,7 +10,9 @@ from script_runner import run_script
 
 logger = logging.getLogger(__name__)
 
-QUEUE_PATH = Path(__file__).parent / "pending_results.json"
+import sys as _sys
+_BASE_DIR = Path(_sys.executable).parent if getattr(_sys, "frozen", False) else Path(__file__).parent
+QUEUE_PATH = _BASE_DIR / "pending_results.json"
 MAX_QUEUE = 100
 
 
