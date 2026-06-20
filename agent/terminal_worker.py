@@ -97,6 +97,8 @@ class TerminalWorker:
 
         logger.info("Terminal executing cmd=%s: %r", command_id[:8], command_text[:80])
 
+        proc = None
+        exit_code = -1
         try:
             proc = subprocess.Popen(
                 command_text,
@@ -106,33 +108,38 @@ class TerminalWorker:
                 creationflags=0x08000000,  # CREATE_NO_WINDOW on Windows
             )
 
-            # Stream stdout line by line with timeout guard
-            deadline = time.time() + _CMD_TIMEOUT
-            stdout_buf = []
+            # Thread-level kill timer — guarantees proc dies even if stdout loop hangs
+            def _kill_on_timeout():
+                try:
+                    proc.kill()
+                    self._post_output(command_id, "\r\n[Killed: command exceeded timeout]\r\n", "system")
+                except Exception:
+                    pass
+
+            kill_timer = threading.Timer(_CMD_TIMEOUT, _kill_on_timeout)
+            kill_timer.daemon = True
+            kill_timer.start()
+
             try:
+                stdout_buf = []
                 for raw_line in proc.stdout:
                     line = raw_line.decode("utf-8", errors="replace")
                     stdout_buf.append(line)
-                    if time.time() > deadline:
-                        proc.kill()
-                        self._post_output(command_id, "\r\n[Killed: command exceeded timeout]\r\n", "system")
-                        break
-                    # Batch flush every 20 lines to reduce API calls
                     if len(stdout_buf) >= 20:
                         self._post_output(command_id, "".join(stdout_buf), "stdout")
                         stdout_buf = []
+                if stdout_buf:
+                    self._post_output(command_id, "".join(stdout_buf), "stdout")
             except Exception:
                 pass
-
-            if stdout_buf:
-                self._post_output(command_id, "".join(stdout_buf), "stdout")
+            finally:
+                kill_timer.cancel()
 
             stderr_out = ""
             try:
                 stderr_out = proc.stderr.read().decode("utf-8", errors="replace")
             except Exception:
                 pass
-
             if stderr_out:
                 self._post_output(command_id, stderr_out, "stderr")
 
@@ -145,6 +152,10 @@ class TerminalWorker:
         except Exception as exc:
             logger.warning("Terminal command error: %s", exc)
             self._post_output(command_id, f"\r\n[Error: {exc}]\r\n", "system")
-            exit_code = -1
+            if proc:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
         self._mark_done(command_id, exit_code)

@@ -16,6 +16,7 @@ terminal_bp = Blueprint("terminal", __name__)
 
 _SESSION_IDLE_TIMEOUT = timedelta(minutes=30)
 _MAX_OUTPUT_BYTES = 512 * 1024  # 512 KB per session
+_STUCK_CMD_TIMEOUT = timedelta(minutes=3)
 
 
 def _require_role(*roles):
@@ -64,15 +65,27 @@ def _audit(action, resource_id, payload=None, user_id=None):
 
 
 def _expire_idle_sessions():
-    """Mark sessions idle > 30 min as closed (best-effort, no commit here)."""
-    cutoff = datetime.now(timezone.utc) - _SESSION_IDLE_TIMEOUT
+    """Mark sessions idle > 30 min as closed; reset stuck 'running' commands to 'pending'."""
+    now = datetime.now(timezone.utc)
+    cutoff = now - _SESSION_IDLE_TIMEOUT
     stale = TerminalSession.query.filter(
         TerminalSession.status == "active",
         TerminalSession.last_activity_at < cutoff,
     ).all()
     for s in stale:
         s.status = "closed"
-        s.closed_at = datetime.now(timezone.utc)
+        s.closed_at = now
+
+    # Reset commands stuck as 'running' for longer than _STUCK_CMD_TIMEOUT
+    # (happens when agent process is killed mid-execution)
+    stuck_cutoff = now - _STUCK_CMD_TIMEOUT
+    stuck = TerminalCommand.query.filter(
+        TerminalCommand.status == "running",
+        TerminalCommand.picked_up_at < stuck_cutoff,
+    ).all()
+    for cmd in stuck:
+        cmd.status = "pending"
+        cmd.picked_up_at = None
 
 
 # ── Dashboard endpoints (JWT) ─────────────────────────────────────────────────
