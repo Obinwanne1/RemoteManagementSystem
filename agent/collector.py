@@ -114,10 +114,10 @@ def get_pending_patches() -> list:
     try:
         result = subprocess.run(
             ["powershell", "-NonInteractive", "-NoProfile", "-Command", script],
-            capture_output=True, text=True, encoding="utf-8",
+            capture_output=True,
             timeout=60, creationflags=0x08000000,
         )
-        raw = (result.stdout or "").strip()
+        raw = result.stdout.decode("utf-8", errors="replace").strip()
         if not raw:
             return []
         data = json.loads(raw)
@@ -303,13 +303,13 @@ def _get_winget_software() -> list:
     import subprocess
     result = subprocess.run(
         ["winget", "list", "--accept-source-agreements"],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        capture_output=True,
         timeout=30, creationflags=0x08000000,  # CREATE_NO_WINDOW
     )
     if result.returncode != 0:
         return []
 
-    lines = result.stdout.splitlines()
+    lines = result.stdout.decode("utf-8", errors="replace").splitlines()
 
     # Locate the separator line (e.g. "---  ---  ---") that marks end of header.
     # All lines before and including it are skipped (progress bars, header row).
