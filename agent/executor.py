@@ -3,6 +3,7 @@ Task executor — receives tasks from API task queue and dispatches them.
 """
 import json
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -15,6 +16,9 @@ _BASE_DIR = Path(_sys.executable).parent if getattr(_sys, "frozen", False) else 
 QUEUE_PATH = _BASE_DIR / "pending_results.json"
 MAX_QUEUE = 100
 
+_running_tasks: set = set()
+_running_tasks_lock = threading.Lock()
+
 
 def execute_task(task: dict, api_client) -> None:
     """Dispatch a single task and post result back to API."""
@@ -24,10 +28,34 @@ def execute_task(task: dict, api_client) -> None:
 
     logger.info("Executing task %s type=%s", task_id, task_type)
 
+    if task_type == "run_script":
+        with _running_tasks_lock:
+            if task_id in _running_tasks:
+                logger.info("Task %s already running, skipping", task_id)
+                return
+            _running_tasks.add(task_id)
+
+        def _run():
+            try:
+                result = _handle_script(payload)
+                ok = api_client.post_task_result(task_id, task_type, result)
+                if not ok:
+                    _enqueue_result(task_id, task_type, result)
+            except Exception as e:
+                logger.error("Task %s failed: %s", task_id, e)
+                error_result = {"exit_code": 1, "stderr": str(e)}
+                ok = api_client.post_task_result(task_id, task_type, error_result)
+                if not ok:
+                    _enqueue_result(task_id, task_type, error_result)
+            finally:
+                with _running_tasks_lock:
+                    _running_tasks.discard(task_id)
+
+        threading.Thread(target=_run, name=f"script-{task_id[:8]}", daemon=True).start()
+        return
+
     try:
-        if task_type == "run_script":
-            result = _handle_script(payload)
-        elif task_type == "reboot":
+        if task_type == "reboot":
             result = _handle_reboot(payload)
         elif task_type == "shutdown":
             result = _handle_shutdown(payload)
