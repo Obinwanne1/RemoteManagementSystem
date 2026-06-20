@@ -103,9 +103,6 @@ class TerminalWorker:
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
                 creationflags=0x08000000,  # CREATE_NO_WINDOW on Windows
             )
 
@@ -113,7 +110,8 @@ class TerminalWorker:
             deadline = time.time() + _CMD_TIMEOUT
             stdout_buf = []
             try:
-                for line in proc.stdout:
+                for raw_line in proc.stdout:
+                    line = raw_line.decode("utf-8", errors="replace")
                     stdout_buf.append(line)
                     if time.time() > deadline:
                         proc.kill()
@@ -131,7 +129,7 @@ class TerminalWorker:
 
             stderr_out = ""
             try:
-                stderr_out = proc.stderr.read()
+                stderr_out = proc.stderr.read().decode("utf-8", errors="replace")
             except Exception:
                 pass
 
