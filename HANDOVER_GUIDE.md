@@ -8,7 +8,7 @@ Version 1.0 — Built exclusively for Faiyke-AI Agency
 **Prepared for:** Faiyke-AI Agency
 **System URL:** http://localhost:8501
 **API URL:** http://localhost:5000
-**Document version:** 4.0 (Remote Terminal, Real-time Events, Agent Auto-Update, Email-to-Ticket)
+**Document version:** 5.0 (Frozen-Exe Deployment, Client Portal, Agent Resilience, Ticket Table UI, Departments)
 
 ---
 
@@ -109,6 +109,12 @@ This document is written in plain language. Technical jargon is explained when f
 - Chapter 37: Remote Terminal
 - Chapter 38: Real-time Event Feed
 - Chapter 39: Agent Auto-Update
+
+**PART X — EXTENDED DEPLOYMENT AND OPERATIONS**
+- Chapter 40: Frozen Executable Agent Deployment (USB / No-Python Machines)
+- Chapter 41: Agent Resilience — Unicode Safety, Command Timeout, and Stuck Command Recovery
+- Chapter 42: Client Portal — Self-Service Ticket Access for Client Users
+- Chapter 43: Departments — Grouping Users and Tickets
 
 **Appendix A: Glossary**
 **Appendix B: Quick Reference Cards**
@@ -1052,12 +1058,12 @@ Shows the current MFA status badge (green ENABLED or red DISABLED) and the appro
 
 ### What it is
 
-The system uses Role-Based Access Control (RBAC). Different users have different access depending on their role. There are three roles: **admin**, **technician**, and **viewer**.
+The system uses Role-Based Access Control (RBAC). Different users have different access depending on their role. There are five roles: **superadmin**, **admin**, **technician**, **viewer**, and **client**.
 
-### The Four Roles Explained
+### The Five Roles Explained
 
 **Viewer**
-Read-only access. Viewers can browse the dashboard, look at device metrics, read alerts, and view tickets. They cannot create tickets, run scripts, approve patches, or access the Admin page. Use this role for managers or clients who need read-only visibility.
+Read-only access. Viewers can browse the dashboard, look at device metrics, read alerts, and view tickets. They cannot create tickets, run scripts, approve patches, or access the Admin page. Use this role for managers who need visibility without making changes.
 
 **Technician**
 Full day-to-day operational access. Technicians can:
@@ -1080,6 +1086,18 @@ Complete access. Includes everything technicians do, plus:
 - Billing and invoice creation
 - System-wide configuration
 
+**Client**
+Customer-scoped, self-service access. Client users can:
+- Submit new support tickets from the Client Portal
+- View the status and full comment thread of their own tickets
+- Receive technician responses on their tickets
+
+Clients see only tickets belonging to their linked customer. They have no access to devices, alerts, metrics, billing, or any management feature. When a client logs in, they are automatically redirected to the Client Portal — they cannot navigate to any other page.
+
+When creating a client user, an administrator must assign the **client** role and link the user to a specific **Customer** record. A client account without a linked customer will show an empty portal. See Chapter 42 for the full Client Portal setup guide.
+
+> **TIP:** Client accounts are ideal for customer contacts who want to submit and track their own tickets without calling in. They share the same login URL as staff.
+
 **Super Administrator**
 Full system access including emergency recovery. The superadmin account exists permanently — it is re-created automatically every time the API starts if it does not exist. There is exactly one superadmin account per system. It cannot be modified or deleted through the web interface. To change its password, a server administrator must use the CLI tool (`reset_superadmin.py`). See Chapter 26 for details.
 
@@ -1089,6 +1107,7 @@ Full system access including emergency recovery. The superadmin account exists p
 - **ADMIN** — red badge
 - **TECHNICIAN** — yellow/amber badge
 - **VIEWER** — green badge
+- **CLIENT** — blue badge
 
 ### What Happens If You Exceed Your Role
 
@@ -1609,6 +1628,24 @@ The Tickets page is the helpdesk ticketing system. Every support request, incide
 
 IT support staff, technicians, and administrators. Viewers can see tickets but cannot create or update them.
 
+### Ticket Table View
+
+The Tickets page displays all tickets in a sortable table with the following columns:
+
+| Column | What it shows |
+|---|---|
+| # | Ticket number (sequential ID) |
+| Title | Brief issue summary — click to open the detail page |
+| Priority | Color-coded badge: critical (red), high (amber), medium (blue), low (grey) |
+| Status | Color-coded badge: open (red), in_progress (amber), resolved (green), closed (grey) |
+| Customer | Customer name linked to this ticket |
+| Assignee | Staff member currently assigned to work on it |
+| Source | How the ticket was created: blank (manual), EMAIL (blue), PORTAL (green), ALERT (red) |
+| SLA | Time remaining before SLA deadline, or BREACHED if overdue |
+| Created | Date the ticket was opened |
+
+Click any ticket row to open its **Detail Page**, where you can read the full description, update status, assign a technician, and post comments.
+
 ### Ticket Fields
 
 | Field | Description | Options |
@@ -1618,57 +1655,70 @@ IT support staff, technicians, and administrators. Viewers can see tickets but c
 | Customer | Which client this relates to | Dropdown (required) |
 | Priority | Urgency level | low, medium, high, critical |
 | Status | Current state | open, in_progress, resolved, closed |
-| Source | How it was created | manual, alert (auto-created), agent |
+| Source | How it was created | manual, email (inbound email), client (Client Portal), alert (auto-created) |
+| Department | Team responsible for this ticket | Dropdown (optional — see Chapter 43) |
+| Assignee | Staff member responsible | Dropdown (optional) |
 
 ### Step-by-step: Creating a New Ticket
 
 1. Click **Tickets** in the sidebar.
-2. Click the **+ New Ticket** expander at the top of the page.
+2. Click the **+ New Ticket** button at the top of the page.
 3. In **Title**, type a brief summary. Example: "Server offline — ACME Corp"
 4. In **Priority**, select the urgency:
    - **critical** — complete outage or data risk
-   - **high** — significant impact, not yet down
+   - **high** — significant impact, service degraded
    - **medium** — non-urgent issue
-   - **low** — request or minor issue
+   - **low** — request or minor task
 5. In **Description**, write full details: what the issue is, when it started, what has been tried.
 6. In **Customer**, select the relevant customer. The customer must already exist in the system.
-7. Click **Create Ticket**.
-8. A green "Ticket created successfully!" message confirms success.
+7. Optionally, set **Department** and **Assignee** if the ticket should be routed to a specific team or person.
+8. Click **Create Ticket**.
+9. The new ticket appears at the top of the table.
 
 > **WARNING:** The customer dropdown will show "— no customers —" if no customers exist yet. Create the customer in Chapter 17 first.
 
 ### Step-by-step: Finding a Ticket
 
 1. Click **Tickets** in the sidebar.
-2. Use the filter bar:
+2. Use the filter bar above the table:
    - **Search field:** Type any word from the title or description.
    - **Status dropdown:** Select open, in_progress, resolved, or closed. Select "All" for everything.
    - **Priority dropdown:** Filter by urgency level.
-3. The caption below filters shows how many tickets match.
+3. The table updates instantly. The row count shows how many tickets match.
+
+### Step-by-step: Working a Ticket (Detail Page)
+
+1. Click the ticket row in the table to open the Detail Page.
+2. On the Detail Page you can:
+   - Read the full description and all comments
+   - Change **Status** using the dropdown and click **Update Status**
+   - Change **Assignee** to hand off the ticket
+   - Add a **comment** (public or internal note)
+3. Click **← Back to Tickets** to return to the table.
 
 ### Exporting Tickets to CSV
 
-A **Download CSV** button at the top of the Tickets page exports all currently-filtered tickets to a CSV file with: ID, title, customer, priority, status, and created date.
+A **Download CSV** button at the top of the Tickets page exports all currently-filtered tickets to a CSV file with: ID, title, customer, priority, status, assignee, source, and created date.
 
-### Step-by-step: Updating a Ticket Status
+### Step-by-step: Adding a Comment (from Detail Page)
 
-1. Find and expand the ticket.
-2. In the **Update Status** section, click the dropdown and select the new status:
-   - **open** — just created, not yet worked on
-   - **in_progress** — someone is actively working on it
-   - **resolved** — the issue has been fixed, awaiting confirmation
-   - **closed** — fully complete, no further action needed
-3. Click **Update Status**.
-4. A green confirmation appears and the badge changes color.
-
-### Step-by-step: Adding a Comment
-
-1. Find and expand the ticket.
-2. In the **Add Comment** section, type your comment.
-3. Tick **Internal note** if the comment is for team eyes only.
-4. Click **Post Comment**.
+1. Open the ticket detail page.
+2. Scroll to the **Add Comment** section.
+3. Type your comment.
+4. Tick **Internal note** if the comment is for team eyes only (clients cannot see internal notes).
+5. Click **Post Comment**.
 
 > **TIP:** Use comments to maintain a running log of every action. Future teammates reading the ticket should be able to understand the entire history from comments alone.
+
+### SLA Status Indicators
+
+| Display | Meaning |
+|---|---|
+| 2d | 2 days remaining |
+| 4h | 4 hours remaining — approaching deadline |
+| 30m | 30 minutes remaining — urgent |
+| BREACHED | SLA deadline has passed |
+| — | No SLA configured for this ticket |
 
 ### Ticket Status Colors
 
@@ -3127,70 +3177,79 @@ Reboot: true
 
 ### Full Permissions Matrix
 
-| Feature / Action | Viewer | Technician | Admin | Superadmin |
-|---|---|---|---|---|
-| **Dashboard** | | | | |
-| View Dashboard Overview | Yes | Yes | Yes | Yes |
-| **Tickets** | | | | |
-| View tickets | Yes | Yes | Yes | Yes |
-| Create tickets | No | Yes | Yes | Yes |
-| Update ticket status | No | Yes | Yes | Yes |
-| Add comments (public) | No | Yes | Yes | Yes |
-| Add comments (internal) | No | Yes | Yes | Yes |
-| Delete tickets | No | No | Yes | Yes |
-| **Customers** | | | | |
-| View customers | Yes | Yes | Yes | Yes |
-| Create customers | No | Yes | Yes | Yes |
-| Edit customers | No | Yes | Yes | Yes |
-| Delete customers | No | No | Yes | Yes |
-| **Devices** | | | | |
-| View device list | Yes | Yes | Yes | Yes |
-| View device metrics | Yes | Yes | Yes | Yes |
-| **Alerts** | | | | |
-| View alerts | Yes | Yes | Yes | Yes |
-| Acknowledge alerts | No | Yes | Yes | Yes |
-| Resolve alerts | No | Yes | Yes | Yes |
-| Create/manage alert rules | No | Yes | Yes | Yes |
-| **App Center** | | | | |
-| View software inventory | Yes | Yes | Yes | Yes |
-| **Network Discovery** | | | | |
-| Run network scan | No | Yes | Yes | Yes |
-| View scan results | Yes | Yes | Yes | Yes |
-| **Reports** | | | | |
-| Generate reports | No | Yes | Yes | Yes |
-| View/download report history | Yes | Yes | Yes | Yes |
-| **Billing** | | | | |
-| View invoices | Yes | Yes | Yes | Yes |
-| Create invoices | No | No | Yes | Yes |
-| Update invoice status | No | No | Yes | Yes |
-| **Administration** | | | | |
-| Access Admin page | No | No | Yes | Yes |
-| View Audit Log | No | No | Yes | Yes |
-| Manage users | No | No | Yes | Yes |
-| Modify/delete superadmin account | No | No | No | CLI only |
-| **Automation** | | | | |
-| View profiles | Yes | Yes | Yes | Yes |
-| Create/edit profiles | No | Yes | Yes | Yes |
-| Run profile now | No | Yes | Yes | Yes |
-| Delete profiles | No | No | Yes | Yes |
-| **OS Patches** | | | | |
-| View pending patches | Yes | Yes | Yes | Yes |
-| Approve patches | No | Yes | Yes | Yes |
-| **Software Patches** | | | | |
-| View software list | Yes | Yes | Yes | Yes |
-| Check for updates | No | Yes | Yes | Yes |
-| **Disk Management** | | | | |
-| View disk gauges | Yes | Yes | Yes | Yes |
-| Run disk actions | No | Yes | Yes | Yes |
-| **Maintenance** | | | | |
-| View maintenance page | Yes | Yes | Yes | Yes |
-| Reboot/Shutdown devices | No | Yes | Yes | Yes |
-| Run maintenance actions | No | Yes | Yes | Yes |
-| **Scripts** | | | | |
-| View script library | Yes | Yes | Yes | Yes |
-| Run scripts | No | Yes | Yes | Yes |
-| Upload scripts | No | Yes | Yes | Yes |
-| View run history | Yes | Yes | Yes | Yes |
+| Feature / Action | Client | Viewer | Technician | Admin | Superadmin |
+|---|---|---|---|---|---|
+| **Dashboard** | | | | | |
+| View Dashboard Overview | No | Yes | Yes | Yes | Yes |
+| **Client Portal** | | | | | |
+| View own tickets | Yes | No | No | No | No |
+| Submit new tickets (portal) | Yes | No | No | No | No |
+| **Tickets** | | | | | |
+| View all tickets | No | Yes | Yes | Yes | Yes |
+| Create tickets (staff form) | No | No | Yes | Yes | Yes |
+| Update ticket status | No | No | Yes | Yes | Yes |
+| Assign tickets | No | No | Yes | Yes | Yes |
+| Add comments (public) | No | No | Yes | Yes | Yes |
+| Add comments (internal) | No | No | Yes | Yes | Yes |
+| Delete tickets | No | No | No | Yes | Yes |
+| **Customers** | | | | | |
+| View customers | No | Yes | Yes | Yes | Yes |
+| Create customers | No | No | Yes | Yes | Yes |
+| Edit customers | No | No | Yes | Yes | Yes |
+| Delete customers | No | No | No | Yes | Yes |
+| **Devices** | | | | | |
+| View device list | No | Yes | Yes | Yes | Yes |
+| View device metrics | No | Yes | Yes | Yes | Yes |
+| **Alerts** | | | | | |
+| View alerts | No | Yes | Yes | Yes | Yes |
+| Acknowledge alerts | No | No | Yes | Yes | Yes |
+| Resolve alerts | No | No | Yes | Yes | Yes |
+| Create/manage alert rules | No | No | Yes | Yes | Yes |
+| **App Center** | | | | | |
+| View software inventory | No | Yes | Yes | Yes | Yes |
+| **Network Discovery** | | | | | |
+| Run network scan | No | No | Yes | Yes | Yes |
+| View scan results | No | Yes | Yes | Yes | Yes |
+| **Reports** | | | | | |
+| Generate reports | No | No | Yes | Yes | Yes |
+| View/download report history | No | Yes | Yes | Yes | Yes |
+| **Billing** | | | | | |
+| View invoices | No | Yes | Yes | Yes | Yes |
+| Create invoices | No | No | No | Yes | Yes |
+| Update invoice status | No | No | No | Yes | Yes |
+| **Administration** | | | | | |
+| Access Admin page | No | No | No | Yes | Yes |
+| View Audit Log | No | No | No | Yes | Yes |
+| Manage users | No | No | No | Yes | Yes |
+| Modify/delete superadmin account | No | No | No | No | CLI only |
+| **Automation** | | | | | |
+| View profiles | No | Yes | Yes | Yes | Yes |
+| Create/edit profiles | No | No | Yes | Yes | Yes |
+| Run profile now | No | No | Yes | Yes | Yes |
+| Delete profiles | No | No | No | Yes | Yes |
+| **OS Patches** | | | | | |
+| View pending patches | No | Yes | Yes | Yes | Yes |
+| Approve patches | No | No | Yes | Yes | Yes |
+| **Software Patches** | | | | | |
+| View software list | No | Yes | Yes | Yes | Yes |
+| Check for updates | No | No | Yes | Yes | Yes |
+| **Disk Management** | | | | | |
+| View disk gauges | No | Yes | Yes | Yes | Yes |
+| Run disk actions | No | No | Yes | Yes | Yes |
+| **Maintenance** | | | | | |
+| View maintenance page | No | Yes | Yes | Yes | Yes |
+| Reboot/Shutdown devices | No | No | Yes | Yes | Yes |
+| Run maintenance actions | No | No | Yes | Yes | Yes |
+| **Scripts** | | | | | |
+| View script library | No | Yes | Yes | Yes | Yes |
+| Run scripts | No | No | Yes | Yes | Yes |
+| Upload scripts | No | No | Yes | Yes | Yes |
+| View run history | No | Yes | Yes | Yes | Yes |
+| **Remote Terminal** | | | | | |
+| Open terminal sessions | No | No | Yes | Yes | Yes |
+| **Departments** | | | | | |
+| View departments | No | Yes | Yes | Yes | Yes |
+| Create/edit/delete departments | No | No | No | Yes | Yes |
 
 ---
 
@@ -3403,6 +3462,69 @@ UPDATE users SET role = 'admin' WHERE email = 'your@email.com';
 2. Verify `api\.env` exists with all required variables (see Chapter 7a).
 3. Ensure `DATABASE_URL` uses `@db:5432`, not `@localhost:5432`.
 4. After fixing `.env`, run `docker-compose up -d api` to restart the API container.
+
+---
+
+### Problem: Terminal command stuck in "running" and never produces output
+
+**Cause:** The agent process was killed or the device rebooted while a command was executing. The command record remained in `running` state in the database because the agent never got to mark it complete. When the agent restarts, it can only pick up `pending` commands — the stuck `running` record blocks the queue.
+
+**Steps:**
+The system automatically recovers stuck commands. The API resets any command that has been in `running` status for more than 3 minutes back to `pending`, so the agent can retry on its next poll cycle. You do not need to do anything manually — wait 3 minutes after the agent restarts and the command will be re-queued automatically.
+
+If you want to clear the stuck command immediately without waiting:
+```sql
+UPDATE terminal_commands SET status = 'pending', picked_up_at = NULL
+WHERE status = 'running';
+```
+
+---
+
+### Problem: Agent console shows UnicodeDecodeError in _readerthread
+
+**Cause:** Python 3.14 changed how `subprocess` handles text mode. When a subprocess produces non-ASCII output (e.g., winget's progress bars containing Unicode block characters like █▒░), the internal `_readerthread` can crash even if `errors="replace"` was specified.
+
+**This issue is fixed in the current agent build.** All subprocess calls in `collector.py`, `script_runner.py`, and `terminal_worker.py` have been updated to use binary mode — `text=True` has been removed from all subprocess calls. Output is decoded manually using `.decode("utf-8", errors="replace")`, which safely replaces any undecodable byte with a placeholder character instead of crashing.
+
+If you see this error on an older agent deployment, update the agent files (see Chapter 39 for auto-update) or redeploy using the latest build (see Chapter 40 for USB deployment).
+
+---
+
+### Problem: Client user sees empty portal after login
+
+**Cause:** The client user account was not linked to a Customer record when it was created, or was assigned the wrong role.
+
+**Steps:**
+1. Log in as an admin.
+2. Go to **Admin** → **Users** tab.
+3. Find the client account.
+4. Click **Edit** and verify:
+   - **Role** is set to `client`
+   - **Customer** field is set to the correct customer
+5. Click **Save**.
+6. Ask the client to log out and back in.
+
+---
+
+### Problem: Frozen agent executable crashes immediately on the target machine
+
+**Cause:** The `config.ini` was not updated before building the executable, or the target machine cannot reach the API server on port 5000.
+
+**Steps:**
+1. Verify `config.ini` in the `rmm-agent-dist` folder contains the correct server IP:
+   ```ini
+   [api]
+   url = http://YOUR_SERVER_LAN_IP:5000
+   ```
+2. Verify `device_id` and `agent_token` are blank (for a fresh registration on a new machine):
+   ```ini
+   [agent]
+   device_id =
+   agent_token =
+   ```
+3. From the target machine, open a browser and test: `http://YOUR_SERVER_IP:5000/api/health` — if this returns a JSON response, the API is reachable.
+4. If unreachable, check Windows Firewall on the server machine allows inbound TCP on port 5000.
+5. Check `rmm_agent.log` in the same folder as the executable for the specific error message.
 
 ---
 
@@ -3929,28 +4051,343 @@ update_check_interval = 3600   ; check every hour
 
 ---
 
-# APPENDIX A: GLOSSARY
+# PART X — EXTENDED DEPLOYMENT AND OPERATIONS
+
+---
+
+## Chapter 40: Frozen Executable Agent Deployment (USB / No-Python Machines)
+
+### Who uses this chapter
+
+Administrators who need to install the RMM agent on a Windows machine that does not have Python installed, and where installing Python is not practical or permitted. This chapter covers building a self-contained `.exe` from the agent source and deploying it via USB drive or direct file copy.
+
+### What it is
+
+The agent can be compiled into a single Windows executable using PyInstaller. The resulting file contains the Python runtime, all dependencies, and the agent code — it runs on any Windows 10 or 11 machine with no prior setup. No Python installation, no virtual environment, no `pip install` is required on the target machine.
+
+### Prerequisites (on the build machine — the RMM server)
+
+- Python 3.11 or later with the agent virtual environment active
+- PyInstaller installed: `pip install pyinstaller`
+- The agent virtual environment must have all agent dependencies installed
+
+### Step 1 — Build the executable
+
+Open a terminal on the RMM server, activate the agent virtual environment, and run:
+
+```powershell
+Set-Location C:\RMM\RemoteManagementSystem\agent
+.\venv\Scripts\Activate.ps1
+pyinstaller --onefile --name rmm_agent rmm_agent.py
+```
+
+PyInstaller produces a single file at `agent\dist\rmm_agent.exe`. This file is approximately 15–25 MB depending on the Python version and installed packages.
+
+> **NOTE:** The build takes 1–3 minutes. Warnings about missing optional imports during the build are normal and do not affect the output.
+
+### Step 2 — Prepare the deployment folder
+
+Create a deployment folder (the example uses `C:\Users\rigwe\Desktop\rmm-agent-dist`). Copy in:
+
+1. `agent\dist\rmm_agent.exe` — the compiled executable
+2. `agent\config.ini` — the agent configuration file (see Step 3 before copying)
+
+The deployment folder must contain both files side by side:
+
+```
+rmm-agent-dist\
+├── rmm_agent.exe
+└── config.ini
+```
+
+### Step 3 — Configure config.ini for the target network
+
+**This is the most important step.** The `config.ini` inside the deployment folder must point to the RMM server's LAN IP address — not `localhost`. Open `rmm-agent-dist\config.ini` and set it as follows:
+
+```ini
+[api]
+url = http://192.168.1.100:5000
+org_token = YOUR_ORG_REGISTRATION_TOKEN
+
+[agent]
+device_id =
+agent_token =
+heartbeat_interval = 60
+software_interval = 21600
+version = 1.0.0
+
+[logging]
+level = INFO
+file = rmm_agent.log
+```
+
+| Field | What to set |
+|---|---|
+| `url` | Replace `192.168.1.100` with the actual LAN IP of the machine running the Flask API. Find this by running `ipconfig` on the server and noting the IPv4 address. |
+| `org_token` | Copy from Admin → System Info → Agent Enrollment Token → Reveal in the dashboard. |
+| `device_id` | Leave blank. The agent generates and saves its own ID on first registration. |
+| `agent_token` | Leave blank. The API issues this on first registration. |
+
+> **WARNING:** Never copy `config.ini` from the `agent\` source folder directly — that file contains `url = http://localhost:5000`, which only works on the server itself. Always edit the copy in the deployment folder to use the server's LAN IP.
+
+### Step 4 — Transfer to the target machine
+
+Copy the entire `rmm-agent-dist` folder to the target machine. Options:
+
+- **USB drive:** Copy the folder to a USB drive, plug into target, copy to local disk (e.g., `C:\RMM-Agent\`)
+- **Network share:** If the target can reach a shared folder on the server, copy directly
+- **Email / file link:** For remote deployments, compress the folder as a zip and send to the user
+
+> **TIP:** Always copy the folder to a local disk path before running. Running directly from a USB drive works but is slower and can fail if the drive is removed.
+
+### Step 5 — Run the agent on the target machine
+
+On the target Windows machine:
+
+1. Open File Explorer and navigate to the agent folder (e.g., `C:\RMM-Agent\`).
+2. Right-click `rmm_agent.exe` and select **Run as administrator**. Administrator rights are required for patch scanning and WMI hardware queries.
+3. A console window opens showing the agent startup log. Within 30 seconds you should see:
+   - `Registered device: <device-id>`
+   - `Heartbeat sent`
+   - `Terminal worker started`
+4. The agent writes its registration credentials to `agent_state.json` in the same folder. On subsequent runs, it reads this file and skips re-registration.
+
+> **NOTE:** If a Windows Defender SmartScreen warning appears ("Windows protected your PC"), click **More info** → **Run anyway**. This is normal for unsigned executables not yet seen by Microsoft's telemetry.
+
+### Step 6 — Verify in the dashboard
+
+1. Open the RMM dashboard at http://YOUR-SERVER-IP:8501.
+2. Go to **Devices** — the new device should appear within 60 seconds of the agent starting.
+3. Verify the hostname, IP address, and OS match the target machine.
+
+### Running the agent as a Windows Service (optional — for always-on deployments)
+
+To have the agent start automatically when the machine boots, register it as a Windows Service using NSSM (Non-Sucking Service Manager):
+
+```powershell
+# Download nssm from nssm.cc and place nssm.exe in C:\RMM-Agent\
+nssm install RMMAgent "C:\RMM-Agent\rmm_agent.exe"
+nssm set RMMAgent AppDirectory "C:\RMM-Agent"
+nssm set RMMAgent Start SERVICE_AUTO_START
+nssm start RMMAgent
+```
+
+The service will now start automatically at boot and restart if it crashes.
+
+### Updating a frozen deployment
+
+The Agent Auto-Update feature (Chapter 39) does not apply to frozen `.exe` deployments because the auto-update mechanism replaces `.py` source files, not a compiled binary. To update a frozen deployment:
+
+1. Build a new `rmm_agent.exe` on the server with the updated code.
+2. Stop the agent on the target machine (`taskkill /F /IM rmm_agent.exe` or stop the service).
+3. Copy the new `rmm_agent.exe` to the target machine (USB or network).
+4. Restart the agent. The existing `agent_state.json` preserves the device registration — no re-registration needed.
+
+> **TIP:** Keep the old `device_id` and `agent_token` values from `agent_state.json` if you need to verify continuity. The device record in the dashboard will continue accumulating history under the same device entry.
+
+---
+
+## Chapter 41: Agent Resilience — Unicode Safety, Command Timeout, and Stuck Command Recovery
+
+### Who uses this chapter
+
+Developers maintaining the agent codebase, and administrators troubleshooting agent console errors or terminal commands that appear stuck.
+
+### Background
+
+Three resilience improvements were made to the agent after deployment to Windows 11 environments running Python 3.14. This chapter documents what changed and why, so future maintainers understand the design decisions.
+
+### 1 — Unicode Safety in Subprocess Output
+
+**Problem:** Python 3.14 changed the internal `_readerthread` used by `subprocess` when `text=True` is set. Even when `encoding="utf-8"` and `errors="replace"` are specified, the new `_readerthread` implementation raises `UnicodeDecodeError` when a subprocess produces non-ASCII bytes — for example, winget's progress bars contain Unicode block characters (█▒░) that fall outside the ASCII range.
+
+**Fix:** All subprocess calls in the agent have been changed from text mode to binary mode. The `text=True` parameter has been removed from every `subprocess.run()` and `subprocess.Popen()` call. Output bytes are decoded manually:
+
+```python
+# Before (crashes on Python 3.14 with non-ASCII output):
+result = subprocess.run(cmd, capture_output=True, text=True,
+                        encoding="utf-8", errors="replace")
+stdout = result.stdout
+
+# After (safe on all Python versions):
+result = subprocess.run(cmd, capture_output=True)
+stdout = result.stdout.decode("utf-8", errors="replace")
+```
+
+**Files affected:**
+- `agent/collector.py` — patch scanner PowerShell call and winget list call
+- `agent/script_runner.py` — script execution
+- `agent/terminal_worker.py` — remote terminal command execution
+
+**Operational impact:** None visible to users. The fix is internal to the agent. Winget progress-bar lines that contain block characters are already filtered out separately by `_get_winget_software()` in `collector.py`.
+
+### 2 — Thread-Level Command Timeout
+
+**Problem:** In `terminal_worker.py`, the original implementation checked a deadline inside the `for raw_line in proc.stdout` loop. If a subprocess's stdout pipe never closed (for example, an interactive program waiting for input, or a network command that hangs indefinitely), the loop would block the terminal worker thread permanently. No further commands in any session would be executed until the agent restarted.
+
+**Fix:** A `threading.Timer` is started immediately after the subprocess is launched. If the command has not completed within `_CMD_TIMEOUT` seconds (120 seconds by default), the timer fires on a separate thread and calls `proc.kill()`. This guarantees the subprocess is killed even if the stdout loop is hanging, because the kill happens on a different thread and does not depend on the loop completing.
+
+```
+Timeline:
+  t=0s   Command starts, Timer(120s) armed
+  t=0-Ns stdout lines arrive, timer is cancelled on normal completion
+  t=120s Timer fires (separate thread) → proc.kill()
+         → "[Killed: command exceeded timeout]" posted to output
+         → stdout loop unblocks, terminal worker continues
+```
+
+**Operational impact:** Commands that run longer than 120 seconds are forcibly killed and the terminal shows `[Killed: command exceeded timeout]`. This is intentional. Use scripts (Chapter 21) for long-running operations — scripts run via the agent's dedicated task executor and are not subject to the terminal timeout.
+
+### 3 — Stuck Command Auto-Recovery
+
+**Problem:** When the agent process is killed mid-execution (device rebooted, agent crashed, process killed manually), any command that was in `running` state in the database stays `running` permanently. When a new agent starts, it only picks up `pending` commands — the stuck `running` record is never retried and the terminal appears to ignore new commands on the same session.
+
+**Fix:** The `_expire_idle_sessions()` function in `api/routes/terminal.py` now includes a second query that resets stuck commands. It runs every time the agent polls for sessions (every 3 seconds):
+
+```
+Any terminal command with status = 'running'
+AND picked_up_at older than 3 minutes
+→ automatically reset to status = 'pending', picked_up_at = NULL
+```
+
+The agent picks up the now-pending command on its next poll cycle and re-executes it.
+
+**Operational impact:** After an agent restart, stuck commands self-heal within 3 minutes. No manual database intervention is needed. If a command was partially executed before the agent died, it will run again from the beginning — commands sent via Remote Terminal should be treated as potentially re-runnable.
+
+---
+
+## Chapter 42: Client Portal — Self-Service Ticket Access
+
+### Who uses this chapter
+
+Administrators who want to give customer contacts the ability to submit and track their own support tickets without calling in. Also useful for technicians to understand how client-submitted tickets arrive.
+
+### What it is
+
+The Client Portal is a restricted view of the ticketing system accessible only to users with the **client** role. It allows end-customers to:
+
+- Submit new support tickets
+- View the status of all tickets linked to their customer account
+- Read technician responses (public comments) on their tickets
+- See when their ticket was last updated
+
+Clients log in at the same URL as staff. After login, they are automatically redirected to the Client Portal — they cannot navigate to any other part of the system.
+
+### Setting up a client account
+
+1. Log in as an admin.
+2. Go to **Admin** → **Users** tab → click **+ New User**.
+3. Fill in the user's details:
+   - **Full Name:** The contact's name
+   - **Email:** Their email address (this is their login username)
+   - **Password:** Set a temporary password and tick **Force Password Change on Next Login** so they set their own password on first access
+   - **Role:** Select `client`
+   - **Customer:** Select the customer organisation this contact belongs to
+4. Click **Create User**.
+5. Share the dashboard URL and their credentials with the client contact.
+
+> **IMPORTANT:** The **Customer** field is mandatory for client accounts. If it is left blank, the client will see an empty portal with no tickets and no way to submit one. Always assign a customer before saving.
+
+### What the client sees
+
+When a client logs in, they land on the **Client Portal** page (`21_Client_Tickets.py`) which shows:
+
+- A list of all tickets linked to their customer
+- Ticket status badges (open, in progress, resolved, closed)
+- A form to submit a new ticket
+
+Tickets submitted through the portal appear in the main Tickets list with **Source: PORTAL** (shown as a green badge). Technicians can reply by adding a public comment — the client sees these replies on their next login.
+
+> **NOTE:** Internal notes (comments marked "Internal") are not visible to client users. Use internal notes for team-only discussion that should not reach the client.
+
+### Client Portal vs. email-to-ticket
+
+| Method | How it works | Best for |
+|---|---|---|
+| Client Portal | Client logs in, submits form | Clients who prefer self-service, need to track multiple tickets |
+| Email-to-Ticket (Chapter 36) | Client emails a support address | Clients who prefer email, no login required |
+
+Both methods can be active simultaneously. Tickets from email show **Source: EMAIL**; tickets from the portal show **Source: PORTAL**.
+
+### Deactivating a client account
+
+If a client contact leaves the organisation or should no longer have access:
+
+1. Go to **Admin** → **Users**.
+2. Find the account.
+3. Click **Edit** → set **Active** to off (or click **Deactivate**).
+4. The account cannot log in but the ticket history is preserved.
+
+---
+
+## Chapter 43: Departments — Grouping Users and Tickets
+
+### Who uses this chapter
+
+Administrators who want to organise their team into functional groups (e.g., Help Desk, Infrastructure, Security) and route tickets to the correct team automatically or manually.
+
+### What departments are
+
+A department is a named group with an optional color code. Users can be assigned to a department. Tickets can be assigned to a department to indicate which team is responsible.
+
+Departments are optional. You can run the full RMM system without creating any departments — they become useful once your team is large enough that routing matters.
+
+### Creating a department
+
+1. Go to **Admin** → **Departments** tab.
+2. Click **+ New Department**.
+3. Enter a **Name** (e.g., `Help Desk`, `Infrastructure`, `Security`).
+4. Optionally pick a **Color** — this color appears as an accent on department badges throughout the dashboard. The default is the system green (#407E3C).
+5. Click **Create**.
+
+### Assigning users to a department
+
+1. Go to **Admin** → **Users** tab.
+2. Click **Edit** on a user.
+3. Select their **Department** from the dropdown.
+4. Click **Save**.
+
+A user can belong to only one department. Unassigned users show no department badge.
+
+### Assigning tickets to a department
+
+When creating or editing a ticket, select the **Department** field to indicate which team should handle it. Tickets assigned to a department appear in the table with a department badge in the assignee column area.
+
+Technicians can filter the ticket table by department to see only their team's workload.
+
+### Department color coding
+
+Department badges use the color set when the department was created. This makes it visually easy to distinguish tickets owned by different teams at a glance in the ticket table.
+
+---
+
+
 
 | Term | Definition |
 |---|---|
-| Agent | The Python program (`rmm_agent.py`) installed on managed Windows machines. Sends heartbeats every 60 seconds and executes remote commands. |
+| Agent | The Python program (`rmm_agent.py`) installed on managed Windows machines. Sends heartbeats every 60 seconds and executes remote commands. Can be deployed as Python source (requires Python on the target) or as a frozen executable (no Python required — see Chapter 40). |
+| Assignee | The staff member (technician or admin) currently responsible for resolving a ticket. Set on the ticket detail page. |
 | Alert | An automatic notification generated when a device metric crosses a configured threshold. |
 | Alert Rule | A configuration defining when alerts trigger: which metric, which threshold, with what severity. |
 | API | Application Programming Interface. The Flask server at port 5000 that handles all data operations. |
 | Automation Profile | A bundle of maintenance tasks (patching, disk, cleanup) scheduled to run automatically. |
 | BAT | Windows Batch script file format. |
 | Celery | A distributed task queue. Runs background tasks: alert evaluation, patch deployment, script dispatch. |
+| Client | A user role for customer contacts. Grants access only to the Client Portal — own tickets only. No access to devices, alerts, or management features. See Chapter 42. |
+| Client Portal | The self-service ticketing interface for client-role users. Accessible at the same URL as the main dashboard. Clients submit and track their own tickets here. |
 | Celery Beat | The Celery scheduler component. Triggers tasks on a schedule (every 60 seconds, daily profiles, etc.). |
 | Compliance % | Percentage of managed devices that are fully patched and up to date. |
 | Currency | ISO 3-letter code (USD, EUR, GBP, etc.) configured in Admin → Org Settings → Regional Settings. Controls the symbol shown on all billing amounts. |
 | Cooldown | Minimum time before an alert rule can fire again for the same device. Prevents alert flooding. |
 | Critical | Highest alert severity. Immediate action required. |
 | Dashboard | The Streamlit web interface at port 8501. Also specifically refers to the Overview page. |
+| Department | A named group used to organise staff users and route tickets. Optional. Created in Admin → Departments. See Chapter 43. |
 | Docker | Container platform. Used for one-command deployment via `docker-compose up -d`. See Chapter 7a. |
 | Defragmentation | Disk maintenance for HDDs that reorganizes fragmented files. Never run on SSDs. |
 | Device | A managed machine with the RMM agent installed. |
 | Exit Code | Number returned by a script when it finishes. 0 = success; non-zero = error. |
 | Flask | Python web framework used to build the RMM API server. |
+| Frozen Executable | A single `.exe` file produced by PyInstaller that bundles the Python runtime, all dependencies, and the agent code. Runs on Windows machines without Python installed. See Chapter 40. |
 | Heartbeat | Regular check-in signal from the agent to the API every 60 seconds, reporting current metrics. |
 | HDD | Hard Disk Drive — traditional spinning magnetic disk. Can benefit from defragmentation. |
 | Info | Lowest alert severity. Informational only; no immediate action needed. |
@@ -3972,8 +4409,10 @@ update_check_interval = 3600   ; check every hour
 | Redis | In-memory data store used as the Celery message broker. Port 6379. |
 | Regional Settings | Admin → Org Settings section configuring Currency and Timezone for all billing displays and timestamp formatting. |
 | RMM | Remote Monitoring and Management. |
+| PyInstaller | A tool that packages Python applications into standalone executables. Used to build the frozen agent `.exe` for machines without Python. |
 | Script | Code (PS1, BAT, PY, or SH) that can be executed remotely on a managed device. |
 | Session | An active user login. Represented by a JWT token stored in browser memory. |
+| SLA | Service Level Agreement. A deadline by which a ticket should be responded to or resolved. The ticket table shows time remaining or "BREACHED" when the deadline has passed. |
 | Severity | Alert importance level: info, warning, or critical. |
 | SSD | Solid State Drive. Fast storage, no moving parts. Does not benefit from defragmentation. |
 | Streamlit | Python web app framework used to build the RMM dashboard. |
