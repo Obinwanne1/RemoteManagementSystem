@@ -36,15 +36,12 @@ def run_script(content: str, file_type: str, timeout_seconds: int = 300) -> dict
         result = subprocess.run(
             cmd,
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             timeout=timeout_seconds,
             creationflags=CREATE_NO_WINDOW,
         )
 
-        stdout = result.stdout[:MAX_OUTPUT_BYTES]
-        stderr = result.stderr[:MAX_OUTPUT_BYTES]
+        stdout = result.stdout.decode("utf-8", errors="replace")[:MAX_OUTPUT_BYTES]
+        stderr = result.stderr.decode("utf-8", errors="replace")[:MAX_OUTPUT_BYTES]
 
         return {
             "exit_code": result.returncode,
