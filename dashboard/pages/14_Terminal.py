@@ -31,11 +31,11 @@ dev_data, dev_err = client.list_devices(per_page=200)
 devices = (dev_data.get("items", []) if dev_data else [])
 online_agents = [
     d for d in devices
-    if not d.get("is_agentless") and d.get("status") == "online"
+    if not d.get("is_agentless") and d.get("status") in ("online", "healthy", "warning")
 ]
 
 if not online_agents:
-    st.info("No online agent-managed devices found. Devices must be online to open a terminal session.")
+    st.info("No reachable agent-managed devices found. Devices must have an active agent to open a terminal session.")
     st.stop()
 
 # ── Session state init ────────────────────────────────────────────────────────
