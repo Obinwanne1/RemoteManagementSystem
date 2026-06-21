@@ -2,12 +2,22 @@
 Terminal worker — polls API for pending remote terminal commands, executes them,
 streams output back. Runs as a background daemon thread inside the agent process.
 """
+import locale
 import logging
 import subprocess
 import threading
 import time
 
 import requests
+
+
+def _decode_output(raw: bytes) -> str:
+    """Decode subprocess bytes: UTF-8 first, fall back to system code page."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        enc = locale.getpreferredencoding(False) or "cp1252"
+        return raw.decode(enc, errors="replace")
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +133,7 @@ class TerminalWorker:
             try:
                 stdout_buf = []
                 for raw_line in proc.stdout:
-                    line = raw_line.decode("utf-8", errors="replace")
+                    line = _decode_output(raw_line)
                     stdout_buf.append(line)
                     if len(stdout_buf) >= 20:
                         self._post_output(command_id, "".join(stdout_buf), "stdout")
@@ -137,7 +147,7 @@ class TerminalWorker:
 
             stderr_out = ""
             try:
-                stderr_out = proc.stderr.read().decode("utf-8", errors="replace")
+                stderr_out = _decode_output(proc.stderr.read())
             except Exception:
                 pass
             if stderr_out:
