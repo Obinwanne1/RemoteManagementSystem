@@ -2,6 +2,7 @@
 Script execution sandbox.
 Runs .bat, .ps1, .py scripts with timeout and output capture.
 """
+import locale
 import subprocess
 import tempfile
 import os
@@ -12,6 +13,15 @@ logger = logging.getLogger(__name__)
 
 MAX_OUTPUT_BYTES = 65536  # 64KB
 CREATE_NO_WINDOW = 0x08000000
+
+
+def _decode_output(raw: bytes) -> str:
+    """Decode subprocess bytes: UTF-8 first, fall back to system code page."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        enc = locale.getpreferredencoding(False) or "cp1252"
+        return raw.decode(enc, errors="replace")
 
 
 def run_script(content: str, file_type: str, timeout_seconds: int = 300) -> dict:
@@ -40,8 +50,8 @@ def run_script(content: str, file_type: str, timeout_seconds: int = 300) -> dict
             creationflags=CREATE_NO_WINDOW,
         )
 
-        stdout = result.stdout.decode("utf-8", errors="replace")[:MAX_OUTPUT_BYTES]
-        stderr = result.stderr.decode("utf-8", errors="replace")[:MAX_OUTPUT_BYTES]
+        stdout = _decode_output(result.stdout)[:MAX_OUTPUT_BYTES]
+        stderr = _decode_output(result.stderr)[:MAX_OUTPUT_BYTES]
 
         return {
             "exit_code": result.returncode,

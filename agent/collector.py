@@ -2,6 +2,7 @@
 System metrics and hardware info collector.
 Uses psutil for cross-platform metrics; WMI for Windows-specific hardware data.
 """
+import locale
 import platform
 import socket
 import time
@@ -12,6 +13,36 @@ from pathlib import Path
 import psutil
 
 logger = logging.getLogger(__name__)
+
+
+def _decode_output(raw: bytes) -> str:
+    """Decode subprocess bytes: UTF-8 first, fall back to system code page.
+
+    Windows machines in non-English locales (German, French, etc.) may produce
+    CP1252 or similar output from winget/PowerShell.  Trying UTF-8 first keeps
+    pure-ASCII and genuine UTF-8 output fast; the fallback handles everything else
+    without losing characters like ü, ä, ö, é, ñ, etc.
+    """
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        enc = locale.getpreferredencoding(False) or "cp1252"
+        return raw.decode(enc, errors="replace")
+
+
+def _is_winget_progress_line(line: str) -> bool:
+    """Return True only for winget progress/box-drawing lines, NOT real Unicode text.
+
+    Winget progress bars use Unicode block elements (U+2580–U+259F) and box-drawing
+    chars (U+2500–U+257F).  Legitimate software names may contain accented or CJK
+    characters — those must NOT be dropped.
+    """
+    return any(
+        '─' <= c <= '▟'  # Box Drawing + Block Elements
+        or '■' <= c <= '◿'  # Geometric Shapes (some progress spinners)
+        or c == '�'             # Unicode replacement char = failed decode
+        for c in line
+    )
 
 
 def get_hardware_info() -> dict:
@@ -117,7 +148,7 @@ def get_pending_patches() -> list:
             capture_output=True,
             timeout=60, creationflags=0x08000000,
         )
-        raw = result.stdout.decode("utf-8", errors="replace").strip()
+        raw = _decode_output(result.stdout).strip()
         if not raw:
             return []
         data = json.loads(raw)
@@ -309,18 +340,17 @@ def _get_winget_software() -> list:
     if result.returncode != 0:
         return []
 
-    lines = result.stdout.decode("utf-8", errors="replace").splitlines()
+    lines = _decode_output(result.stdout).splitlines()
 
     # Locate the separator line (e.g. "---  ---  ---") that marks end of header.
-    # All lines before and including it are skipped (progress bars, header row).
-    # Progress/status lines contain non-ASCII block chars — skip those too.
+    # Progress/status lines contain block-drawing chars — skip only those.
+    # Legitimate software names may contain umlauts, accents, CJK, etc.
     sep_idx = None
     for idx, line in enumerate(lines):
         stripped = line.strip()
-        # Non-ASCII line → progress output, skip
-        if any(ord(c) > 127 for c in stripped):
+        if _is_winget_progress_line(stripped):
             continue
-        # Separator line: mostly dashes and spaces
+        # Separator line: all dashes and spaces
         if stripped and all(c in "-_ " for c in stripped) and len(stripped) > 10:
             sep_idx = idx
             break
@@ -330,8 +360,8 @@ def _get_winget_software() -> list:
 
     software = []
     for line in lines[sep_idx + 1:]:
-        # Skip non-ASCII lines (more progress output can appear mid-run)
-        if any(ord(c) > 127 for c in line):
+        # Drop only actual progress/spinner lines, not international software names
+        if _is_winget_progress_line(line):
             continue
         parts = line.split()
         if len(parts) < 2:
