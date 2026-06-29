@@ -140,10 +140,16 @@ def create_app(config_name=None):
     app.register_blueprint(events_bp, url_prefix="/api/events")
     app.register_blueprint(update_bp, url_prefix="/api/agents/update")
 
+    import redis as redis_lib
+    _redis_client = redis_lib.from_url(
+        app.config.get("REDIS_URL", "redis://localhost:6379/0"),
+        socket_timeout=1,
+        socket_connect_timeout=1,
+    )
+
     @app.route("/api/health")
     def health():
         from sqlalchemy import text
-        import redis as redis_lib
         checks: dict = {"version": "1.0.0", "db": False, "redis": False}
         try:
             db.session.execute(text("SELECT 1"))
@@ -151,8 +157,7 @@ def create_app(config_name=None):
         except Exception:
             pass
         try:
-            r = redis_lib.from_url(app.config.get("REDIS_URL", "redis://localhost:6379/0"))
-            r.ping()
+            _redis_client.ping()
             checks["redis"] = True
         except Exception:
             pass
