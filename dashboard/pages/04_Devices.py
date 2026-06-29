@@ -449,10 +449,10 @@ def _render_agent_row(device: dict, tab_key: str = "", latest_version: str = "")
             mdata, merr = client.get_device_metrics(device["id"], hours=24)
             fallback_hours = None
             if not merr and not mdata:
-                # 24h window empty — try 7 days
-                mdata, merr = client.get_device_metrics(device["id"], hours=168)
+                # 24h window empty — try 30 days
+                mdata, merr = client.get_device_metrics(device["id"], hours=720)
                 if mdata:
-                    fallback_hours = 168
+                    fallback_hours = 720
             if merr or not mdata:
                 st.warning("No metric history available.")
             else:
@@ -465,7 +465,7 @@ def _render_agent_row(device: dict, tab_key: str = "", latest_version: str = "")
                         oldest = df["collected_at"].min()
                         hours_ago = int((pd.Timestamp.now(tz="UTC") - oldest.tz_convert("UTC")).total_seconds() / 3600)
                         st.info(f"No data in last 24 h — showing last {len(df)} readings (oldest ~{hours_ago}h ago). Agent may be offline.")
-                    title_text = "7-day usage history (agent offline)" if fallback_hours else "24-hour usage history"
+                    title_text = "30-day usage history (agent offline)" if fallback_hours else "24-hour usage history"
                     fig2 = px.line(
                         df, x="collected_at",
                         y=["cpu_pct", "ram_pct", "disk_pct"],
