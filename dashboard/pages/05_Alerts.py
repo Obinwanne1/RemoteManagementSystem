@@ -3,6 +3,7 @@ import streamlit as st
 
 from utils.auth import require_auth
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, STATUS_COLORS, section_header
 from utils.formatters import fmt_datetime, PRIORITY_COLORS, SEVERITY_COLORS
 
@@ -263,3 +264,9 @@ with tab_rules:
             else:
                 st.success("Alert rule created!")
                 st.rerun()
+
+render_ai_assistant("Alerts", {
+    "open_alerts": open_count,
+    "critical_alerts": crit_count,
+    "acknowledged_alerts": ack_count,
+})

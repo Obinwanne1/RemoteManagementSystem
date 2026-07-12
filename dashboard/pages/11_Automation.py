@@ -6,6 +6,7 @@ Plus: schedule config, scripts, email notifications.
 import streamlit as st
 from utils.auth import require_auth
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 from utils.formatters import fmt_datetime
 from utils.styles import inject_css, badge, BRAND, stat_card
 
@@ -255,3 +256,5 @@ with tab2:
             else:
                 st.success("Profile saved!")
                 st.rerun()
+
+render_ai_assistant("Automation")

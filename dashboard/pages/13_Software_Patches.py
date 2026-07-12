@@ -15,6 +15,7 @@ def _clean(text: str) -> str:
 
 from utils.auth import require_auth
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes
 
@@ -143,3 +144,5 @@ with right_col:
                 f'</tr></thead><tbody>{rows}</tbody></table>'
             )
             st.markdown(table_html, unsafe_allow_html=True)
+
+render_ai_assistant("Software Patches")

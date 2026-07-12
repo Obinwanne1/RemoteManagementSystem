@@ -1,6 +1,7 @@
 """Client Ticket Portal — clients submit and track their own tickets (list view)."""
 import streamlit as st
 from utils.auth import require_auth, logout
+from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND
 from utils.formatters import fmt_datetime, PRIORITY_COLORS
 
@@ -178,3 +179,5 @@ for t in tickets:
             st.switch_page("pages/_client_ticket_detail.py")
 
     st.markdown('<hr class="tbl-row-sep">', unsafe_allow_html=True)
+
+render_ai_assistant("Client Tickets")

@@ -3,6 +3,7 @@ import streamlit as st
 
 from utils.auth import require_auth
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes
 
@@ -249,3 +250,5 @@ else:
                     st.error(f"Failed: {derr}")
                 else:
                     st.rerun()
+
+render_ai_assistant("Maintenance")

@@ -61,7 +61,7 @@ RemoteManagementSystem/
 │   ├── requirements.txt
 │   ├── reports/              ← CSV output dir (created at runtime)
 │   ├── models/               ← 11 SQLAlchemy model files
-│   ├── routes/               ← 13 route modules
+│   ├── routes/               ← 14 route modules (includes assistant.py)
 │   ├── tasks/                ← Celery task modules
 │   │   └── network_tasks.py
 │   ├── reset_superadmin.py
@@ -77,6 +77,7 @@ RemoteManagementSystem/
 │   ├── pages/                ← 16 Streamlit pages
 │   └── utils/
 │       ├── api_client.py
+│       ├── ai_assistant.py   ← sidebar AI chat widget (render_ai_assistant)
 │       ├── auth.py
 │       ├── nav.py
 │       ├── styles.py
@@ -216,6 +217,9 @@ def create_app():
         (users.users_bp,       '/api/users'),
     ]:
         app.register_blueprint(bp, url_prefix=prefix)
+
+    from routes.assistant import assistant_bp
+    app.register_blueprint(assistant_bp, url_prefix="/api/assistant")
 
     @app.route('/api/health')
     def health():
@@ -1138,6 +1142,10 @@ SMTP_PORT=587
 SMTP_USER=you@gmail.com
 SMTP_PASS=your_app_password
 SMTP_FROM=rmm@yourcompany.com
+# AI Assistant
+ANTHROPIC_API_KEY=sk-ant-api03-...
+AI_ASSISTANT_MODEL=claude-haiku-4-5-20251001
+AI_ASSISTANT_ENABLED=true
 ```
 
 ---
@@ -1237,3 +1245,80 @@ Change password after first login.
 | `file_path` on Report | Dashboard and API on same machine; bytes read directly — no file serving needed |
 | SMTP gated on env var | Email optional; missing config silently skips, no crash |
 | Superadmin always-present | Emergency lockout recovery without out-of-band DB access |
+
+---
+
+## Phase E — AI Assistant
+
+### What it does
+
+Embeds a context-aware AI chat widget in every dashboard page. Users type natural-language questions ("How do I deploy patches?", "What does a critical alert mean?") and receive step-by-step guidance tailored to their current page and role.
+
+### New files
+
+| File | Purpose |
+|------|---------|
+| `api/routes/assistant.py` | Flask blueprint — `POST /api/assistant/chat` (JWT required, 30 req/min) |
+| `dashboard/utils/ai_assistant.py` | Streamlit sidebar widget — `render_ai_assistant(page_name, context)` |
+
+### `api/routes/assistant.py` — key design
+
+- `_PAGE_INFO` dict: description of every page injected into system prompt
+- `_ROLE_CAPABILITIES` dict: what each role can do — AI never suggests actions above the user's role
+- `_PAGE_ACTIONS` dict: 2–3 suggested quick-action buttons per page
+- `_build_system_prompt(role, page, context)` assembles the final system prompt
+- `chat()` endpoint: validates JWT → extracts role via `get_jwt().get("role", "viewer")` (not `get_jwt_identity()`) → calls Anthropic SDK → returns `{reply, suggested_actions}`
+
+> **Critical:** JWT role lives in `additional_claims`, not the identity. Always use `get_jwt()` to read it.
+
+### `dashboard/utils/ai_assistant.py` — key design
+
+- Builds `RMMClient` directly from `st.session_state["access_token"]` — does NOT rely on `st.session_state["_rmm_client"]` (that key is never set)
+- Session state keys: `_ai_history`, `_ai_open`, `_ai_seen_onboard`, `_ai_suggested`
+- First login: auto-opens on Overview page, shows welcome message, sets `_ai_seen_onboard = True`
+- All widget keys scoped to `page_key` (lowercased page name) to prevent cross-page key conflicts
+
+### How to call on each page
+
+```python
+from utils.ai_assistant import render_ai_assistant
+
+# Minimal call (most pages)
+render_ai_assistant("Page Name")
+
+# Rich call with live data (data-heavy pages)
+render_ai_assistant("Alerts", {
+    "open_alerts": open_count,
+    "critical_alerts": crit_count,
+    "acknowledged_alerts": ack_count,
+})
+```
+
+### Install dependency
+
+```bash
+cd api
+venv\Scripts\activate
+pip install anthropic>=0.40.0
+pip freeze > requirements.txt
+```
+
+### Required `.env` vars
+
+```
+ANTHROPIC_API_KEY=sk-ant-api03-...
+AI_ASSISTANT_MODEL=claude-haiku-4-5-20251001
+AI_ASSISTANT_ENABLED=true
+```
+
+Set `AI_ASSISTANT_ENABLED=false` to disable without removing the widget code.
+
+### Architecture note
+
+| Decision | Reason |
+|----------|--------|
+| API key server-side only | Dashboard never touches the key; zero client exposure |
+| JWT auth on `/api/assistant/chat` | AI respects same role system as every other endpoint |
+| Rate limit 30 req/min | Prevents abuse; reuses existing Flask-Limiter |
+| History in session state only | No PII stored in DB; GDPR-friendly |
+| Claude Haiku 4.5 | <1s typical response; ~$0.0008/query at normal usage |

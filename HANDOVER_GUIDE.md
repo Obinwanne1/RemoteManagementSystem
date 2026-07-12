@@ -115,6 +115,7 @@ This document is written in plain language. Technical jargon is explained when f
 - Chapter 41: Agent Resilience — Unicode Safety, Command Timeout, and Stuck Command Recovery
 - Chapter 42: Client Portal — Self-Service Ticket Access for Client Users
 - Chapter 43: Departments — Grouping Users and Tickets
+- Chapter 44: AI Assistant — Contextual Guidance on Every Page
 
 **Appendix A: Glossary**
 **Appendix B: Quick Reference Cards**
@@ -3393,6 +3394,176 @@ Reboot: true
    - Device went offline during execution
    - Agent lacked permissions for the task
    - A specific patch installation failed
+
+---
+
+# Chapter 44: AI Assistant — Contextual Guidance on Every Page
+
+## What is the AI Assistant?
+
+The AI Assistant is a built-in chat helper that appears on every page of the dashboard. It knows which page you are on, what your role permits, and — on data-heavy pages — the live numbers currently on your screen. You can ask it anything about how to use the system and it will give you a direct, step-by-step answer.
+
+It is powered by Anthropic's Claude AI and operates entirely within the RMM platform. Your conversations are not stored in the database and are not visible to other users.
+
+> **NOTE:** The AI Assistant only answers questions about the RMM system. It will not answer general knowledge questions, write code for you, or assist with tasks unrelated to the platform.
+
+---
+
+## Opening and Closing the Assistant
+
+The AI Assistant button appears at the bottom of the sidebar on every page, below the navigation links and the Sign Out button.
+
+**To open it:**
+1. Scroll to the bottom of the sidebar.
+2. Click **🤖 AI Assistant**.
+3. The chat panel expands directly in the sidebar.
+
+**To close it:**
+1. Click **🤖 Hide AI Assistant** (the button label changes when the panel is open).
+
+The panel stays open as you navigate between pages — your conversation history is preserved for the entire session. Refreshing the browser or logging out clears the history.
+
+---
+
+## First-Time Welcome Message
+
+The first time you log in during a session, the AI Assistant opens automatically on the Overview (Dashboard) page and shows a welcome message. It introduces itself and suggests a few things you can try.
+
+This welcome message appears once per session. It does not appear again until you log out and back in.
+
+---
+
+## Asking a Question
+
+1. Click inside the text box labelled **Ask anything…**
+2. Type your question.
+3. Click **Send →** or press **Enter**.
+4. The assistant replies in a few seconds.
+
+**Example questions you can ask:**
+
+| Page | Example question |
+|------|-----------------|
+| Overview | "What does a critical alert mean?" |
+| Devices | "How do I run a script on a device?" |
+| Alerts | "How do I acknowledge an alert?" |
+| Network Discovery | "What is an agentless device?" |
+| OS Patches | "How do I deploy patches to a device?" |
+| Admin Panel | "How do I add a new user?" |
+| My Profile | "How do I enable two-factor authentication?" |
+| Any page | "What can I do on this page?" |
+
+---
+
+## Quick Action Buttons
+
+After each reply, the assistant shows up to three **Quick Action** buttons below the chat. These are shortcuts for the most common follow-up questions on the current page. Click any of them to ask that question immediately without typing.
+
+---
+
+## Clearing the Conversation
+
+If you want to start fresh:
+1. Open the AI Assistant panel.
+2. Click **Clear chat** (appears below the chat history when there are messages).
+3. The history is cleared and the assistant is ready for a new conversation.
+
+---
+
+## Role-Aware Responses
+
+The assistant knows your role and only suggests actions you are permitted to take:
+
+| Your Role | What the assistant will guide you to do |
+|-----------|----------------------------------------|
+| **Viewer** | View dashboards, devices, alerts, tickets, customers, and reports. The assistant will never suggest creating, editing, deleting, or running anything. |
+| **Technician** | Everything a viewer can do, plus: manage devices, run scripts, deploy patches, handle tickets, acknowledge and resolve alerts, use Remote Terminal, view reports and billing. |
+| **Admin** | Everything a technician can do, plus: manage users, change organisation settings, manage billing, use the enrollment token. |
+| **Superadmin** | Full access including all admin capabilities and superadmin-only controls. |
+| **Client** | Create and view your own support tickets only. The assistant will not guide clients to monitoring, device, or admin features. |
+
+If you ask about a feature that requires a higher role, the assistant will tell you clearly (e.g., *"This requires admin access — please contact your administrator"*).
+
+---
+
+## Live Context
+
+On pages that display live data, the assistant is aware of the current numbers. For example:
+
+- On the **Overview** page: the assistant knows how many devices are online, offline, and critical, and how many alerts and tickets are open.
+- On the **Alerts** page: it knows how many critical, warning, and acknowledged alerts are currently visible.
+- On the **Devices** page: it knows how many devices are loaded.
+
+This means you can ask questions like *"I have 3 critical alerts — what should I do first?"* and the assistant can give a contextually relevant answer.
+
+---
+
+## Enabling and Disabling the AI Assistant
+
+The AI Assistant is controlled by the `AI_ASSISTANT_ENABLED` variable in the server's `.env` file:
+
+```
+AI_ASSISTANT_ENABLED=true    # On (default)
+AI_ASSISTANT_ENABLED=false   # Off — widget still appears but sends a disabled message
+```
+
+After changing this value, the API server must be restarted for the change to take effect.
+
+> **NOTE:** Only an administrator with access to the server's `.env` file can enable or disable the AI Assistant. This is not configurable from inside the dashboard.
+
+---
+
+## Troubleshooting: "AI assistant is temporarily unavailable"
+
+If you see this message when sending a question, it means the connection to the AI service failed. This can happen if:
+
+1. **The API server lost its connection to the Anthropic service** — this is usually temporary. Wait 30 seconds and try again.
+2. **The `ANTHROPIC_API_KEY` is missing or invalid** — an administrator must check the `.env` file and restart the API server.
+3. **The rate limit was reached** — the assistant allows 30 messages per minute per user. If you see this message after sending many messages quickly, wait one minute and try again.
+
+The rest of the dashboard continues to work normally when the AI Assistant is unavailable — only the chat feature is affected.
+
+---
+
+## For Administrators: Setup
+
+The AI Assistant requires an Anthropic API key. If it was not configured at initial deployment, follow these steps:
+
+1. Obtain an API key from **console.anthropic.com**.
+2. Open the server's `.env` file (located in the project root).
+3. Add or update these three lines:
+   ```
+   ANTHROPIC_API_KEY=sk-ant-api03-...your-key-here...
+   AI_ASSISTANT_MODEL=claude-haiku-4-5-20251001
+   AI_ASSISTANT_ENABLED=true
+   ```
+4. Save the file.
+5. Restart the Flask API server:
+   ```powershell
+   # Kill the current API process
+   netstat -ano | findstr :5000
+   taskkill /F /PID <PID>
+   # Start it again
+   cd C:\RMM\RemoteManagementSystem\api
+   .\venv\Scripts\Activate.ps1
+   python app.py
+   ```
+6. Reload the dashboard — the **🤖 AI Assistant** button should now appear in the sidebar.
+
+> **IMPORTANT:** Never commit the `.env` file to version control. The `ANTHROPIC_API_KEY` is a secret. Store it in `.env` only, which is listed in `.gitignore`.
+
+---
+
+## For Developers: Architecture Summary
+
+| Component | File | Description |
+|-----------|------|-------------|
+| Chat endpoint | `api/routes/assistant.py` | `POST /api/assistant/chat` — JWT required, 30 req/min, builds system prompt, calls Anthropic SDK |
+| Sidebar widget | `dashboard/utils/ai_assistant.py` | `render_ai_assistant(page_name, context)` — called at bottom of every page |
+| Blueprint registration | `api/app.py` | `app.register_blueprint(assistant_bp, url_prefix="/api/assistant")` |
+| Dependency | `api/requirements.txt` | `anthropic>=0.40.0` |
+
+The system prompt sent to Claude includes: the user's role and what it permits, the current page name and its purpose, live context data (device counts, alert counts, etc.), and guardrails preventing the AI from inventing features that do not exist.
 
 ---
 

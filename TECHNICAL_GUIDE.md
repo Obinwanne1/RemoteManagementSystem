@@ -21,6 +21,7 @@
 11. [Security Model](#11-security-model)
 12. [Environment Variables Reference](#12-environment-variables-reference)
 13. [Docker Deployment](#13-docker-deployment)
+14. [AI Assistant](#14-ai-assistant)
 
 ---
 
@@ -1474,4 +1475,200 @@ Additional hardening:
 - `X-Request-ID` header: `before_request` generates UUID if not present; echoed on all responses.
 - Dev mode warning: API logs WARNING on startup if `FLASK_ENV != "production"`.
 - CORS restricted via `CORS_ORIGINS` env var (replaces `origins="*"`).
+
+---
+
+## 14. AI Assistant
+
+### Architecture
+
+```
+[Streamlit page]
+    │  render_ai_assistant(page_name, context)
+    ▼
+[dashboard/utils/ai_assistant.py]
+    │  POST /api/assistant/chat  (JWT Bearer)
+    ▼
+[api/routes/assistant.py]
+    │  _build_system_prompt(role, page, context)
+    │  anthropic.Anthropic(api_key=...).messages.create(...)
+    ▼
+[Anthropic API — claude-haiku-4-5-20251001]
+    │  reply text + suggested_actions list
+    ▼
+[Streamlit sidebar chat panel]
+```
+
+### New files
+
+| File | Role |
+|------|------|
+| `api/routes/assistant.py` | Flask blueprint, chat endpoint, system prompt builder |
+| `dashboard/utils/ai_assistant.py` | Streamlit sidebar widget |
+
+### `POST /api/assistant/chat`
+
+**Auth:** JWT Bearer (same as all other API endpoints)  
+**Rate limit:** 30 requests per minute per IP (Flask-Limiter)
+
+**Request body:**
+```json
+{
+  "message": "How do I deploy patches?",
+  "page": "OS Patches",
+  "context": {"pending_patches": "12", "selected_device": "DESKTOP-01"},
+  "history": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
+}
+```
+
+**Response:**
+```json
+{
+  "reply": "To deploy patches: 1. Select a device...",
+  "suggested_actions": ["Deploy OS patches", "Check patch status", "What devices need updates?"]
+}
+```
+
+**Constraints:**
+- `message` max 1000 chars (truncated server-side)
+- `history` capped at last 10 turns
+- `context` keys/values sanitised: key max 60 chars, value max 300 chars
+- `page` max 60 chars
+
+**Error responses:**
+
+| Status | Condition |
+|--------|-----------|
+| 400 | `message` empty |
+| 429 | Rate limit exceeded |
+| 503 | `AI_ASSISTANT_ENABLED=false`, or `ANTHROPIC_API_KEY` missing/invalid, or Anthropic API down |
+
+### System prompt structure
+
+`_build_system_prompt(role, page, context)` assembles:
+
+```
+You are the AI Assistant embedded in Remote Management System (RMS)...
+
+USER ROLE: {role}
+ROLE PERMISSIONS: {role_desc}
+
+CURRENT PAGE: {page}
+PAGE PURPOSE: {page_desc}
+
+LIVE CONTEXT:
+- {key}: {value}
+...
+
+RESPONSE RULES:
+1. Concise — 2-4 sentences for simple answers; numbered steps for how-to.
+2. Use exact UI element names (button labels, tab names, headings).
+3. Only describe features that exist. Never invent pages, buttons, or endpoints.
+4. Respect role — if feature requires higher role, say so.
+5. For viewers: never suggest create/edit/delete/run actions.
+6. Off-topic: "I can only help with navigating this system."
+7. Plain language — user may be new to RMM tools.
+8. Multi-step tasks: number the steps.
+9. If context shows a problem, mention the most urgent action first.
+```
+
+### Role extraction from JWT
+
+```python
+from flask_jwt_extended import jwt_required, get_jwt
+
+@assistant_bp.route("/chat", methods=["POST"])
+@jwt_required()
+def chat():
+    role = get_jwt().get("role", "viewer")   # role is in additional_claims
+    ...
+```
+
+> **Critical:** `get_jwt_identity()` returns the user ID (int), not the role. Role lives in `additional_claims`. Always use `get_jwt()`.
+
+### Dashboard widget
+
+`render_ai_assistant(page_name, context)` in `dashboard/utils/ai_assistant.py`:
+
+```python
+from utils.api_client import RMMClient
+
+def render_ai_assistant(page_name="Overview", context=None):
+    token = st.session_state.get("access_token")
+    if not token:
+        return                         # not logged in — silently skip
+    client = RMMClient(
+        access_token=token,
+        refresh_token=st.session_state.get("refresh_token", ""),
+    )
+    # ... initialise session state, render toggle, chat history, form, suggestions
+```
+
+> **Critical:** Do NOT use `st.session_state.get("_rmm_client")` — that key is never set. `require_auth()` returns the client but does not store it. Build `RMMClient` directly from `access_token`.
+
+**Session state keys:**
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `_ai_history` | `list[dict]` | Chat turns `{role, content}` — capped display at 14 |
+| `_ai_open` | `bool` | Panel open/closed |
+| `_ai_seen_onboard` | `bool` | Whether welcome message has been shown this session |
+| `_ai_suggested` | `list[str]` | Quick action button labels from last API response |
+
+**Page key:** widget keys are scoped to `page_name.lower().replace(" ", "_").replace("/", "_")` to prevent duplicate-key errors across pages.
+
+### Adding the widget to a page
+
+```python
+from utils.ai_assistant import render_ai_assistant
+
+# At the bottom of the page (after all page content):
+render_ai_assistant("Page Name")
+
+# With live context (data-heavy pages):
+render_ai_assistant("Overview", {
+    "total_devices": total,
+    "online_devices": online,
+    "open_alerts": alerts,
+})
+```
+
+The widget renders inside `with st.sidebar:` — no layout columns needed.
+
+### Environment variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | Yes | — | Anthropic API key (`sk-ant-api03-...`) |
+| `AI_ASSISTANT_MODEL` | No | `claude-haiku-4-5-20251001` | Model ID |
+| `AI_ASSISTANT_ENABLED` | No | `true` | Set `false` to disable without removing code |
+
+### Dependency
+
+```
+# api/requirements.txt
+anthropic>=0.40.0
+```
+
+Install: `pip install anthropic>=0.40.0`
+
+### Security properties
+
+- API key stored server-side only (`api/.env`) — never sent to dashboard or browser
+- JWT required on `/api/assistant/chat` — unauthenticated requests return 401
+- Rate limiting prevents API cost abuse (30 req/min per IP via Flask-Limiter)
+- Conversation history stored in Streamlit session state only — cleared on logout/refresh, never persisted to DB
+- Context values sanitised before inclusion in system prompt
+
+### Extension points
+
+**Add a new page description:** Add an entry to `_PAGE_INFO` in `api/routes/assistant.py`. Key must match the `page_name` string passed from the dashboard page.
+
+**Add quick actions for a page:** Add an entry to `_PAGE_ACTIONS` with the same key.
+
+**Add role-aware behaviour:** Update `_ROLE_CAPABILITIES` dict.
+
+**"Do it for me" actions (future):** The widget already holds a `RMMClient` instance. Wire suggested-action buttons to call `client.create_ticket(...)` etc. instead of just sending a chat message.
+
+**Voice input (future):** Add `st.audio_input()` → transcribe → feed transcript to `_send_message()`. No backend changes needed.
 - 400/422 error handlers: detail logged server-side only, generic message returned to client.

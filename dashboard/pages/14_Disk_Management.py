@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 
 from utils.auth import require_auth
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes
 
@@ -198,3 +199,5 @@ else:
                 st.error(f"Failed to queue: {err}")
             else:
                 st.success("Temp file cleanup queued. Agent will execute on next poll.")
+
+render_ai_assistant("Disk Management")

@@ -120,6 +120,7 @@ def create_app(config_name=None):
     from routes.terminal import terminal_bp
     from routes.events import events_bp
     from routes.update import update_bp
+    from routes.assistant import assistant_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(agents_bp, url_prefix="/api/agents")
@@ -139,6 +140,7 @@ def create_app(config_name=None):
     app.register_blueprint(terminal_bp, url_prefix="/api/terminal")
     app.register_blueprint(events_bp, url_prefix="/api/events")
     app.register_blueprint(update_bp, url_prefix="/api/agents/update")
+    app.register_blueprint(assistant_bp, url_prefix="/api/assistant")
 
     import redis as redis_lib
     _redis_client = redis_lib.from_url(
