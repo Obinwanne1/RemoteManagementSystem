@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 from utils.auth import require_auth
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes
 
@@ -169,3 +170,5 @@ with tab_hist:
                         st.button("Download", icon=":material/download:", disabled=True, key=f"dl_dis_{rpt.get('id', r_name)}", use_container_width=True)
                 else:
                     st.button("Download", icon=":material/download:", disabled=True, key=f"dl_none_{rpt.get('id', r_name)}", use_container_width=True)
+
+render_ai_assistant("Reports")

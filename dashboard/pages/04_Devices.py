@@ -6,6 +6,7 @@ import pandas as pd
 
 from utils.auth import require_auth
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, plotly_layout, BRAND, STATUS_COLORS
 from utils.formatters import fmt_datetime, fmt_uptime, pct_color
 
@@ -527,3 +528,13 @@ for tab, name in zip(tabs, tab_names):
                     _render_agentless_row(device, tab_key=name)
                 else:
                     _render_agent_row(device, tab_key=name, latest_version=_latest_agent_version)
+
+_ai_devs = data.get("items", []) if data else []
+_ai_online = sum(1 for _d in _ai_devs if _d.get("status") == "online")
+render_ai_assistant("Devices", {
+    "total_devices": len(_ai_devs),
+    "online_devices": _ai_online,
+    "offline_devices": len(_ai_devs) - _ai_online,
+    "agent_managed": sum(1 for _d in _ai_devs if not _d.get("is_agentless")),
+    "agentless_devices": sum(1 for _d in _ai_devs if _d.get("is_agentless")),
+})

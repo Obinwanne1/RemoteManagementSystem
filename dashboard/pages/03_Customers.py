@@ -3,6 +3,7 @@ from utils.styles import inject_css, badge, BRAND, STATUS_COLORS
 from utils.formatters import fmt_datetime
 from utils.auth import require_auth, current_user
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 
 st.set_page_config(page_title="Customers — RMM", layout="wide")
 inject_css()
@@ -204,3 +205,5 @@ with st.expander("+ Add New Customer", expanded=show_add):
             else:
                 st.success(f"Customer '{add_name.strip()}' created.")
                 st.rerun()
+
+render_ai_assistant("Customers")

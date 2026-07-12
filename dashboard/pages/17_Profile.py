@@ -4,6 +4,7 @@ import streamlit as st
 from utils.styles import inject_css, BRAND
 from utils.auth import require_auth, current_user
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 
 st.set_page_config(page_title="Profile — RMM", layout="wide")
 inject_css()
@@ -272,3 +273,5 @@ with col_right:
                         st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+render_ai_assistant("My Profile")

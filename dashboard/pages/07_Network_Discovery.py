@@ -4,6 +4,7 @@ import streamlit as st
 
 from utils.auth import require_auth, current_user
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND
 from utils.formatters import fmt_datetime
 
@@ -313,3 +314,5 @@ elif not st.session_state["nd_polling"]:
             '</div>',
             unsafe_allow_html=True,
         )
+
+render_ai_assistant("Network Discovery")

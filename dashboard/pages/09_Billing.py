@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 from utils.auth import require_auth
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes, fmt_currency, CURRENCY_SYMBOLS
 
@@ -217,3 +218,5 @@ else:
                 new_num = result.get("invoice_number", "")
                 st.success(f"Invoice {new_num} generated for {inv_cust}.")
                 st.rerun()
+
+render_ai_assistant("Billing")

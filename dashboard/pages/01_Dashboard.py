@@ -6,6 +6,7 @@ import pandas as pd
 
 from utils.auth import require_auth
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 from utils.cached_calls import (
     cached_summary, cached_health_map, cached_recent_alerts,
     cached_activity_feed, cached_recent_events,
@@ -332,6 +333,18 @@ else:
     st.markdown("".join(ev_html), unsafe_allow_html=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
+
+render_ai_assistant("Overview", {
+    "total_devices": d.get("total", 0),
+    "online_devices": d.get("online", 0),
+    "offline_devices": d.get("offline", 0),
+    "critical_devices": d.get("critical", 0),
+    "warning_devices": d.get("warning", 0),
+    "open_alerts": a.get("open", 0),
+    "critical_alerts": a.get("critical", 0),
+    "open_tickets": t.get("open", 0),
+    "in_progress_tickets": t.get("in_progress", 0),
+})
 
 # ── Auto-refresh every 30s ────────────────────────────────────────────────────
 import time as _time

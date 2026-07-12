@@ -4,6 +4,7 @@ import streamlit as st
 
 from utils.auth import require_auth
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, BRAND
 
 st.set_page_config(page_title="Terminal — RMM", layout="wide")
@@ -207,6 +208,8 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True,
 )
+
+render_ai_assistant("Remote Terminal")
 
 # ── Auto-refresh while session is active ─────────────────────────────────────
 if st.session_state.get("_term_session_id"):

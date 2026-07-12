@@ -4,6 +4,7 @@ from utils.styles import inject_css, badge, BRAND, STATUS_COLORS
 from utils.formatters import fmt_datetime, SUPPORTED_CURRENCIES, SUPPORTED_TIMEZONES
 from utils.auth import require_auth, current_user
 from utils.nav import render_sidebar
+from utils.ai_assistant import render_ai_assistant
 
 st.set_page_config(page_title="Admin — RMM", layout="wide")
 inject_css()
@@ -942,3 +943,5 @@ with tab_org:
         else:
             st.session_state.pop("_org_settings", None)
             st.success(f"Saved — currency: {sel_currency}, timezone: {sel_timezone}. Reload pages to apply.")
+
+render_ai_assistant("Admin Panel")
