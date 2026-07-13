@@ -1672,3 +1672,86 @@ Install: `pip install anthropic>=0.40.0`
 
 **Voice input (future):** Add `st.audio_input()` → transcribe → feed transcript to `_send_message()`. No backend changes needed.
 - 400/422 error handlers: detail logged server-side only, generic message returned to client.
+
+---
+
+## 16. Commercial Audit — Phase F
+
+### F.1 Agent Multi-Customer Routing
+
+`api/schemas/agents.py` — `customer_id = fields.String(load_default="", validate=validate.Length(max=36))`
+
+`api/routes/agents.py` registration — if `customer_id` in payload and valid UUID: assigns agent to that customer. Otherwise falls back to `Customer.query.filter_by(is_active=True).first()` (backward compatible).
+
+`agent/config.ini` — `customer_id =` under `[api]`. Set via `setup_agent.py <server_ip> <org_token> <customer_id>`.
+
+### F.2 DPAPI Agent Token Encryption
+
+`agent/rmm_agent.py` — `_protect_token()` / `_unprotect_token()`. Windows: encrypts with `win32crypt.CryptProtectData`, stores as `DPAPI:<base64>`. Non-Windows or error: stores plaintext. Existing plaintext tokens auto-migrate on first write. Requires `pywin32` on Windows.
+
+### F.3 OpenAPI 3.0 / Swagger
+
+`GET /api/docs` — SwaggerUI (CDN, brand topbar). `GET /api/openapi.json` — raw spec (47 paths, 16 tags, BearerAuth). No new pip deps.
+
+### F.4 Redis Cache (`api/utils/cache.py`)
+
+`cache_get(key)` / `cache_set(key, value, ttl)` / `cache_delete(key)`. JSON-serialized Redis values with TTL. Silent no-op on Redis unavailability.
+
+Applied: dashboard summary (30s, per-tenant key), platform_counts (60s).
+
+### F.5 Alert Thundering Herd Fix
+
+Redis `SET NX EX 55` lock in `evaluate_all_rules`. Lock key: `rmm:lock:evaluate_all_rules`. If lock not acquired, task exits. Released in `finally`.
+
+### F.6 Webhook Dispatch (`api/utils/webhook.py`)
+
+`dispatch_alert_webhooks(channels, rule_name, device_hostname, message, severity)`.
+
+Formats: Slack Block Kit (color-coded), MS Teams MessageCard, generic JSON POST. 5s timeout. Never raises.
+
+### F.7 Device Ownership (Client Role)
+
+- `POST /api/terminal/sessions` — returns 404 if `device.customer_id != claims["customer_id"]`
+- `POST /api/scripts/<id>/run` — filters `device_ids` to customer-scoped query; unauthorized IDs skipped
+
+### F.8 Script Run Audit
+
+`run_script()` emits `AuditLog(action="script_run", resource_type="script", payload={script_name, device_count, device_ids})` after commit.
+
+### F.9 GDPR Endpoints
+
+| Endpoint | Behaviour |
+|----------|-----------|
+| `GET /api/admin/users/<id>/gdpr-export` | Returns `{user, audit_log[1000], ticket_comments[1000]}` |
+| `DELETE /api/admin/users/<id>/gdpr-delete` | Anonymizes PII, scrubs IPs from audit log, nulls comment author email. Irreversible. |
+
+Both admin-only. Both emit `AuditLog` entry.
+
+### F.10 Billing Automation
+
+`Customer` gains `billing_day`, `per_device_rate`, `tax_rate` (migration `j1k2l3m4n5o6`).
+
+`tasks/billing_tasks.py` `generate_recurring_invoices` (beat 86400s): generates draft invoice for prior month for customers where `billing_day == today` and `per_device_rate > 0`. Idempotent on `(customer_id, period_start)`.
+
+### F.11 Configurable SLA Policies
+
+`SLAPolicy` model: `(customer_id nullable, priority)` unique. Seeded with 4 global defaults.
+
+Routes at `/api/sla-policies/`. `tickets.py` `_sla_resolution_hours()` lookup: customer-specific → global → hardcoded.
+
+### F.12 Database Backup (`tasks/backup_tasks.py`)
+
+`backup_database` (beat 86400s): pg_dump → gzip → `BACKUP_DIR`. Prunes files older than `BACKUP_RETAIN_DAYS` days. Retry on timeout (3600s) or error (1800s).
+
+Env: `BACKUP_DIR` (default `../backups`), `BACKUP_RETAIN_DAYS` (default 7).
+
+Restore: `gunzip -c backups/rmmdb_YYYYMMDD_HHMMSS.sql.gz | psql -U rmm_app rmmdb`
+
+### F.13 Migration Chain (complete)
+
+```
+d746c05420bd → 2c8f1d3e9a4b → 93baa3927b0c → f3e2d1c0b9a8 → a1b2c3d4e5f6
+→ e5d4c3b2a1f0 → b5c4d3e2f1a0 → c1d2e3f4a5b6 → d2e3f4a5b6c7 → e6f7a8b9c0d1
+→ f1a2b3c4d5e6 → a2b3c4d5e6f7 → b3c4d5e6f7a8 → c4d5e6f7a8b9 → d5e6f7a8b9c0
+→ f7a8b9c0d1e2 → h9i0j1k2l3m4 → i0j1k2l3m4n5 → j1k2l3m4n5o6 → k2l3m4n5o6p7
+```

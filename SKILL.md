@@ -1322,3 +1322,230 @@ Set `AI_ASSISTANT_ENABLED=false` to disable without removing the widget code.
 | Rate limit 30 req/min | Prevents abuse; reuses existing Flask-Limiter |
 | History in session state only | No PII stored in DB; GDPR-friendly |
 | Claude Haiku 4.5 | <1s typical response; ~$0.0008/query at normal usage |
+
+---
+
+## Phase F — Commercial Audit (Security, Scale, Compliance)
+
+### F.1 Agent Multi-Customer Routing
+
+`agent/config.ini` — add under `[api]`:
+```ini
+customer_id =
+```
+
+`api/schemas/agents.py` — add field:
+```python
+customer_id = fields.String(load_default="", validate=validate.Length(max=36))
+```
+
+`api/routes/agents.py` — replace hardcoded first-customer lookup:
+```python
+customer_id_hint = data.get("customer_id", "").strip()
+if customer_id_hint:
+    customer = Customer.query.filter_by(id=customer_id_hint, is_active=True).first()
+    if not customer:
+        return jsonify({"error": "Invalid customer_id"}), 400
+else:
+    customer = Customer.query.filter_by(is_active=True).first()
+```
+
+Deploy new agent via `setup_agent.py`:
+```bash
+python setup_agent.py <server_ip> <org_token> <customer_id>
+```
+
+---
+
+### F.2 Agent Token DPAPI Encryption (Windows)
+
+`agent/rmm_agent.py` — helpers after `save_config()`:
+```python
+_IS_WINDOWS = platform.system() == "Windows"
+_DPAPI_PREFIX = "DPAPI:"
+
+def _protect_token(plaintext: str) -> str:
+    if not _IS_WINDOWS or not plaintext:
+        return plaintext
+    import win32crypt, base64
+    blob = win32crypt.CryptProtectData(plaintext.encode("utf-8"), "RMM Agent Token", ...)
+    return _DPAPI_PREFIX + base64.b64encode(blob).decode("ascii")
+
+def _unprotect_token(stored: str) -> str:
+    if not stored.startswith(_DPAPI_PREFIX):
+        return stored  # legacy plaintext — migrated automatically on next save
+    import win32crypt, base64
+    raw = base64.b64decode(stored[len(_DPAPI_PREFIX):])
+    _, plaintext = win32crypt.CryptUnprotectData(raw, ...)
+    return plaintext.decode("utf-8")
+```
+
+On startup, reads stored token through `_unprotect_token`. On register/rotate, saves through `_protect_token`.
+
+---
+
+### F.3 OpenAPI / Swagger Documentation
+
+New files:
+- `api/swagger_spec.py` — Python dict with full OpenAPI 3.0 spec (47 paths, 16 tag groups, BearerAuth scheme)
+- `api/routes/docs.py` — Blueprint serving:
+  - `GET /api/docs` — SwaggerUI HTML (CDN, `#407E3C` brand topbar)
+  - `GET /api/openapi.json` — raw spec
+
+Register in `api/app.py`:
+```python
+from routes.docs import docs_bp
+app.register_blueprint(docs_bp)  # no url_prefix — routes are absolute
+```
+
+No new pip dependencies. SwaggerUI loads from CDN.
+
+---
+
+### F.4 Redis Query Cache
+
+`api/utils/cache.py`:
+```python
+def cache_get(key: str): ...       # returns deserialized value or None
+def cache_set(key: str, value, ttl: int): ...  # stores JSON with TTL
+def cache_delete(key: str): ...    # deletes key
+```
+
+Applied in:
+- `api/routes/dashboard.py` `summary()` — 30s TTL, key `rmm:dash:summary:{cid or 'all'}`
+- `api/routes/devices.py` `platform_counts()` — 60s TTL, key `rmm:dash:platform_counts`
+
+---
+
+### F.5 Alert Webhook Dispatch
+
+`api/utils/webhook.py`:
+```python
+def dispatch_alert_webhooks(channels, rule_name, device_hostname, message, severity):
+    if channels.get("slack"): _post_slack(...)
+    if channels.get("teams"): _post_teams(...)
+    if channels.get("webhook"): _post_generic(...)
+```
+
+Payloads:
+- **Slack** — Block Kit attachment with color-coded severity (#FF3B30 critical, #FF9500 warning, #007AFF info)
+- **Teams** — MessageCard format
+- **Generic** — `{"event":"rmm_alert","rule":...,"device":...,"severity":...,"message":...,"timestamp":...}`
+
+Add webhook URL to `AlertRule.notification_channels`:
+```json
+{"email": ["ops@example.com"], "slack": "https://hooks.slack.com/...", "teams": "https://outlook.office.com/..."}
+```
+
+---
+
+### F.6 Nightly Database Backup
+
+`api/tasks/backup_tasks.py`:
+- Finds `pg_dump` (PATH or Windows install paths `/Program Files/PostgreSQL/*/bin/`)
+- Runs dump, gzip-compresses to `BACKUP_DIR` (default: `../backups/`)
+- Prunes `.sql.gz` files older than `BACKUP_RETAIN_DAYS` (default 7)
+- Retries on timeout (1h) or error (30 min)
+
+Beat schedule entry in `celery_app.py`:
+```python
+"backup-database-daily": {"task": "tasks.backup_tasks.backup_database", "schedule": 86400.0}
+```
+
+Env vars:
+```
+BACKUP_DIR=C:\RMM\backups
+BACKUP_RETAIN_DAYS=7
+```
+
+Restore:
+```bash
+gunzip -c backups/rmmdb_20260713_020000.sql.gz | psql -U rmm_app rmmdb
+```
+
+---
+
+### F.7 Billing Automation
+
+Customer model — new columns:
+```python
+billing_day     = db.Column(db.Integer, nullable=True)      # day-of-month (1-28)
+per_device_rate = db.Column(db.Numeric(10, 2), nullable=True)
+tax_rate        = db.Column(db.Numeric(5, 4), nullable=True)  # 0.0800 = 8%
+```
+
+Migration: `j1k2l3m4n5o6`
+
+`api/tasks/billing_tasks.py` `generate_recurring_invoices`:
+- Runs daily via beat (86400s)
+- Finds customers where `billing_day == today` and `per_device_rate > 0`
+- Generates draft invoice for prior calendar month
+- Idempotent — skips if invoice for that `(customer_id, period_start)` already exists
+
+Configure billing profile via `PUT /api/customers/<id>`:
+```json
+{"billing_day": 1, "per_device_rate": 15.00, "tax_rate": 0.08}
+```
+
+---
+
+### F.8 Configurable SLA Policies
+
+`api/models/sla_policy.py` — `SLAPolicy` model: `customer_id` (nullable = global), `priority`, `response_hours`, `resolution_hours`. Unique constraint on `(customer_id, priority)`.
+
+Migration `k2l3m4n5o6p7` — creates table + seeds 4 global defaults:
+
+| Priority | Response | Resolution |
+|----------|----------|------------|
+| critical | 1h | 4h |
+| high | 4h | 8h |
+| medium | 8h | 24h |
+| low | 24h | 72h |
+
+CRUD at `/api/sla-policies/`:
+- `GET /` — list policies (filter by `?customer_id=` for combined global + customer view)
+- `POST /` — create (admin only)
+- `PUT /<id>` — update hours (admin only)
+- `DELETE /<id>` — delete customer-specific only; global defaults protected
+
+Ticket creation lookup order:
+1. Customer-specific policy for `(customer_id, priority)`
+2. Global policy for `priority`
+3. Hardcoded fallback `_SLA_HOURS`
+
+---
+
+### F.9 GDPR Endpoints
+
+```
+GET    /api/admin/users/<id>/gdpr-export   # Art. 20 — data portability
+DELETE /api/admin/users/<id>/gdpr-delete   # Art. 17 — right to erasure (irreversible)
+```
+
+Export returns: `{user, audit_log (last 1000), ticket_comments (last 1000)}`.
+
+Delete anonymizes:
+- `user.email` → `__anon__<id8>@deleted.local`
+- `user.full_name` → `Deleted User <id8>`
+- `user.password_hash` → `""`
+- `user.avatar_data` → `None`
+- `TicketComment.author_email` → `None` for all their comments
+- `AuditLog.ip_address` → `"0.0.0.0"` for all their log entries
+
+Both endpoints are admin-only. Both emit their own `AuditLog` entry.
+
+---
+
+### F.10 New Environment Variables
+
+Add to `.env`:
+```
+# Backup
+BACKUP_DIR=../backups
+BACKUP_RETAIN_DAYS=7
+
+# Alert webhooks (per AlertRule notification_channels — not global .env vars)
+# Set per-rule in the Alerts UI
+
+# Billing (per customer via API — not global)
+```

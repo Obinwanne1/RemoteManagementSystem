@@ -11,17 +11,22 @@ A NinjaOne-style Remote Monitoring & Management platform built in-house. Monitor
 | Category | What's included |
 |----------|----------------|
 | **Monitoring** | Real-time CPU/RAM/disk metrics, device health map, 7-day history fallback |
-| **Alerts** | Rule-based alerting (threshold + offline), SMTP notifications, cooldown control |
+| **Alerts** | Rule-based alerting (threshold + offline), SMTP + Slack + Teams + custom webhook notifications |
 | **Devices** | Agent-managed (Windows/macOS/Linux) + agentless WiFi devices (iOS/Android/IoT) |
-| **Tickets** | Full helpdesk ticketing with comments, priority, assignee, status workflow |
+| **Tickets** | Full helpdesk ticketing with comments, priority, assignee, SLA due dates, status workflow |
+| **SLA Policies** | Configurable SLA resolution targets per priority, per-customer overrides, auto due-date calc |
 | **Patch Management** | OS patches via WUA, software patches via winget, maintenance window enforcement |
 | **Scripts** | Run PowerShell/bat/Python/shell scripts remotely, 7 built-in maintenance scripts |
 | **Automation** | Scheduled automation profiles (weekly maintenance, patching, cleanup) |
 | **Network Discovery** | ICMP sweep + OUI/port/rDNS platform detection, saves agentless device records |
 | **Reports** | CSV reports: device health, patch compliance, alert summary, software inventory |
-| **Billing** | Invoice creation and status tracking per customer |
-| **Auth & Security** | JWT + refresh tokens, TOTP MFA, role-based access control (4 roles), superadmin |
-| **Admin** | Audit log, user management, org enrollment token, server IP display |
+| **Billing** | Invoice creation, recurring auto-invoices by device count, per-customer billing profiles |
+| **Auth & Security** | JWT + refresh tokens, TOTP MFA, role-based access control (5 roles), superadmin |
+| **AI Assistant** | Context-aware chat widget on every page, JWT role-scoped, rate-limited, Claude Haiku 4.5 |
+| **GDPR** | Data export (Art. 20) + erasure/anonymisation (Art. 17) endpoints for admin use |
+| **Database Backup** | Nightly pg_dump via Celery beat, gzip compressed, configurable retention |
+| **API Docs** | Interactive Swagger/OpenAPI 3.0 UI at `/api/docs`, raw spec at `/api/openapi.json` |
+| **Admin** | Audit log, user management, org enrollment token, server IP display, GDPR controls |
 
 ---
 
@@ -145,6 +150,11 @@ Copy `.env.example` to `api/.env` and fill in:
 | `CORS_ORIGINS` | — | Default: `http://localhost:8501` |
 | `SUPERADMIN_EMAIL` | — | Default: `superadmin@rmm.local` |
 | `SMTP_HOST` | — | Omit to disable email alerts |
+| `ANTHROPIC_API_KEY` | — | Enables AI Assistant (Claude Haiku 4.5). Omit to disable. |
+| `AI_ASSISTANT_MODEL` | — | Default: `claude-haiku-4-5-20251001` |
+| `AI_ASSISTANT_ENABLED` | — | Default: `true`. Set `false` to hide widget. |
+| `BACKUP_DIR` | — | Directory for nightly DB backups. Default: `../backups` |
+| `BACKUP_RETAIN_DAYS` | — | Days to keep backup files. Default: `7` |
 
 Generate secrets:
 ```bash
@@ -197,6 +207,7 @@ After first startup the superadmin account is auto-seeded from your `.env`:
 | **viewer** | Read-only — dashboard, devices, alerts, tickets |
 | **technician** | Operational — scripts, patches, tickets, maintenance |
 | **admin** | Full — users, billing, audit log, system config |
+| **client** | Customer-facing — own tickets only, read-only device view |
 | **superadmin** | System-level — bypasses all role checks, cannot be deleted via UI |
 
 ---
@@ -226,7 +237,10 @@ All routes prefixed `/api/`. JWT required unless noted.
 - **Network:** `/network/scan`, `/network/agentless_devices`
 - **Reports:** `/reports/`
 - **Billing:** `/billing/invoices/`
-- **Admin:** `/admin/users`, `/admin/org-token`, `/admin/server_ips`
+- **SLA Policies:** `/sla-policies/`, `/sla-policies/<id>`
+- **AI Assistant:** `/assistant/chat`
+- **Admin:** `/admin/users`, `/admin/org-token`, `/admin/server_ips`, `/admin/users/<id>/gdpr-export`, `/admin/users/<id>/gdpr-delete`
+- **API Docs:** `/api/docs` (Swagger UI), `/api/openapi.json` (raw spec)
 - **Health:** `/health` — `{"status": "ok", "db": true, "redis": true, "version": "1.0.0"}`
 
 Full reference: see `TECHNICAL_GUIDE.md`.
@@ -240,16 +254,16 @@ RemoteManagementSystem/
 ├── api/                    # Flask API
 │   ├── app.py              # Application factory
 │   ├── config.py           # Environment configs
-│   ├── models/             # SQLAlchemy models (11 models)
-│   ├── routes/             # Blueprint handlers (14 blueprints)
-│   ├── tasks/              # Celery tasks (alert, patch, network, report, automation)
-│   ├── utils/              # Helpers (superadmin, oui, notifications, builtin_scripts)
+│   ├── models/             # SQLAlchemy models (12 models incl. SLAPolicy)
+│   ├── routes/             # Blueprint handlers (18 blueprints incl. assistant, docs, sla_policies)
+│   ├── tasks/              # Celery tasks (alert, patch, network, report, automation, backup, billing)
+│   ├── utils/              # Helpers (superadmin, oui, notifications, builtin_scripts, cache, webhook)
 │   ├── migrations/         # Alembic migrations
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── dashboard/              # Streamlit frontend
 │   ├── app.py              # Login + routing entrypoint
-│   ├── pages/              # 17 pages
+│   ├── pages/              # 19 pages
 │   ├── utils/              # api_client, auth, nav, styles, formatters
 │   ├── Dockerfile
 │   └── requirements.txt
@@ -287,6 +301,9 @@ RemoteManagementSystem/
 - [ ] Enable MFA for all admin accounts
 - [ ] Set up automated PostgreSQL backups
 - [ ] Run agent as a low-privilege Windows service account (not SYSTEM)
+- [ ] Set `ANTHROPIC_API_KEY` or set `AI_ASSISTANT_ENABLED=false` to disable the widget
+- [ ] Set `BACKUP_DIR` to a path outside the project directory (network share or cloud-synced)
+- [ ] Verify Celery beat is running so nightly backups and recurring invoices fire
 
 ---
 
