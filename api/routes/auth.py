@@ -266,6 +266,8 @@ def force_change_password():
     user = User.query.get(identity)
     if not user:
         return jsonify({"error": "User not found"}), 404
+    if not user.must_change_password:
+        return jsonify({"error": "Password change not required"}), 403
 
     data = request.get_json(silent=True) or {}
     new_pw = data.get("new_password", "")
