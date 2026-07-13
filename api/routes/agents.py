@@ -87,10 +87,15 @@ def register():
         )
         device = existing
     else:
-        # Look up customer via org token (first customer for now, extend later)
-        customer = Customer.query.filter_by(is_active=True).first()
-        if not customer:
-            return jsonify({"error": "No active customer found. Create a customer first."}), 400
+        customer_id_hint = data.get("customer_id", "").strip()
+        if customer_id_hint:
+            customer = Customer.query.filter_by(id=customer_id_hint, is_active=True).first()
+            if not customer:
+                return jsonify({"error": "Invalid customer_id"}), 400
+        else:
+            customer = Customer.query.filter_by(is_active=True).first()
+            if not customer:
+                return jsonify({"error": "No active customer found. Create a customer first."}), 400
 
         device = Device(
             customer_id=customer.id,

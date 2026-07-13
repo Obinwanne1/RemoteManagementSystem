@@ -81,11 +81,12 @@ def register(config: configparser.ConfigParser) -> APIClient:
     """Register with API and save credentials to config."""
     api_url = config.get("api", "url")
     org_token = config.get("api", "org_token")
+    customer_id = config.get("api", "customer_id", fallback="").strip()
 
     logger.info("Registering agent with API...")
     hw = get_hardware_info()
 
-    result = APIClient.register(api_url, org_token, hw)
+    result = APIClient.register(api_url, org_token, hw, customer_id=customer_id)
     if not result:
         logger.error("Registration failed. Check API URL and org_token in config.ini")
         sys.exit(1)

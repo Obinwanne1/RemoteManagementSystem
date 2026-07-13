@@ -8,6 +8,7 @@ class AgentRegisterSchema(Schema):
         unknown = EXCLUDE
 
     org_token = fields.String(required=True, validate=validate.Length(min=1))
+    customer_id = fields.String(load_default="", validate=validate.Length(max=36))
     hostname = fields.String(required=True, validate=validate.Length(min=1, max=255))
     mac_address = fields.String(load_default="", validate=validate.Length(max=100))
     serial_number = fields.String(load_default="", validate=validate.Length(max=255))
