@@ -8,7 +8,7 @@ Version 1.0 — Built exclusively for Faiyke-AI Agency
 **Prepared for:** Faiyke-AI Agency
 **System URL:** http://localhost:8501
 **API URL:** http://localhost:5000
-**Document version:** 5.0 (Frozen-Exe Deployment, Client Portal, Agent Resilience, Ticket Table UI, Departments)
+**Document version:** 6.0 (Commercial Audit: Security, SLA Policies, GDPR, Billing Automation, Webhooks, API Docs, Backup)
 
 ---
 
@@ -116,6 +116,14 @@ This document is written in plain language. Technical jargon is explained when f
 - Chapter 42: Client Portal — Self-Service Ticket Access for Client Users
 - Chapter 43: Departments — Grouping Users and Tickets
 - Chapter 44: AI Assistant — Contextual Guidance on Every Page
+
+**PART XI — COMMERCIAL AUDIT ADDITIONS**
+- Chapter 45: API Documentation (Swagger/OpenAPI)
+- Chapter 46: Alert Webhooks — Slack, Teams, Custom
+- Chapter 47: Configurable SLA Policies
+- Chapter 48: Billing Automation — Recurring Invoices
+- Chapter 49: Database Backup and Recovery
+- Chapter 50: GDPR Compliance — Data Export and Erasure
 
 **Appendix A: Glossary**
 **Appendix B: Quick Reference Cards**
@@ -4908,6 +4916,366 @@ Password must be at least 10 characters. No API restart needed.
 
 ---
 
-*End of RMM System Complete Handbook — Version 4.0*
+---
+
+# PART XI — COMMERCIAL AUDIT ADDITIONS
+
+---
+
+## Chapter 45: API Documentation (Swagger/OpenAPI)
+
+### What this is
+
+The RMM system includes built-in, interactive API documentation accessible from any browser. This is primarily for developers and technically-minded administrators who want to explore or test API endpoints directly.
+
+### How to access it
+
+With the Flask API running, open:
+
+```
+http://localhost:5000/api/docs
+```
+
+You will see the SwaggerUI interface — a visual listing of every API endpoint, grouped by category. You can expand any endpoint to see its parameters, request body format, and response structure.
+
+To test an endpoint from within the documentation:
+
+1. Click **Authorize** at the top right.
+2. Enter your JWT token (obtain one by logging in via `POST /api/auth/login`).
+3. Click any endpoint, then click **Try it out** → fill in parameters → **Execute**.
+
+### The raw spec
+
+The machine-readable OpenAPI 3.0 specification is available at:
+
+```
+http://localhost:5000/api/openapi.json
+```
+
+This can be imported into Postman, Insomnia, or any other API testing tool.
+
+### Coverage
+
+The spec covers all 47 API paths across 16 categories: Auth, Agents, Devices, Customers, Alerts, Tickets, Scripts, Patches, Automation, Dashboard, Network, Terminal, Admin, Billing, Reports, and System.
+
+> **NOTE:** No additional software needs to be installed. The documentation UI loads from a public CDN automatically.
+
+---
+
+## Chapter 46: Alert Webhooks — Slack, Teams, Custom
+
+### What this is
+
+In addition to email notifications, alert rules can now send real-time notifications to Slack channels, Microsoft Teams channels, or any custom HTTP endpoint when an alert fires.
+
+### Setting up a webhook on an alert rule
+
+When creating or editing an alert rule (Alerts → Alert Rules → Add Rule / Edit), the **Notification Channels** field accepts a JSON object. Add any combination of the following keys:
+
+```json
+{
+  "email": ["ops@yourcompany.com", "oncall@yourcompany.com"],
+  "slack": "https://hooks.slack.com/services/T.../B.../...",
+  "teams": "https://yourcompany.webhook.office.com/webhookb2/...",
+  "webhook": "https://your-endpoint.com/rmm-alerts"
+}
+```
+
+All keys are optional. Include only the channels you want.
+
+### Getting a Slack webhook URL
+
+1. Go to **api.slack.com/apps** → create an app → **Incoming Webhooks** → activate → add to channel → copy the URL.
+
+### Getting a Teams webhook URL
+
+1. In Teams, right-click a channel → **Connectors** → **Incoming Webhook** → configure → copy the URL.
+
+### Custom webhook format
+
+Your endpoint will receive a POST with JSON body:
+
+```json
+{
+  "event": "rmm_alert",
+  "rule": "High CPU Usage",
+  "device": "WORKSTATION-01",
+  "severity": "warning",
+  "message": "CPU usage at 94% for 5 minutes",
+  "timestamp": "2026-07-13T14:32:00Z"
+}
+```
+
+### Severity colours (Slack / Teams)
+
+| Severity | Colour |
+|----------|--------|
+| critical | Red `#FF3B30` |
+| warning | Orange `#FF9500` |
+| info | Blue `#007AFF` |
+
+> **NOTE:** Webhook delivery failures are logged server-side and never block alert processing. If your webhook endpoint is down, the alert still fires and email is still sent.
+
+---
+
+## Chapter 47: Configurable SLA Policies
+
+### What SLA policies are
+
+A Service Level Agreement (SLA) policy defines how quickly a ticket must be resolved based on its priority. For example: a critical ticket must be resolved within 4 hours; a low-priority ticket within 72 hours.
+
+The system uses these policies to automatically calculate the **due date** on every new ticket.
+
+### Default global policies
+
+The following defaults are seeded automatically at installation:
+
+| Priority | Response Target | Resolution Target (Due Date) |
+|----------|----------------|------------------------------|
+| Critical | 1 hour | 4 hours |
+| High | 4 hours | 8 hours |
+| Medium | 8 hours | 24 hours |
+| Low | 24 hours | 72 hours |
+
+These global defaults apply to all customers unless a customer-specific override is set.
+
+### Setting a customer-specific SLA policy
+
+You can configure different SLA targets for individual customers — for example, a premium customer may have a 1-hour resolution SLA on high-priority tickets.
+
+Via the API (admin role required):
+
+```
+POST /api/sla-policies/
+{
+  "customer_id": "<customer UUID>",
+  "priority": "high",
+  "response_hours": 2,
+  "resolution_hours": 4
+}
+```
+
+The system then uses the customer-specific policy for tickets belonging to that customer, falling back to the global default for priorities that have no customer override.
+
+### Viewing and updating policies
+
+```
+GET  /api/sla-policies/?customer_id=<id>   # shows both global + customer-specific
+PUT  /api/sla-policies/<policy_id>          # update hours
+DELETE /api/sla-policies/<policy_id>        # delete customer-specific (global protected)
+```
+
+> **NOTE:** Deleting a customer-specific policy reverts that customer to the global default — it does not delete the global policy.
+
+### How due dates are calculated
+
+When a ticket is created, the system calculates the due date as:
+
+```
+due_date = ticket_created_at + resolution_hours
+```
+
+Where `resolution_hours` comes from (in priority order):
+1. Customer-specific SLA policy for that priority
+2. Global SLA policy for that priority
+3. Built-in hardcoded defaults
+
+If a technician manually sets a `due_date` in the ticket creation form, it overrides the SLA calculation entirely.
+
+---
+
+## Chapter 48: Billing Automation — Recurring Invoices
+
+### What billing automation does
+
+If you bill clients monthly based on the number of devices they have enrolled, the system can automatically generate draft invoices on a schedule — eliminating the need to manually create invoices each month.
+
+### Setting up a billing profile for a customer
+
+Update the customer record with billing profile information (Admin → Customers → edit customer, or via API):
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `billing_day` | Day of month (1–28) to generate invoice | `1` (1st of each month) |
+| `per_device_rate` | Charge per managed device (USD) | `15.00` |
+| `tax_rate` | Tax rate as decimal | `0.08` (8%) |
+
+Via the API:
+```
+PUT /api/customers/<id>
+{
+  "billing_day": 1,
+  "per_device_rate": 15.00,
+  "tax_rate": 0.08
+}
+```
+
+### What happens automatically
+
+Every day at the time the Celery beat scheduler runs, the system checks which customers have `billing_day` equal to today's date. For each qualifying customer:
+
+1. Counts all currently managed devices
+2. Calculates: `subtotal = device_count × per_device_rate`
+3. Calculates: `tax = subtotal × tax_rate`
+4. Creates a **draft invoice** for the previous calendar month
+5. Invoice number assigned automatically (e.g. `INV-2026-0042`)
+
+The invoice is created in **Draft** status — it is not sent automatically. A technician or admin reviews it in **Billing → Invoices**, then clicks **Send** or **Send Email** when ready.
+
+### Safeguards
+
+- If an invoice for the same customer and billing period already exists, the task skips it — no duplicate invoices are ever created.
+- If the Celery worker is offline on the billing day, the invoice will not be generated retroactively — the task only fires when the scheduler is running.
+
+### Reviewing auto-generated invoices
+
+1. Go to **Billing → Invoices**
+2. Filter by customer or status = **Draft**
+3. Review line items, adjust if needed
+4. Click **Mark as Sent** or **Send Email** (if SMTP is configured)
+
+---
+
+## Chapter 49: Database Backup and Recovery
+
+### Why this matters
+
+The PostgreSQL database contains all your device history, tickets, alerts, invoices, and customer records. A disk failure without a backup means permanent data loss.
+
+The system runs an automatic nightly backup of the entire database.
+
+### How the backup works
+
+Every 24 hours, a background Celery task:
+
+1. Finds the `pg_dump` tool (auto-detected from standard PostgreSQL install paths)
+2. Dumps the full database in SQL format
+3. Compresses it with gzip
+4. Saves to the backup directory as `rmmdb_YYYYMMDD_HHMMSS.sql.gz`
+5. Removes backup files older than the retention period
+
+### Configuration (`.env`)
+
+```
+BACKUP_DIR=C:\RMM\backups          # where to save backup files (default: ../backups)
+BACKUP_RETAIN_DAYS=7               # how many days to keep (default: 7)
+```
+
+> **TIP:** Point `BACKUP_DIR` at a network drive or cloud-synced folder for off-site protection.
+
+### Manually triggering a backup
+
+From a terminal with the Celery worker running:
+
+```python
+# From inside the api/ directory with venv active:
+python -c "from tasks.backup_tasks import backup_database; backup_database.delay()"
+```
+
+Or simply wait — the task runs automatically every 24 hours.
+
+### Restoring from a backup
+
+> **WARNING:** Restoring a backup overwrites all current data. Only do this if the database is corrupted or data is lost.
+
+1. Stop the Flask API and Celery workers.
+2. Open a terminal on the RMM server.
+3. Run:
+
+```powershell
+# List available backups
+Get-ChildItem C:\RMM\backups\*.sql.gz | Sort-Object LastWriteTime -Descending
+
+# Restore (replace filename with your chosen backup)
+& "C:\Program Files\PostgreSQL\15\bin\pg_restore.exe" `
+    --username rmm_app --dbname rmmdb --clean `
+    C:\RMM\backups\rmmdb_20260713_020000.sql.gz
+```
+
+Or using Linux/WSL:
+```bash
+gunzip -c backups/rmmdb_20260713_020000.sql.gz | psql -U rmm_app -d rmmdb
+```
+
+4. Restart the Flask API and Celery workers.
+
+> **NOTE:** The backup includes all data — devices, tickets, users, invoices, and audit logs. It does not include uploaded files, reports, or the `.env` file (those must be backed up separately).
+
+### What happens if `pg_dump` is not found
+
+The backup task logs an error and skips the run. It will try again the next day. To fix: ensure the PostgreSQL `bin` directory is in your system PATH, or the backup task will detect it automatically if PostgreSQL is installed in the standard location (`C:\Program Files\PostgreSQL\<version>\bin\`).
+
+---
+
+## Chapter 50: GDPR Compliance — Data Export and Erasure
+
+### Overview
+
+The system provides two admin-only tools to support compliance with data privacy regulations (GDPR Article 17 "Right to Erasure" and Article 20 "Right to Data Portability").
+
+> **IMPORTANT:** These actions are irreversible. Only an administrator should perform them, and only in response to a verified request from the data subject.
+
+### Exporting a user's personal data (Article 20)
+
+A user has the right to request a copy of all personal data the system holds about them.
+
+**Via API (admin JWT required):**
+```
+GET /api/admin/users/<user_id>/gdpr-export
+```
+
+The response is a JSON document containing:
+- Complete user profile (name, email, role, created date, settings)
+- Up to 1,000 audit log entries linked to this user (actions they performed)
+- Up to 1,000 ticket comments they authored
+
+This JSON can be downloaded and provided to the user.
+
+The export action is itself recorded in the audit log (action: `GDPR_EXPORT`).
+
+### Erasing a user's personal data (Article 17)
+
+> **WARNING:** This action is **permanent and irreversible**. The user's personal data is anonymised in-place. It cannot be undone.
+
+**Via API (admin JWT required):**
+```
+DELETE /api/admin/users/<user_id>/gdpr-delete
+```
+
+What is anonymised:
+| Data | What happens |
+|------|--------------|
+| Email address | Replaced with `__anon__<id>@deleted.local` |
+| Full name | Replaced with `Deleted User <id>` |
+| Password | Cleared |
+| Profile photo | Removed |
+| Account status | Set to inactive |
+| IP addresses in audit log | Replaced with `0.0.0.0` |
+| Author email on ticket comments | Removed |
+
+What is **not** removed:
+- Audit log entries themselves (the actions were real system events) — only the IP address is scrubbed
+- Ticket comments they authored — the comment text remains, but authorship is anonymised
+- Invoices (financial records must be retained for legal reasons)
+
+**Protected accounts:**
+- The superadmin account cannot be anonymised (returns 403)
+- An admin cannot anonymise their own account (returns 400)
+
+### Workflow recommendation
+
+When you receive a data erasure request:
+
+1. Log in as admin
+2. Find the user under **Admin → Users** — note their user ID
+3. First perform the export (`GET /gdpr-export`) and save the file as a record
+4. Confirm with the requester and get written consent if required
+5. Perform the erasure (`DELETE /gdpr-delete`)
+6. Confirm to the requester that data has been erased
+7. Retain your own records of the request and erasure for compliance purposes
+
+---
+
+*End of RMM System Complete Handbook — Version 6.0*
 
 *For support with this guide, contact your system administrator or development team.*
