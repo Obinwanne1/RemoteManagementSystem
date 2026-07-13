@@ -2,17 +2,21 @@
 Agent setup helper — configures config.ini for a new WiFi/LAN deployment.
 
 Usage:
-    python setup_agent.py <server_ip> <org_token>
+    python setup_agent.py <server_ip> <org_token> [customer_id]
 
-Example:
+Examples:
     python setup_agent.py 192.168.1.100 a8b6ea9bceae8b9cff9e63c2519d3e306453c1325306c64d
+    python setup_agent.py 192.168.1.100 a8b6ea9bceae8b9cff9e63c2519d3e306453c1325306c64d 3f2a1b4c-...
+
+customer_id is the UUID from the RMM Admin panel. Required when enrolling into a specific
+customer. Omit only for single-customer setups.
 """
 import sys
 import configparser
 from pathlib import Path
 
 
-def setup(server_ip: str, org_token: str):
+def setup(server_ip: str, org_token: str, customer_id: str = ""):
     config_path = Path(__file__).parent / "config.ini"
     if not config_path.exists():
         print(f"ERROR: config.ini not found at {config_path}")
@@ -26,6 +30,7 @@ def setup(server_ip: str, org_token: str):
         cfg["api"] = {}
     cfg["api"]["url"] = f"http://{server_ip}:5000"
     cfg["api"]["org_token"] = org_token
+    cfg["api"]["customer_id"] = customer_id
 
     # Clear agent credentials to force re-registration on this machine
     if "agent" in cfg:
@@ -37,15 +42,20 @@ def setup(server_ip: str, org_token: str):
         cfg.write(f)
 
     print(f"config.ini updated:")
-    print(f"  url       = http://{server_ip}:5000")
-    print(f"  org_token = {org_token[:8]}{'*' * (len(org_token) - 8)}")
+    print(f"  url         = http://{server_ip}:5000")
+    print(f"  org_token   = {org_token[:8]}{'*' * (len(org_token) - 8)}")
+    print(f"  customer_id = {customer_id or '(not set — will use first active customer)'}")
     print()
     print("Now run:  python rmm_agent.py")
     print("The device will register and appear in the RMM dashboard within 60 seconds.")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) < 3 or len(sys.argv) > 4:
         print(__doc__)
         sys.exit(1)
-    setup(server_ip=sys.argv[1], org_token=sys.argv[2])
+    setup(
+        server_ip=sys.argv[1],
+        org_token=sys.argv[2],
+        customer_id=sys.argv[3] if len(sys.argv) == 4 else "",
+    )

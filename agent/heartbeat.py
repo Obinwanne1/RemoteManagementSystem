@@ -79,10 +79,12 @@ class APIClient:
             return False
 
     @staticmethod
-    def register(base_url: str, org_token: str, hardware_info: dict) -> Optional[dict]:
+    def register(base_url: str, org_token: str, hardware_info: dict, customer_id: str = "") -> Optional[dict]:
         """Register agent with API. Returns {device_id, agent_token} or None."""
         url = f"{base_url.rstrip('/')}/api/agents/register"
         payload = {"org_token": org_token, **hardware_info}
+        if customer_id:
+            payload["customer_id"] = customer_id
         try:
             resp = requests.post(url, json=payload, timeout=30)
             resp.raise_for_status()
