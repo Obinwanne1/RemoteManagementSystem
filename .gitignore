@@ -42,8 +42,14 @@ logs/
 
 # Reports / uploads
 reports/output/
+api/reports/
 uploads/
 scripts_library/custom/
+
+# Celery beat schedule (runtime artifacts)
+api/celerybeat-schedule
+api/celerybeat-schedule-shm
+api/celerybeat-schedule-wal
 
 # PyInstaller
 agent/dist/
