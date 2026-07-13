@@ -62,7 +62,7 @@ def create_app(config_name=None):
     # Import models so Alembic detects them
     with app.app_context():
         from models import user, device, customer, alert, ticket, patch, script, automation, report, billing, audit  # noqa
-        from models import org_settings, user_session, department, terminal  # noqa
+        from models import org_settings, user_session, department, terminal, sla_policy  # noqa
         try:
             from utils.builtin_scripts import ensure_builtin_scripts
             ensure_builtin_scripts()
@@ -122,6 +122,7 @@ def create_app(config_name=None):
     from routes.update import update_bp
     from routes.assistant import assistant_bp
     from routes.docs import docs_bp
+    from routes.sla_policies import sla_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(agents_bp, url_prefix="/api/agents")
@@ -143,6 +144,7 @@ def create_app(config_name=None):
     app.register_blueprint(update_bp, url_prefix="/api/agents/update")
     app.register_blueprint(assistant_bp, url_prefix="/api/assistant")
     app.register_blueprint(docs_bp)
+    app.register_blueprint(sla_bp, url_prefix="/api/sla-policies")
 
     import redis as redis_lib
     _redis_client = redis_lib.from_url(
