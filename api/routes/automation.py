@@ -22,6 +22,9 @@ def _require_role(*roles):
 @automation_bp.route("/profiles", methods=["GET"])
 @jwt_required()
 def list_profiles():
+    err = _require_role("admin", "technician", "viewer")
+    if err:
+        return err
     customer_id = request.args.get("customer_id")
     query = AutomationProfile.query
     if customer_id:
