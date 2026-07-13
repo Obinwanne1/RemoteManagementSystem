@@ -3,15 +3,40 @@ Periodic tasks: evaluate alert rules against latest device metrics,
 mark devices offline if heartbeat timeout exceeded.
 """
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 from tasks.celery_app import celery
 from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 
+_EVAL_LOCK_KEY = "rmm:alert_eval:lock"
+_EVAL_LOCK_TTL = 55  # seconds — expires just before next 60s beat fires
+
+
+def _get_redis():
+    import redis
+    return redis.from_url(
+        os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+        socket_timeout=2,
+        socket_connect_timeout=2,
+    )
+
 
 @celery.task(name="tasks.alert_tasks.evaluate_all_rules", bind=True, max_retries=3)
 def evaluate_all_rules(self):
+    # Redis lock — prevent thundering herd when evaluation takes longer than 60s beat interval
+    try:
+        _r = _get_redis()
+        acquired = _r.set(_EVAL_LOCK_KEY, "1", nx=True, ex=_EVAL_LOCK_TTL)
+        if not acquired:
+            logger.info("evaluate_all_rules: skipping — previous run still in progress")
+            return
+    except Exception as exc:
+        # Redis unavailable — proceed without lock rather than skip evaluation entirely
+        logger.warning("evaluate_all_rules: could not acquire lock (%s) — running without it", exc)
+        _r = None
+
     from app import create_app
     from extensions import db
     from models.alert import AlertRule, Alert
@@ -124,6 +149,12 @@ def evaluate_all_rules(self):
             db.session.rollback()
             logger.exception("evaluate_all_rules failed")
             raise
+        finally:
+            try:
+                if _r is not None:
+                    _r.delete(_EVAL_LOCK_KEY)
+            except Exception:
+                pass
 
 
 @celery.task(name="tasks.alert_tasks.mark_offline_devices", bind=True, max_retries=3)
