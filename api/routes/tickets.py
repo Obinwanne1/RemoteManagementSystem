@@ -31,6 +31,19 @@ def _require_role(*roles):
 _SLA_HOURS = {"critical": 4, "high": 8, "medium": 24, "low": 72}
 
 
+def _sla_resolution_hours(priority: str, customer_id: str) -> int:
+    """Look up SLA resolution hours: customer-specific policy first, then global, then hardcoded."""
+    from models.sla_policy import SLAPolicy
+    if customer_id:
+        policy = SLAPolicy.query.filter_by(customer_id=customer_id, priority=priority).first()
+        if policy:
+            return policy.resolution_hours
+    global_policy = SLAPolicy.query.filter_by(customer_id=None, priority=priority).first()
+    if global_policy:
+        return global_policy.resolution_hours
+    return _SLA_HOURS.get(priority, 24)
+
+
 def _current_claims():
     return get_jwt()
 
@@ -137,7 +150,7 @@ def create_ticket():
 
     priority = data.get("priority", "medium")
     due_date = data.get("due_date") or (
-        datetime.now(timezone.utc) + timedelta(hours=_SLA_HOURS.get(priority, 24))
+        datetime.now(timezone.utc) + timedelta(hours=_sla_resolution_hours(priority, customer_id))
     )
     ticket = Ticket(
         title=data["title"],
