@@ -87,6 +87,12 @@ def evaluate_all_rules(self):
 
                     triggered = _evaluate(metric_val, rule.operator, rule.threshold)
                     if not triggered:
+                        # Auto-resolve any open alerts for this rule+device
+                        Alert.query.filter(
+                            Alert.rule_id == rule.id,
+                            Alert.device_id == device.id,
+                            Alert.status == "open",
+                        ).update({"status": "resolved", "resolved_at": now})
                         continue
 
                     # Check cooldown — don't fire if already open or recent

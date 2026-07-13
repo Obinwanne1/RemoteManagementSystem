@@ -215,6 +215,17 @@ def heartbeat(device_id):
                 expires_at=now + timedelta(days=_TOKEN_LIFETIME_DAYS),
             ))
 
+    # Auto-resolve open offline alerts when device comes back online
+    if not _was_online:
+        from models.alert import Alert, AlertRule
+        offline_rule = AlertRule.query.filter_by(metric="offline", is_active=True).first()
+        if offline_rule:
+            Alert.query.filter(
+                Alert.rule_id == offline_rule.id,
+                Alert.device_id == device.id,
+                Alert.status == "open",
+            ).update({"status": "resolved", "resolved_at": now})
+
     db.session.commit()
 
     # Publish SSE events on state transitions (best-effort, never block heartbeat)
