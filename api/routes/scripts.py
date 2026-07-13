@@ -127,9 +127,12 @@ def run_script(script_id):
     if not device_ids:
         return jsonify({"error": "device_ids required"}), 400
 
-    valid_devices = {
-        d.id for d in Device.query.filter(Device.id.in_(device_ids)).all()
-    }
+    claims = get_jwt()
+    cid = claims.get("customer_id") if claims.get("role") == "client" else None
+    dq = Device.query.filter(Device.id.in_(device_ids))
+    if cid:
+        dq = dq.filter_by(customer_id=cid)
+    valid_devices = {d.id for d in dq.all()}
     runs = []
     for device_id in device_ids:
         if device_id not in valid_devices:
