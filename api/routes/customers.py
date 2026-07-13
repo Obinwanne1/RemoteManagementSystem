@@ -145,6 +145,9 @@ def customer_devices(customer_id):
 @customers_bp.route("/groups", methods=["GET"])
 @jwt_required()
 def list_groups():
+    err = _require_role("admin", "technician", "viewer")
+    if err:
+        return err
     groups = DeviceGroup.query.all()
     return jsonify([g.to_dict() for g in groups]), 200
 

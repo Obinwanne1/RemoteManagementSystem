@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy import func, case, and_
 from extensions import db
 from models.device import Device
@@ -10,43 +10,56 @@ from models.customer import Customer
 dashboard_bp = Blueprint("dashboard", __name__)
 
 
+def _scoped_customer_id():
+    """Return customer_id if caller is client role, else None (MSP staff see all)."""
+    claims = get_jwt()
+    if claims.get("role") == "client":
+        return claims.get("customer_id")
+    return None
+
+
 @dashboard_bp.route("/summary", methods=["GET"])
 @jwt_required()
 def summary():
+    cid = _scoped_customer_id()  # None = MSP staff (no filter); UUID = client (their tenant only)
+
     # Device counts — 1 query instead of 5
-    dev = db.session.execute(
-        db.select(
-            func.count().label("total"),
-            func.sum(case((Device.is_online == True, 1), else_=0)).label("online"),
-            func.sum(case((Device.status == "critical", 1), else_=0)).label("critical"),
-            func.sum(case((Device.status == "warning", 1), else_=0)).label("warning"),
-        ).select_from(Device)
-    ).one()
+    dev_q = db.select(
+        func.count().label("total"),
+        func.sum(case((Device.is_online == True, 1), else_=0)).label("online"),
+        func.sum(case((Device.status == "critical", 1), else_=0)).label("critical"),
+        func.sum(case((Device.status == "warning", 1), else_=0)).label("warning"),
+    ).select_from(Device)
+    if cid:
+        dev_q = dev_q.where(Device.customer_id == cid)
+    dev = db.session.execute(dev_q).one()
 
     # Alert counts — 1 query instead of 2
-    alr = db.session.execute(
-        db.select(
-            func.sum(case((Alert.status == "open", 1), else_=0)).label("open"),
-            func.sum(case(
-                (and_(Alert.status == "open", Alert.severity == "critical"), 1),
-                else_=0,
-            )).label("critical"),
-        ).select_from(Alert)
-    ).one()
+    alr_q = db.select(
+        func.sum(case((Alert.status == "open", 1), else_=0)).label("open"),
+        func.sum(case(
+            (and_(Alert.status == "open", Alert.severity == "critical"), 1),
+            else_=0,
+        )).label("critical"),
+    ).select_from(Alert)
+    if cid:
+        alr_q = alr_q.join(Device, Alert.device_id == Device.id).where(Device.customer_id == cid)
+    alr = db.session.execute(alr_q).one()
 
     # Ticket counts — 1 query
     _active = Ticket.status.in_(["open", "in_progress"])
-    tkt = db.session.execute(
-        db.select(
-            func.sum(case((_active, 1), else_=0)).label("open"),
-            func.sum(case((and_(_active, Ticket.priority == "critical"), 1), else_=0)).label("critical"),
-            func.sum(case((and_(_active, Ticket.assignee_id == None), 1), else_=0)).label("unassigned"),  # noqa: E711
-            func.sum(case((and_(_active, Ticket.sla_breached == True), 1), else_=0)).label("sla_breached"),  # noqa: E712
-        ).select_from(Ticket)
-    ).one()
+    tkt_q = db.select(
+        func.sum(case((_active, 1), else_=0)).label("open"),
+        func.sum(case((and_(_active, Ticket.priority == "critical"), 1), else_=0)).label("critical"),
+        func.sum(case((and_(_active, Ticket.assignee_id == None), 1), else_=0)).label("unassigned"),  # noqa: E711
+        func.sum(case((and_(_active, Ticket.sla_breached == True), 1), else_=0)).label("sla_breached"),  # noqa: E712
+    ).select_from(Ticket)
+    if cid:
+        tkt_q = tkt_q.where(Ticket.customer_id == cid)
+    tkt = db.session.execute(tkt_q).one()
 
-    # Customer count — 1 scalar
-    total_customers = db.session.execute(
+    # Customer count — 1 scalar (clients see just their own, MSP staff see all)
+    total_customers = 1 if cid else db.session.execute(
         db.select(func.count()).select_from(Customer).where(Customer.is_active == True)
     ).scalar()
 
@@ -80,16 +93,14 @@ def summary():
 @jwt_required()
 def health_map():
     from sqlalchemy.orm import load_only
-    devices = (
-        Device.query
-        .options(load_only(
-            Device.id, Device.hostname, Device.display_name,
-            Device.status, Device.is_online, Device.customer_id, Device.last_seen,
-        ))
-        .order_by(Device.hostname)
-        .limit(500)
-        .all()
-    )
+    cid = _scoped_customer_id()
+    q = Device.query.options(load_only(
+        Device.id, Device.hostname, Device.display_name,
+        Device.status, Device.is_online, Device.customer_id, Device.last_seen,
+    ))
+    if cid:
+        q = q.filter(Device.customer_id == cid)
+    devices = q.order_by(Device.hostname).limit(500).all()
     return jsonify([
         {
             "id": d.id,
@@ -106,7 +117,11 @@ def health_map():
 @dashboard_bp.route("/recent_alerts", methods=["GET"])
 @jwt_required()
 def recent_alerts():
-    alerts = Alert.query.order_by(Alert.triggered_at.desc()).limit(20).all()
+    cid = _scoped_customer_id()
+    q = Alert.query.order_by(Alert.triggered_at.desc())
+    if cid:
+        q = q.join(Device, Alert.device_id == Device.id).filter(Device.customer_id == cid)
+    alerts = q.limit(20).all()
     return jsonify([a.to_dict() for a in alerts]), 200
 
 
@@ -115,7 +130,9 @@ def recent_alerts():
 def activity_feed():
     from models.audit import AuditLog
     from models.user import User
-    from sqlalchemy.orm import outerjoin
+    claims = get_jwt()
+    if claims.get("role") == "client":
+        return jsonify([]), 200  # audit log is MSP-internal; clients see empty feed
 
     rows = (
         db.session.query(AuditLog, User.email, User.full_name)

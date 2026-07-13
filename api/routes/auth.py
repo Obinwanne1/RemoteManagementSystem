@@ -173,7 +173,7 @@ def login():
 
     access_token = create_access_token(
         identity=user.id,
-        additional_claims={"role": user.role, "email": user.email}
+        additional_claims={"role": user.role, "email": user.email, "customer_id": user.customer_id}
     )
     refresh_token = create_refresh_token(identity=user.id)
 
@@ -206,7 +206,7 @@ def refresh():
 
     access_token = create_access_token(
         identity=user.id,
-        additional_claims={"role": user.role, "email": user.email}
+        additional_claims={"role": user.role, "email": user.email, "customer_id": user.customer_id}
     )
     return jsonify({"access_token": access_token}), 200
 
