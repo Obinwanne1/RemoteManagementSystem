@@ -221,18 +221,20 @@ def _register_error_handlers(app):
     @app.errorhandler(IntegrityError)
     def db_integrity(e):
         db.session.rollback()
-        app.logger.warning("IntegrityError: %s", e.orig)
+        # Log only the exception type — not e.orig which contains DB schema details
+        app.logger.warning("IntegrityError: %s", type(e.orig).__name__)
         return {"error": "Conflict: duplicate or constraint violation"}, 409
 
     @app.errorhandler(OperationalError)
     def db_operational(e):
         db.session.rollback()
-        app.logger.error("DB OperationalError: %s", e)
+        app.logger.error("DB OperationalError: %s", type(e).__name__)
         return {"error": "Database unavailable"}, 503
 
     @app.errorhandler(Exception)
     def unhandled(e):
-        app.logger.exception("Unhandled exception")
+        # exc_info=True logs the traceback server-side for ops; client gets no details
+        app.logger.error("Unhandled %s: %s", type(e).__name__, str(e)[:200], exc_info=True)
         return {"error": "Internal server error"}, 500
 
 
