@@ -350,6 +350,78 @@ def get_org_token():
     return jsonify({"org_token": token})
 
 
+@admin_bp.route("/users/<user_id>/gdpr-export", methods=["GET"])
+@jwt_required()
+def gdpr_export_user(user_id):
+    """Export all personal data associated with a user account (GDPR Art. 20)."""
+    admin, err, code = _require_admin()
+    if err:
+        return err, code
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    from models.ticket import TicketComment
+    from models.audit import AuditLog as AL
+
+    audit_logs = AL.query.filter_by(user_id=user_id).order_by(AL.created_at).limit(1000).all()
+    comments = TicketComment.query.filter_by(author_id=user_id).order_by(TicketComment.created_at).limit(1000).all()
+
+    export = {
+        "exported_at": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+        "user": user.to_dict(),
+        "audit_log": [a.to_dict() for a in audit_logs],
+        "ticket_comments": [c.to_dict() for c in comments],
+    }
+    _audit("GDPR_EXPORT", admin.id, resource_id=user_id, payload={"exported_by": admin.email})
+    db.session.commit()
+    return jsonify(export), 200
+
+
+@admin_bp.route("/users/<user_id>/gdpr-delete", methods=["DELETE"])
+@jwt_required()
+def gdpr_delete_user(user_id):
+    """Anonymize all personal data for a user account (GDPR Art. 17 — right to erasure)."""
+    admin, err, code = _require_admin()
+    if err:
+        return err, code
+
+    if user_id == admin.id:
+        return jsonify({"error": "Cannot anonymize your own account"}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    if user.role == "superadmin":
+        return jsonify({"error": "Superadmin account cannot be anonymized"}), 403
+
+    from models.ticket import TicketComment
+    from models.audit import AuditLog as AL
+
+    anon_id = user.id[:8]
+    original_email = user.email
+
+    # Anonymize PII on the user record
+    user.email = f"__anon__{anon_id}@deleted.local"
+    user.full_name = f"Deleted User {anon_id}"
+    user.password_hash = ""
+    user.is_active = False
+    user.avatar_data = None
+
+    # Scrub email from ticket comments they authored
+    TicketComment.query.filter_by(author_id=user_id).update({
+        "author_email": None,
+    })
+
+    # Scrub IP addresses from their audit log entries
+    AL.query.filter_by(user_id=user_id).update({"ip_address": "0.0.0.0"})
+
+    _audit("GDPR_DELETE", admin.id, resource_id=user_id, payload={"anonymized": original_email})
+    db.session.commit()
+    return jsonify({"message": f"User data anonymized", "user_id": user_id}), 200
+
+
 @admin_bp.route("/server_ips", methods=["GET"])
 @jwt_required()
 def server_ips():

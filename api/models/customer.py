@@ -18,6 +18,9 @@ class Customer(db.Model):
     registration_token_hash = db.Column(db.String(255), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    billing_day = db.Column(db.Integer, nullable=True)       # day-of-month (1-28) to auto-generate invoice
+    per_device_rate = db.Column(db.Numeric(10, 2), nullable=True)  # USD per managed device
+    tax_rate = db.Column(db.Numeric(5, 4), nullable=True)    # e.g. 0.0800 = 8%
 
     devices = db.relationship("Device", backref="customer", lazy="dynamic")
     device_groups = db.relationship("DeviceGroup", backref="customer", lazy="dynamic")
@@ -35,6 +38,9 @@ class Customer(db.Model):
             "notes": self.notes,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "billing_day": self.billing_day,
+            "per_device_rate": float(self.per_device_rate) if self.per_device_rate is not None else None,
+            "tax_rate": float(self.tax_rate) if self.tax_rate is not None else None,
         }
         if include_counts:
             d["device_count"] = self.devices.count()
