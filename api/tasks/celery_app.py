@@ -27,6 +27,7 @@ def make_celery(app=None):
             "tasks.network_tasks",
             "tasks.ticket_tasks",
             "tasks.email_tasks",
+            "tasks.backup_tasks",
         ],
     )
 
@@ -82,6 +83,10 @@ def make_celery(app=None):
             "poll-support-inbox-every-minute": {
                 "task": "tasks.email_tasks.poll_support_inbox",
                 "schedule": 60.0,
+            },
+            "backup-database-daily": {
+                "task": "tasks.backup_tasks.backup_database",
+                "schedule": 86400.0,
             },
         },
     )

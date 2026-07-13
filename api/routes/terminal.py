@@ -117,6 +117,9 @@ def create_session():
         return jsonify({"error": "Device not found"}), 404
     if device.is_agentless:
         return jsonify({"error": "Remote terminal not available for agentless devices"}), 400
+    claims = get_jwt()
+    if claims.get("role") == "client" and device.customer_id != claims.get("customer_id"):
+        return jsonify({"error": "Device not found"}), 404
 
     user_id = get_jwt_identity()
 

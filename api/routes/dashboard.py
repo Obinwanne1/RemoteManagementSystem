@@ -6,8 +6,12 @@ from models.device import Device
 from models.alert import Alert
 from models.ticket import Ticket
 from models.customer import Customer
+from utils.cache import cache_get, cache_set
 
 dashboard_bp = Blueprint("dashboard", __name__)
+
+_SUMMARY_TTL = 30   # seconds
+_HEALTHMAP_TTL = 15  # seconds
 
 
 def _scoped_customer_id():
@@ -22,6 +26,10 @@ def _scoped_customer_id():
 @jwt_required()
 def summary():
     cid = _scoped_customer_id()  # None = MSP staff (no filter); UUID = client (their tenant only)
+    cache_key = f"rmm:dash:summary:{cid or 'all'}"
+    cached = cache_get(cache_key)
+    if cached:
+        return jsonify(cached), 200
 
     # Device counts — 1 query instead of 5
     dev_q = db.select(
@@ -65,7 +73,7 @@ def summary():
 
     total = dev.total or 0
     online = dev.online or 0
-    return jsonify({
+    result = {
         "devices": {
             "total": total,
             "online": online,
@@ -86,7 +94,9 @@ def summary():
         "customers": {
             "total": total_customers or 0,
         },
-    }), 200
+    }
+    cache_set(cache_key, result, _SUMMARY_TTL)
+    return jsonify(result), 200
 
 
 @dashboard_bp.route("/health_map", methods=["GET"])

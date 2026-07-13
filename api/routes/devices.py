@@ -84,6 +84,12 @@ def list_devices():
 @devices_bp.route("/platform_counts", methods=["GET"])
 @jwt_required()
 def platform_counts():
+    from utils.cache import cache_get, cache_set
+    _CACHE_KEY = "rmm:dash:platform_counts"
+    cached = cache_get(_CACHE_KEY)
+    if cached:
+        return jsonify(cached), 200
+
     rows = db.session.execute(
         db.select(Device.platform, Device.is_agentless, func.count(Device.id))
         .group_by(Device.platform, Device.is_agentless)
@@ -95,7 +101,9 @@ def platform_counts():
             by_platform[platform] = by_platform.get(platform, 0) + count
         if is_agentless:
             agentless_count += count
-    return jsonify({"by_platform": by_platform, "agentless": agentless_count}), 200
+    result = {"by_platform": by_platform, "agentless": agentless_count}
+    cache_set(_CACHE_KEY, result, 60)
+    return jsonify(result), 200
 
 
 @devices_bp.route("/<device_id>", methods=["GET"])
