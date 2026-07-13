@@ -4,6 +4,7 @@ streams output back. Runs as a background daemon thread inside the agent process
 """
 import locale
 import logging
+import platform
 import subprocess
 import threading
 import time
@@ -22,6 +23,17 @@ def _decode_output(raw: bytes) -> str:
 logger = logging.getLogger(__name__)
 
 _POLL_INTERVAL = 3       # seconds between polls when no active session
+
+_IS_WINDOWS = platform.system() == "Windows"
+
+
+def _build_argv(command_text: str) -> list:
+    """Return explicit shell argv instead of relying on shell=True (cmd.exe)."""
+    if _IS_WINDOWS:
+        return ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command_text]
+    return ["bash", "-c", command_text]
+
+
 _ACTIVE_POLL  = 1        # seconds between polls when session is active
 _CMD_TIMEOUT  = 120      # max seconds a single command may run
 
@@ -111,11 +123,11 @@ class TerminalWorker:
         exit_code = -1
         try:
             proc = subprocess.Popen(
-                command_text,
-                shell=True,
+                _build_argv(command_text),
+                shell=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                creationflags=0x08000000,  # CREATE_NO_WINDOW on Windows
+                creationflags=0x08000000 if _IS_WINDOWS else 0,
             )
 
             # Thread-level kill timer — guarantees proc dies even if stdout loop hangs

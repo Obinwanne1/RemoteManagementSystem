@@ -52,6 +52,16 @@ def _get_device_by_token(device_id: str):
     return Device.query.get(device_id), agent_token
 
 
+def _check_session_owner(session, user_id: str):
+    """Technicians may only interact with their own sessions; admins/superadmins see all."""
+    claims = get_jwt()
+    if claims.get("role") in ("admin", "superadmin"):
+        return None
+    if session.user_id != user_id:
+        return jsonify({"error": "Session not found"}), 404
+    return None
+
+
 def _audit(action, resource_id, payload=None, user_id=None):
     entry = AuditLog(
         user_id=user_id,
@@ -144,6 +154,9 @@ def get_session(session_id):
     if err:
         return err
     session = TerminalSession.query.get_or_404(session_id)
+    err = _check_session_owner(session, get_jwt_identity())
+    if err:
+        return err
     return jsonify(session.to_dict()), 200
 
 
@@ -155,6 +168,9 @@ def close_session(session_id):
         return err
     session = TerminalSession.query.get_or_404(session_id)
     user_id = get_jwt_identity()
+    err = _check_session_owner(session, user_id)
+    if err:
+        return err
     session.status = "closed"
     session.closed_at = datetime.now(timezone.utc)
     _audit("terminal_close", session_id, None, user_id)
@@ -170,6 +186,10 @@ def send_command(session_id):
         return err
 
     session = TerminalSession.query.get_or_404(session_id)
+    user_id = get_jwt_identity()
+    err = _check_session_owner(session, user_id)
+    if err:
+        return err
     if session.status != "active":
         return jsonify({"error": "Session is closed"}), 400
 
@@ -179,8 +199,6 @@ def send_command(session_id):
         return jsonify({"error": "command required"}), 400
     if len(command_text) > 2000:
         return jsonify({"error": "Command too long (max 2000 chars)"}), 400
-
-    user_id = get_jwt_identity()
     cmd = TerminalCommand(session_id=session_id, command=command_text)
     session.last_activity_at = datetime.now(timezone.utc)
 
@@ -211,6 +229,9 @@ def get_output(session_id):
         return err
 
     session = TerminalSession.query.get_or_404(session_id)
+    err = _check_session_owner(session, get_jwt_identity())
+    if err:
+        return err
     after = request.args.get("after", 0, type=int)
 
     rows = (
