@@ -28,6 +28,7 @@ def make_celery(app=None):
             "tasks.ticket_tasks",
             "tasks.email_tasks",
             "tasks.backup_tasks",
+            "tasks.billing_tasks",
         ],
     )
 
@@ -86,6 +87,10 @@ def make_celery(app=None):
             },
             "backup-database-daily": {
                 "task": "tasks.backup_tasks.backup_database",
+                "schedule": 86400.0,
+            },
+            "generate-recurring-invoices-daily": {
+                "task": "tasks.billing_tasks.generate_recurring_invoices",
                 "schedule": 86400.0,
             },
         },

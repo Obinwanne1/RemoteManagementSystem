@@ -96,7 +96,7 @@ def update_customer(customer_id):
         return err
     customer = Customer.query.get_or_404(customer_id)
     data = request.get_json(silent=True) or {}
-    for field in ["name", "email", "phone", "address", "tier", "notes"]:
+    for field in ["name", "email", "phone", "address", "tier", "notes", "billing_day", "per_device_rate", "tax_rate"]:
         if field in data:
             setattr(customer, field, data[field])
     db.session.commit()

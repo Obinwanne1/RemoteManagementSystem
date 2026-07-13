@@ -4,6 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from extensions import db, limiter
 from models.script import Script, ScriptRun
 from models.device import Device
+from models.audit import AuditLog
 from utils.validation import validate_body
 from schemas.scripts import ScriptCreateSchema, ScriptUpdateSchema, RunScriptSchema
 
@@ -146,6 +147,17 @@ def run_script(script_id):
         )
         db.session.add(run)
         runs.append(run)
+    uid = get_jwt_identity()
+    db.session.flush()
+    audit = AuditLog(
+        user_id=uid,
+        action="script_run",
+        resource_type="script",
+        resource_id=script_id,
+        ip_address=request.remote_addr,
+        payload={"script_name": script.name, "device_count": len(runs), "device_ids": [r.device_id for r in runs]},
+    )
+    db.session.add(audit)
     db.session.commit()
     return jsonify({"queued": len(runs), "run_ids": [r.id for r in runs]}), 202
 
