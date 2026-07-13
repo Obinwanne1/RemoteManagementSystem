@@ -148,8 +148,18 @@ def list_groups():
     err = _require_role("admin", "technician", "viewer")
     if err:
         return err
-    groups = DeviceGroup.query.all()
-    return jsonify([g.to_dict() for g in groups]), 200
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    customer_id = request.args.get("customer_id")
+    query = DeviceGroup.query
+    if customer_id:
+        query = query.filter_by(customer_id=customer_id)
+    paginated = query.order_by(DeviceGroup.name).paginate(page=page, per_page=per_page)
+    return jsonify({
+        "items": [g.to_dict() for g in paginated.items],
+        "total": paginated.total,
+        "page": page,
+    }), 200
 
 
 @customers_bp.route("/groups", methods=["POST"])

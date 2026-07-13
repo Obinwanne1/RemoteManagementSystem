@@ -49,11 +49,13 @@ def list_users():
     if err:
         return err, code
 
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 50, type=int), 200)
     include_inactive = request.args.get("include_inactive", "false").lower() == "true"
     query = User.query if include_inactive else User.query.filter_by(is_active=True)
     query = query.filter(~User.email.like("__deleted__%"))
-    users = query.order_by(User.created_at.desc()).all()
-    return jsonify({"users": [u.to_dict() for u in users], "total": len(users)})
+    paginated = query.order_by(User.created_at.desc()).paginate(page=page, per_page=per_page)
+    return jsonify({"users": [u.to_dict() for u in paginated.items], "total": paginated.total, "page": page})
 
 
 @admin_bp.route("/users", methods=["POST"])
