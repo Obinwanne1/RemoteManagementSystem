@@ -6,8 +6,10 @@ Flow:
   2. If no device_id/token: register with API
   3. Loop: flush queue → heartbeat → poll tasks → execute tasks → sleep
 """
+import base64
 import configparser
 import logging
+import platform
 import sys
 import time
 from pathlib import Path
@@ -77,6 +79,42 @@ def save_config(config: configparser.ConfigParser) -> None:
         config.write(f)
 
 
+_IS_WINDOWS = platform.system() == "Windows"
+_DPAPI_PREFIX = "DPAPI:"
+
+
+def _protect_token(plaintext: str) -> str:
+    """Encrypt token with Windows DPAPI. Non-Windows: returns plaintext unchanged."""
+    if not _IS_WINDOWS or not plaintext:
+        return plaintext
+    try:
+        import win32crypt
+        blob = win32crypt.CryptProtectData(
+            plaintext.encode("utf-8"), "RMM Agent Token", None, None, None, 0,
+        )
+        return _DPAPI_PREFIX + base64.b64encode(blob).decode("ascii")
+    except Exception as exc:
+        logger.warning("DPAPI encrypt failed — storing plaintext: %s", exc)
+        return plaintext
+
+
+def _unprotect_token(stored: str) -> str:
+    """Decrypt DPAPI token. Plaintext values pass through unchanged (legacy migration)."""
+    if not stored.startswith(_DPAPI_PREFIX):
+        return stored
+    if not _IS_WINDOWS:
+        logger.error("DPAPI-encrypted token found but not running on Windows")
+        return ""
+    try:
+        import win32crypt
+        raw = base64.b64decode(stored[len(_DPAPI_PREFIX):])
+        _, plaintext = win32crypt.CryptUnprotectData(raw, None, None, None, 0)
+        return plaintext.decode("utf-8")
+    except Exception as exc:
+        logger.error("DPAPI decrypt failed: %s", exc)
+        return ""
+
+
 def register(config: configparser.ConfigParser) -> APIClient:
     """Register with API and save credentials to config."""
     api_url = config.get("api", "url")
@@ -95,7 +133,7 @@ def register(config: configparser.ConfigParser) -> APIClient:
     agent_token = result["agent_token"]
 
     config.set("agent", "device_id", device_id)
-    config.set("agent", "agent_token", agent_token)
+    config.set("agent", "agent_token", _protect_token(agent_token))
     save_config(config)
 
     logger.info("Registered as device_id=%s", device_id)
@@ -108,7 +146,13 @@ def main():
     config = load_config()
     api_url = config.get("api", "url")
     device_id = config.get("agent", "device_id", fallback="").strip()
-    agent_token = config.get("agent", "agent_token", fallback="").strip()
+    _stored_token = config.get("agent", "agent_token", fallback="").strip()
+    agent_token = _unprotect_token(_stored_token)
+    # Migrate legacy plaintext token to DPAPI-encrypted storage on first run
+    if agent_token and _IS_WINDOWS and not _stored_token.startswith(_DPAPI_PREFIX):
+        config.set("agent", "agent_token", _protect_token(agent_token))
+        save_config(config)
+        logger.info("Agent token migrated to DPAPI-encrypted storage")
     heartbeat_interval = config.getint("agent", "heartbeat_interval", fallback=60)
     software_interval = config.getint("agent", "software_interval", fallback=21600)
 
@@ -123,7 +167,7 @@ def main():
     logger.info("Agent started. device_id=%s api=%s", device_id, api_url)
 
     # Start remote terminal worker (daemon thread — polls API for shell commands)
-    agent_token = config.get("agent", "agent_token")
+    agent_token = _unprotect_token(config.get("agent", "agent_token"))
     terminal_worker = TerminalWorker(api_url, device_id, agent_token)
     terminal_worker.start()
 
@@ -177,7 +221,7 @@ def main():
             # Rotate agent token if server issued a new one
             if data.get("new_agent_token"):
                 new_token = data["new_agent_token"]
-                config.set("agent", "agent_token", new_token)
+                config.set("agent", "agent_token", _protect_token(new_token))
                 save_config(config)
                 client.session.headers.update({"Authorization": f"Bearer {new_token}"})
                 logger.info("Agent token rotated and saved to config.ini")
