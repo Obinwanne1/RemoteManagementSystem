@@ -122,12 +122,18 @@ def evaluate_all_rules(self):
                         )
                         db.session.add(ticket)
 
-                    # Email notifications
+                    # Notifications — email + webhooks
                     channels = rule.notification_channels or {}
                     emails = channels.get("email", [])
                     if emails:
                         from utils.notifications import send_alert_notification
                         send_alert_notification(rule.name, device.hostname, alert.message, emails)
+                    if any(channels.get(k) for k in ("slack", "teams", "webhook")):
+                        from utils.webhook import dispatch_alert_webhooks
+                        dispatch_alert_webhooks(
+                            channels, rule.name, device.hostname,
+                            alert.message, rule.severity,
+                        )
 
                     try:
                         from utils.events import publish_event
