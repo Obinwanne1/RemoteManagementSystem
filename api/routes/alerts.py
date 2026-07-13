@@ -26,8 +26,18 @@ def list_rules():
     err = _require_role("admin", "technician", "viewer")
     if err:
         return err
-    rules = AlertRule.query.order_by(AlertRule.name).all()
-    return jsonify([r.to_dict() for r in rules]), 200
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    customer_id = request.args.get("customer_id")
+    query = AlertRule.query
+    if customer_id:
+        query = query.filter_by(customer_id=customer_id)
+    paginated = query.order_by(AlertRule.name).paginate(page=page, per_page=per_page)
+    return jsonify({
+        "items": [r.to_dict() for r in paginated.items],
+        "total": paginated.total,
+        "page": page,
+    }), 200
 
 
 @alerts_bp.route("/alert_rules", methods=["POST"])

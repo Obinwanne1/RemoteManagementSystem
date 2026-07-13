@@ -25,12 +25,18 @@ def list_profiles():
     err = _require_role("admin", "technician", "viewer")
     if err:
         return err
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 50, type=int), 200)
     customer_id = request.args.get("customer_id")
     query = AutomationProfile.query
     if customer_id:
         query = query.filter_by(customer_id=customer_id)
-    profiles = query.order_by(AutomationProfile.name).all()
-    return jsonify([p.to_dict() for p in profiles]), 200
+    paginated = query.order_by(AutomationProfile.name).paginate(page=page, per_page=per_page)
+    return jsonify({
+        "items": [p.to_dict() for p in paginated.items],
+        "total": paginated.total,
+        "page": page,
+    }), 200
 
 
 @automation_bp.route("/profiles", methods=["POST"])
