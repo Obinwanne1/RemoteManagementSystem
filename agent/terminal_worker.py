@@ -72,7 +72,11 @@ class TerminalWorker:
                     pending = s.get("pending_command")
                     if pending:
                         had_work = True
+                        logger.info("Terminal: found pending cmd=%s in session=%s",
+                                    pending.get("id", "?")[:8], s["session_id"][:8])
                         self._run_command(s["session_id"], pending)
+                if not sessions:
+                    logger.debug("Terminal: no active sessions for device=%s", self._device_id[:8])
                 interval = _ACTIVE_POLL if had_work else _POLL_INTERVAL
             except Exception as exc:
                 logger.warning("Terminal worker error: %s", exc)
@@ -95,8 +99,12 @@ class TerminalWorker:
         url = f"{self._base}/api/terminal/agent/{self._device_id}/commands/{command_id}/running"
         try:
             resp = self._session.put(url, timeout=10)
+            if resp.status_code != 200:
+                logger.warning("mark_running failed: cmd=%s status=%d body=%s",
+                               command_id[:8], resp.status_code, resp.text[:200])
             return resp.status_code == 200
-        except requests.RequestException:
+        except requests.RequestException as e:
+            logger.warning("mark_running request error: %s", e)
             return False
 
     def _post_output(self, command_id: str, content: str, stream: str = "stdout"):
@@ -104,16 +112,18 @@ class TerminalWorker:
             return
         url = f"{self._base}/api/terminal/agent/{self._device_id}/commands/{command_id}/output"
         try:
-            self._session.post(url, json={"content": content, "stream": stream}, timeout=10)
+            resp = self._session.post(url, json={"content": content, "stream": stream}, timeout=10)
+            if resp.status_code != 200:
+                logger.warning("post_output failed: cmd=%s status=%d", command_id[:8], resp.status_code)
         except requests.RequestException as e:
-            logger.debug("Terminal output post failed: %s", e)
+            logger.warning("Terminal output post failed: %s", e)
 
     def _mark_done(self, command_id: str, exit_code: int):
         url = f"{self._base}/api/terminal/agent/{self._device_id}/commands/{command_id}/done"
         try:
             self._session.put(url, json={"exit_code": exit_code}, timeout=10)
         except requests.RequestException as e:
-            logger.debug("Terminal done failed: %s", e)
+            logger.warning("Terminal done failed: %s", e)
 
     def _run_command(self, session_id: str, cmd_dict: dict):
         command_id = cmd_dict["id"]
