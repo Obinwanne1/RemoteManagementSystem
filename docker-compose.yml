@@ -38,8 +38,10 @@ services:
 
   nginx:
     build:
-      context: ./nginx
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: nginx/Dockerfile
+      args:
+        VITE_API_URL: /api
     restart: unless-stopped
     ports:
       - "80:80"
@@ -48,7 +50,6 @@ services:
       - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - api
-      - dashboard
 
   api:
     build:
