@@ -9,6 +9,18 @@ from extensions import db, migrate, jwt, cors, limiter
 
 load_dotenv()
 
+# Sentry error tracking — no-op when SENTRY_DSN is unset
+_sentry_dsn = os.getenv("SENTRY_DSN", "")
+if _sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.flask import FlaskIntegration
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[FlaskIntegration()],
+        traces_sample_rate=0.05,
+        send_default_pii=False,
+    )
+
 
 def _validate_env():
     """Abort startup if critical env vars are missing or insecure."""
