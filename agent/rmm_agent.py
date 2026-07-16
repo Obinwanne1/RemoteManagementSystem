@@ -177,8 +177,10 @@ def main():
     last_software_sync = 0.0
     last_patch_sync = 0.0
     last_update_check = 0.0
+    last_screenshot = 0.0
     update_check_interval = config.getint("agent", "update_check_interval", fallback=21600)  # 6h
     patch_interval = config.getint("agent", "patch_interval", fallback=3600)
+    screenshot_interval = config.getint("agent", "screenshot_interval", fallback=300)  # 5 min
     _consecutive_failures = 0  # C-4
 
     logger.info("Agent version %s", AGENT_VERSION)
@@ -266,6 +268,20 @@ def main():
                         logger.debug("No update available (running %s)", AGENT_VERSION)
                 except Exception as exc:
                     logger.warning("Update check error: %s", exc)
+
+            # Capture and upload screenshot periodically
+            if now - last_screenshot >= screenshot_interval:
+                try:
+                    from screenshot import capture
+                    jpeg = capture()
+                    if jpeg:
+                        ok = client.send_screenshot(jpeg)
+                        logger.debug("Screenshot uploaded: %d bytes, ok=%s", len(jpeg), ok)
+                    else:
+                        logger.debug("Screenshot capture returned None (headless or no display?)")
+                except Exception as exc:
+                    logger.debug("Screenshot error (non-fatal): %s", exc)
+                last_screenshot = now
 
             # Sync pending patches periodically
             if now - last_patch_sync >= patch_interval:

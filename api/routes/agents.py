@@ -367,6 +367,36 @@ def update_patches(device_id):
     return jsonify({"status": "ok", "added": len(new_patches)}), 200
 
 
+@agents_bp.route("/<device_id>/screenshot", methods=["POST"])
+def upload_screenshot(device_id):
+    """Agent POSTs raw JPEG bytes. Saved to disk; dashboard fetches via GET /devices/<id>/screenshot."""
+    device, _ = _get_device_by_token(device_id)
+    if not device:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if request.content_type not in ("image/jpeg", "image/png"):
+        return jsonify({"error": "Content-Type must be image/jpeg or image/png"}), 400
+
+    data = request.get_data()
+    if not data or len(data) < 100:
+        return jsonify({"error": "Empty or too-small payload"}), 400
+    if len(data) > 5 * 1024 * 1024:  # 5 MB cap
+        return jsonify({"error": "Screenshot exceeds 5 MB limit"}), 413
+
+    from pathlib import Path
+    screenshots_dir = Path(__file__).parent.parent / "screenshots"
+    screenshots_dir.mkdir(exist_ok=True)
+    ext = "png" if request.content_type == "image/png" else "jpg"
+    path = screenshots_dir / f"{device_id}.{ext}"
+    # Remove opposite-extension file if it exists
+    for old_ext in ("jpg", "png"):
+        old = screenshots_dir / f"{device_id}.{old_ext}"
+        if old != path and old.exists():
+            old.unlink(missing_ok=True)
+    path.write_bytes(data)
+    return jsonify({"status": "ok", "bytes": len(data)}), 200
+
+
 @agents_bp.route("/<device_id>/software", methods=["PUT"])
 @validate_body(AgentSoftwareSchema)
 def update_software(device_id):

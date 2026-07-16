@@ -78,6 +78,21 @@ class APIClient:
             logger.warning(f"Software update failed: {e}")
             return False
 
+    def send_screenshot(self, jpeg_bytes: bytes) -> bool:
+        """POST raw JPEG screenshot bytes to API."""
+        url = f"{self.base_url}/api/agents/{self.device_id}/screenshot"
+        try:
+            resp = self.session.post(
+                url,
+                data=jpeg_bytes,
+                headers={"Content-Type": "image/jpeg"},
+                timeout=30,
+            )
+            return resp.status_code == 200
+        except requests.RequestException as e:
+            logger.debug("Screenshot upload failed: %s", e)
+            return False
+
     @staticmethod
     def register(base_url: str, org_token: str, hardware_info: dict, customer_id: str = "") -> Optional[dict]:
         """Register agent with API. Returns {device_id, agent_token} or None."""
