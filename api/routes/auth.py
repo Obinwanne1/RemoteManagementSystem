@@ -93,7 +93,7 @@ def _check_password_expiry(user):
 
 
 @auth_bp.route("/login", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit("5 per minute")
 @validate_body(LoginSchema)
 def login():
     data = request.get_json(silent=True) or {}
