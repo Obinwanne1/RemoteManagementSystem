@@ -13,6 +13,17 @@ logger = logging.getLogger(__name__)
 _EVAL_LOCK_KEY = "rmm:alert_eval:lock"
 _EVAL_LOCK_TTL = 55  # seconds — expires just before next 60s beat fires
 
+# Shared Flask app — created once per worker process, not once per task
+_app = None
+
+
+def _get_app():
+    global _app
+    if _app is None:
+        from app import create_app
+        _app = create_app()
+    return _app
+
 
 def _get_redis():
     import redis
@@ -33,51 +44,74 @@ def evaluate_all_rules(self):
             logger.info("evaluate_all_rules: skipping — previous run still in progress")
             return
     except Exception as exc:
-        # Redis unavailable — proceed without lock rather than skip evaluation entirely
         logger.warning("evaluate_all_rules: could not acquire lock (%s) — running without it", exc)
         _r = None
 
-    from app import create_app
     from extensions import db
     from models.alert import AlertRule, Alert
     from models.device import Device, DeviceMetrics
     from sqlalchemy.exc import OperationalError
 
-    app = create_app()
+    app = _get_app()
     with app.app_context():
         try:
             rules = AlertRule.query.filter_by(is_active=True).all()
+            if not rules:
+                return
+
             now = datetime.now(timezone.utc)
 
+            # Collect all online devices across all rules in one query
+            all_online_devices = Device.query.filter_by(is_online=True).all()
+            if not all_online_devices:
+                return
+
+            all_device_ids = [d.id for d in all_online_devices]
+            devices_by_id = {d.id: d for d in all_online_devices}
+
+            # Batch-load latest metrics for ALL online devices — one query total
+            max_id_subq = (
+                db.select(func.max(DeviceMetrics.id).label("max_id"))
+                .where(DeviceMetrics.device_id.in_(all_device_ids))
+                .group_by(DeviceMetrics.device_id)
+                .subquery()
+            )
+            latest_metrics_by_device = {
+                m.device_id: m
+                for m in DeviceMetrics.query.join(
+                    max_id_subq, DeviceMetrics.id == max_id_subq.c.max_id
+                ).all()
+            }
+
+            # Batch-load ALL open/acknowledged alerts for online devices — one query total
+            cooldown_since = now - timedelta(minutes=max((r.cooldown_minutes for r in rules), default=15))
+            existing_alerts = Alert.query.filter(
+                Alert.device_id.in_(all_device_ids),
+                Alert.status.in_(["open", "acknowledged"]),
+                Alert.triggered_at >= cooldown_since,
+            ).all()
+            # Key: (rule_id, device_id) → alert
+            active_alert_map = {(a.rule_id, a.device_id): a for a in existing_alerts}
+
+            # Track which (rule_id, device_id) pairs need auto-resolve
+            to_resolve_keys = []  # list of (rule_id, device_id)
+
             for rule in rules:
-                # Get relevant devices
+                # Filter devices for this rule
                 if rule.device_group_id:
-                    devices = Device.query.filter_by(group_id=rule.device_group_id, is_online=True).all()
+                    devices = [d for d in all_online_devices if d.group_id == rule.device_group_id]
                 elif rule.customer_id:
-                    devices = Device.query.filter_by(customer_id=rule.customer_id, is_online=True).all()
+                    devices = [d for d in all_online_devices if d.customer_id == rule.customer_id]
                 else:
-                    devices = Device.query.filter_by(is_online=True).all()
+                    devices = all_online_devices
 
                 if not devices:
                     continue
 
-                # Batch-load latest metrics for all devices in one query (eliminates N+1)
-                device_ids = [d.id for d in devices]
-                max_id_subq = (
-                    db.select(func.max(DeviceMetrics.id).label("max_id"))
-                    .where(DeviceMetrics.device_id.in_(device_ids))
-                    .group_by(DeviceMetrics.device_id)
-                    .subquery()
-                )
-                latest_by_device = {
-                    m.device_id: m
-                    for m in DeviceMetrics.query.join(
-                        max_id_subq, DeviceMetrics.id == max_id_subq.c.max_id
-                    ).all()
-                }
+                rule_cooldown_since = now - timedelta(minutes=rule.cooldown_minutes)
 
                 for device in devices:
-                    latest = latest_by_device.get(device.id)
+                    latest = latest_metrics_by_device.get(device.id)
                     if not latest:
                         continue
 
@@ -86,24 +120,16 @@ def evaluate_all_rules(self):
                         continue
 
                     triggered = _evaluate(metric_val, rule.operator, rule.threshold)
+                    key = (rule.id, device.id)
+
                     if not triggered:
-                        # Auto-resolve any open alerts for this rule+device
-                        Alert.query.filter(
-                            Alert.rule_id == rule.id,
-                            Alert.device_id == device.id,
-                            Alert.status == "open",
-                        ).update({"status": "resolved", "resolved_at": now})
+                        if key in active_alert_map:
+                            to_resolve_keys.append(key)
                         continue
 
-                    # Check cooldown — don't fire if already open or recent
-                    cooldown_since = now - timedelta(minutes=rule.cooldown_minutes)
-                    existing = Alert.query.filter(
-                        Alert.rule_id == rule.id,
-                        Alert.device_id == device.id,
-                        Alert.status.in_(["open", "acknowledged"]),
-                        Alert.triggered_at >= cooldown_since,
-                    ).first()
-                    if existing:
+                    # Check cooldown using in-memory map (no extra DB query)
+                    existing = active_alert_map.get(key)
+                    if existing and existing.triggered_at >= rule_cooldown_since:
                         continue
 
                     # Create alert
@@ -115,7 +141,6 @@ def evaluate_all_rules(self):
                     )
                     db.session.add(alert)
 
-                    # Auto-create ticket if configured
                     if rule.auto_create_ticket:
                         from models.ticket import Ticket
                         ticket = Ticket(
@@ -128,7 +153,6 @@ def evaluate_all_rules(self):
                         )
                         db.session.add(ticket)
 
-                    # Notifications — email + webhooks
                     channels = rule.notification_channels or {}
                     emails = channels.get("email", [])
                     if emails:
@@ -152,6 +176,15 @@ def evaluate_all_rules(self):
                     except Exception:
                         pass
 
+            # Bulk auto-resolve in one UPDATE per (rule_id, device_id) batch
+            if to_resolve_keys:
+                for rule_id, device_id in to_resolve_keys:
+                    Alert.query.filter(
+                        Alert.rule_id == rule_id,
+                        Alert.device_id == device_id,
+                        Alert.status == "open",
+                    ).update({"status": "resolved", "resolved_at": now}, synchronize_session=False)
+
             db.session.commit()
 
         except OperationalError as exc:
@@ -171,58 +204,66 @@ def evaluate_all_rules(self):
 
 @celery.task(name="tasks.alert_tasks.mark_offline_devices", bind=True, max_retries=3)
 def mark_offline_devices(self):
-    from app import create_app
     from extensions import db
     from models.device import Device
     from models.alert import AlertRule, Alert
     from sqlalchemy.exc import OperationalError
+    from sqlalchemy import update as sa_update
 
-    app = create_app()
+    app = _get_app()
     with app.app_context():
         try:
             threshold = datetime.now(timezone.utc) - timedelta(minutes=3)
-            stale_devices = Device.query.filter(
-                Device.is_online == True,
-                Device.last_seen < threshold,
-            ).all()
 
-            # Load offline rule once, not inside the loop
+            # Bulk UPDATE — no Python-side loop, no ORM object loading
+            result = db.session.execute(
+                sa_update(Device)
+                .where(Device.is_online == True, Device.last_seen < threshold)
+                .values(is_online=False, status="offline")
+                .returning(Device.id, Device.hostname, Device.customer_id, Device.last_seen)
+            )
+            stale_rows = result.fetchall()
+
+            if not stale_rows:
+                db.session.commit()
+                return 0
+
             offline_rule = AlertRule.query.filter_by(metric="offline", is_active=True).first()
+            stale_ids = [r[0] for r in stale_rows]
 
-            for device in stale_devices:
-                device.is_online = False
-                device.status = "offline"
+            if offline_rule:
+                # Batch-check existing open offline alerts — one query
+                existing_offline = {
+                    a.device_id
+                    for a in Alert.query.filter(
+                        Alert.device_id.in_(stale_ids),
+                        Alert.rule_id == offline_rule.id,
+                        Alert.status == "open",
+                    ).all()
+                }
 
-                if offline_rule:
-                    existing = Alert.query.filter_by(
-                        device_id=device.id,
-                        status="open",
+                for device_id, hostname, customer_id, last_seen in stale_rows:
+                    if device_id in existing_offline:
+                        continue
+                    last_seen_str = (
+                        last_seen.strftime("%Y-%m-%d %H:%M UTC") if last_seen else "unknown"
+                    )
+                    db.session.add(Alert(
                         rule_id=offline_rule.id,
-                    ).first()
-                    if not existing:
-                        last_seen_str = (
-                            device.last_seen.strftime("%Y-%m-%d %H:%M UTC")
-                            if device.last_seen else "unknown"
-                        )
-                        alert = Alert(
-                            rule_id=offline_rule.id,
-                            device_id=device.id,
-                            severity="critical",
-                            message=f"{device.hostname} has gone offline (last seen: {last_seen_str})",
-                        )
-                        db.session.add(alert)
+                        device_id=device_id,
+                        severity="critical",
+                        message=f"{hostname} has gone offline (last seen: {last_seen_str})",
+                    ))
 
-                try:
-                    from utils.events import publish_event
-                    publish_event("device_offline", {
-                        "device_id": device.id,
-                        "hostname": device.hostname,
-                    })
-                except Exception:
-                    pass
+            try:
+                from utils.events import publish_event
+                for device_id, hostname, _, _ in stale_rows:
+                    publish_event("device_offline", {"device_id": device_id, "hostname": hostname})
+            except Exception:
+                pass
 
             db.session.commit()
-            return len(stale_devices)
+            return len(stale_rows)
 
         except OperationalError as exc:
             db.session.rollback()
@@ -258,17 +299,11 @@ def _evaluate(value, operator: str, threshold: float) -> bool:
 
 @celery.task(name="tasks.alert_tasks.unlock_expired_accounts", bind=True, max_retries=3)
 def unlock_expired_accounts(self):
-    """Proactively unlock accounts whose lockout window has expired.
-
-    Runs every 60 seconds. Finds all users where is_locked=True and
-    locked_until <= now(), resets their lockout state.
-    """
-    from app import create_app
     from extensions import db
     from models.user import User
     from sqlalchemy.exc import OperationalError
 
-    app = create_app()
+    app = _get_app()
     with app.app_context():
         try:
             now = datetime.now(timezone.utc)
@@ -301,14 +336,12 @@ def unlock_expired_accounts(self):
 
 @celery.task(name="tasks.alert_tasks.deactivate_dormant_accounts", bind=True, max_retries=3)
 def deactivate_dormant_accounts(self):
-    """Daily: deactivate accounts with no login for 30+ days. Emails user + admins."""
-    from app import create_app
     from extensions import db
     from models.user import User
     from sqlalchemy.exc import OperationalError
     from utils.notifications import send_account_deactivated_email, send_dormant_admin_alert
 
-    app = create_app()
+    app = _get_app()
     with app.app_context():
         try:
             now = datetime.now(timezone.utc)
@@ -353,19 +386,17 @@ def deactivate_dormant_accounts(self):
 
 @celery.task(name="tasks.alert_tasks.check_password_expiry", bind=True, max_retries=3)
 def check_password_expiry(self):
-    """Daily: send 7-day expiry warning to users whose password is 83-89 days old."""
-    from app import create_app
     from extensions import db
     from models.user import User
     from sqlalchemy.exc import OperationalError
     from utils.notifications import send_password_expiry_warning
 
-    app = create_app()
+    app = _get_app()
     with app.app_context():
         try:
             now = datetime.now(timezone.utc)
-            warning_floor = now - timedelta(days=89)   # 89 days old → 1 day left
-            warning_ceil  = now - timedelta(days=83)   # 83 days old → 7 days left
+            warning_floor = now - timedelta(days=89)
+            warning_ceil  = now - timedelta(days=83)
 
             warning_users = User.query.filter(
                 User.is_active == True,

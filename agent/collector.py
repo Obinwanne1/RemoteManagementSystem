@@ -16,13 +16,19 @@ logger = logging.getLogger(__name__)
 
 
 def _decode_output(raw: bytes) -> str:
-    """Decode subprocess bytes: UTF-8 first, fall back to system code page.
+    """Decode subprocess bytes, handling PowerShell's UTF-16 LE output.
 
-    Windows machines in non-English locales (German, French, etc.) may produce
-    CP1252 or similar output from winget/PowerShell.  Trying UTF-8 first keeps
-    pure-ASCII and genuine UTF-8 output fast; the fallback handles everything else
-    without losing characters like ü, ä, ö, é, ñ, etc.
+    PowerShell 5.1 on Windows writes UTF-16 LE (with BOM) to captured stdout
+    in some execution contexts.  Decoding that as UTF-8 or CP1252 corrupts
+    multi-byte pairs (e.g. 'o' = 0x6F 0x00 in UTF-16 LE hits undefined CP1252
+    code points → U+FFFD replacement chars in patch/software titles).
+
+    Priority: UTF-16 LE BOM → UTF-16 BE BOM → UTF-8 → system code page.
     """
+    if raw.startswith(b"\xff\xfe"):
+        return raw.decode("utf-16-le").lstrip("﻿")
+    if raw.startswith(b"\xfe\xff"):
+        return raw.decode("utf-16-be").lstrip("﻿")
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -127,6 +133,8 @@ def get_pending_patches() -> list:
     import json
 
     script = (
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n"
+        "$OutputEncoding = [System.Text.Encoding]::UTF8\n"
         "$ErrorActionPreference='SilentlyContinue'\n"
         "try {\n"
         "    $sess = New-Object -ComObject Microsoft.Update.Session\n"

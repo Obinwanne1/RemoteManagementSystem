@@ -29,19 +29,35 @@ def _require_role(*roles):
 
 
 _SLA_HOURS = {"critical": 4, "high": 8, "medium": 24, "low": 72}
+_sla_cache: dict = {}  # {(customer_id, priority): (hours, expires_at)}
+_SLA_CACHE_TTL = 120  # seconds
 
 
 def _sla_resolution_hours(priority: str, customer_id: str) -> int:
-    """Look up SLA resolution hours: customer-specific policy first, then global, then hardcoded."""
+    """Look up SLA resolution hours: customer-specific policy first, then global, then hardcoded.
+    Results cached in-process for 120s to avoid 2 DB queries per ticket creation."""
+    import time
     from models.sla_policy import SLAPolicy
+
+    key = (customer_id, priority)
+    entry = _sla_cache.get(key)
+    if entry and entry[1] > time.monotonic():
+        return entry[0]
+
+    hours = None
     if customer_id:
         policy = SLAPolicy.query.filter_by(customer_id=customer_id, priority=priority).first()
         if policy:
-            return policy.resolution_hours
-    global_policy = SLAPolicy.query.filter_by(customer_id=None, priority=priority).first()
-    if global_policy:
-        return global_policy.resolution_hours
-    return _SLA_HOURS.get(priority, 24)
+            hours = policy.resolution_hours
+    if hours is None:
+        global_policy = SLAPolicy.query.filter_by(customer_id=None, priority=priority).first()
+        if global_policy:
+            hours = global_policy.resolution_hours
+    if hours is None:
+        hours = _SLA_HOURS.get(priority, 24)
+
+    _sla_cache[key] = (hours, time.monotonic() + _SLA_CACHE_TTL)
+    return hours
 
 
 def _current_claims():
@@ -234,6 +250,15 @@ def update_ticket(ticket_id):
     old_assignee_id = ticket.assignee_id
     old_status = ticket.status
 
+    # Require a comment whenever the status is being changed
+    new_status = data.get("status")
+    if new_status and new_status != old_status:
+        status_comment = (data.get("status_comment") or "").strip()
+        if not status_comment:
+            return jsonify({
+                "error": f"A comment is required when changing status from '{old_status}' to '{new_status}'."
+            }), 400
+
     tracked = ["title", "description", "assignee_id", "department_id", "priority", "status", "due_date", "tags"]
     changes = {f: {"from": getattr(ticket, f), "to": data[f]} for f in tracked if f in data and data[f] != getattr(ticket, f)}
 
@@ -244,6 +269,23 @@ def update_ticket(ticket_id):
         ticket.resolved_at = datetime.now(timezone.utc)
     ticket.updated_at = datetime.now(timezone.utc)
     _ticket_audit("UPDATE", uid, ticket_id, {"changes": changes})
+
+    # Auto-post the status change comment so the thread stays conversational
+    if new_status and new_status != old_status:
+        status_comment_body = (
+            f"[Status changed: {old_status.replace('_', ' ')} → {new_status.replace('_', ' ')}]\n\n"
+            + status_comment
+        )
+        auto_comment = TicketComment(
+            ticket_id=ticket_id,
+            author_id=uid,
+            body=status_comment_body,
+            is_internal=False,
+        )
+        db.session.add(auto_comment)
+        if not ticket.first_response_at:
+            ticket.first_response_at = datetime.now(timezone.utc)
+
     db.session.commit()
 
     try:

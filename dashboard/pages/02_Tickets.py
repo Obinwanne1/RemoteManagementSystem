@@ -248,12 +248,7 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
                     label_visibility="collapsed", key=f"bulk_status_{tab_key}",
                 )
             with bb2:
-                if st.button("Apply Status", key=f"bulk_apply_{tab_key}", use_container_width=True):
-                    for tid in selected_ids:
-                        client.update_ticket(tid, {"status": bulk_status})
-                    _clear_selection(tab_key, ticket_ids)
-                    st.success(f"Updated {n} ticket{'s' if n != 1 else ''}.")
-                    st.rerun()
+                apply_status_clicked = st.button("Apply Status", key=f"bulk_apply_{tab_key}", use_container_width=True)
             with bb3:
                 bulk_assign_lbl = st.selectbox(
                     "Assign to", list(user_opts_b.keys()),
@@ -268,16 +263,46 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
                     st.success(f"Assigned {n} ticket{'s' if n != 1 else ''}.")
                     st.rerun()
             with bb5:
-                if st.button("Close All", key=f"bulk_close_{tab_key}", use_container_width=True, type="primary"):
-                    for tid in selected_ids:
-                        client.update_ticket(tid, {"status": "closed"})
-                    _clear_selection(tab_key, ticket_ids)
-                    st.success(f"Closed {n} ticket{'s' if n != 1 else ''}.")
-                    st.rerun()
+                close_all_clicked = st.button("Close All", key=f"bulk_close_{tab_key}", use_container_width=True, type="primary")
             with bb6:
                 if st.button("Clear", key=f"bulk_clear_{tab_key}", use_container_width=True):
                     _clear_selection(tab_key, ticket_ids)
                     st.rerun()
+
+            if apply_status_clicked or close_all_clicked:
+                target_status = "closed" if close_all_clicked else bulk_status
+                bulk_comment = st.session_state.get(f"bulk_comment_{tab_key}", "").strip()
+                if not bulk_comment:
+                    st.session_state[f"bulk_needs_comment_{tab_key}"] = target_status
+                else:
+                    for tid in selected_ids:
+                        client.update_ticket(tid, {"status": target_status, "status_comment": bulk_comment})
+                    st.session_state.pop(f"bulk_needs_comment_{tab_key}", None)
+                    st.session_state.pop(f"bulk_comment_{tab_key}", None)
+                    _clear_selection(tab_key, ticket_ids)
+                    action = "Closed" if target_status == "closed" else "Updated"
+                    st.success(f"{action} {n} ticket{'s' if n != 1 else ''}.")
+                    st.rerun()
+
+            if st.session_state.get(f"bulk_needs_comment_{tab_key}"):
+                target = st.session_state[f"bulk_needs_comment_{tab_key}"]
+                st.warning(f"A comment is required to set status to **{target.replace('_', ' ')}**.")
+                bulk_cmt = st.text_area(
+                    "Reason for bulk status change *",
+                    placeholder="Explain why all selected tickets are being updated…",
+                    height=70,
+                    key=f"bulk_comment_{tab_key}",
+                )
+                if st.button("Confirm & Apply", key=f"bulk_confirm_{tab_key}", type="primary"):
+                    if not bulk_cmt.strip():
+                        st.error("Comment cannot be empty.")
+                    else:
+                        for tid in selected_ids:
+                            client.update_ticket(tid, {"status": target, "status_comment": bulk_cmt.strip()})
+                        st.session_state.pop(f"bulk_needs_comment_{tab_key}", None)
+                        _clear_selection(tab_key, ticket_ids)
+                        st.success(f"Updated {n} ticket{'s' if n != 1 else ''}.")
+                        st.rerun()
         else:
             # Technician bulk: self-assign + status change + clear
             tb1, tb2, tb3, tb4 = st.columns([1.2, 1, 1, 0.8])
@@ -287,12 +312,7 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
                     label_visibility="collapsed", key=f"bulk_status_t_{tab_key}",
                 )
             with tb2:
-                if st.button("Apply Status", key=f"bulk_apply_t_{tab_key}", use_container_width=True):
-                    for tid in selected_ids:
-                        client.update_ticket(tid, {"status": bulk_status_t})
-                    _clear_selection(tab_key, ticket_ids)
-                    st.success(f"Updated {n} ticket{'s' if n != 1 else ''}.")
-                    st.rerun()
+                apply_t_clicked = st.button("Apply Status", key=f"bulk_apply_t_{tab_key}", use_container_width=True)
             with tb3:
                 if st.button("Assign to Me", key=f"bulk_me_{tab_key}", use_container_width=True):
                     for tid in selected_ids:
@@ -304,6 +324,39 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
                 if st.button("Clear", key=f"bulk_clear_t_{tab_key}", use_container_width=True):
                     _clear_selection(tab_key, ticket_ids)
                     st.rerun()
+
+            if apply_t_clicked:
+                bulk_comment_t = st.session_state.get(f"bulk_comment_t_{tab_key}", "").strip()
+                if not bulk_comment_t:
+                    st.session_state[f"bulk_needs_comment_t_{tab_key}"] = bulk_status_t
+                else:
+                    for tid in selected_ids:
+                        client.update_ticket(tid, {"status": bulk_status_t, "status_comment": bulk_comment_t})
+                    st.session_state.pop(f"bulk_needs_comment_t_{tab_key}", None)
+                    st.session_state.pop(f"bulk_comment_t_{tab_key}", None)
+                    _clear_selection(tab_key, ticket_ids)
+                    st.success(f"Updated {n} ticket{'s' if n != 1 else ''}.")
+                    st.rerun()
+
+            if st.session_state.get(f"bulk_needs_comment_t_{tab_key}"):
+                target_t = st.session_state[f"bulk_needs_comment_t_{tab_key}"]
+                st.warning(f"A comment is required to set status to **{target_t.replace('_', ' ')}**.")
+                bulk_cmt_t = st.text_area(
+                    "Reason for bulk status change *",
+                    placeholder="Explain why all selected tickets are being updated…",
+                    height=70,
+                    key=f"bulk_comment_t_{tab_key}",
+                )
+                if st.button("Confirm & Apply", key=f"bulk_confirm_t_{tab_key}", type="primary"):
+                    if not bulk_cmt_t.strip():
+                        st.error("Comment cannot be empty.")
+                    else:
+                        for tid in selected_ids:
+                            client.update_ticket(tid, {"status": bulk_status_t, "status_comment": bulk_cmt_t.strip()})
+                        st.session_state.pop(f"bulk_needs_comment_t_{tab_key}", None)
+                        _clear_selection(tab_key, ticket_ids)
+                        st.success(f"Updated {n} ticket{'s' if n != 1 else ''}.")
+                        st.rerun()
 
     # ── Table header row ──────────────────────────────────────────────────────
     hcols = st.columns(_COL_W)
