@@ -3,6 +3,7 @@ import {
   Monitor, LayoutDashboard, Computer, Bell, Ticket,
   Users, LogOut, Shield, Terminal, Zap, FileText,
   DollarSign, Settings, Network, Package, UserCircle,
+  HardDrive, Wrench, MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -23,7 +24,10 @@ const NAV: NavItem[] = [
   { to: '/network',          label: 'Network Discovery', icon: <Network size={18} />,    roles: ['superadmin','admin','technician'] },
   { to: '/software-patches', label: 'Software',          icon: <Package size={18} />,    roles: ['superadmin','admin','technician'] },
   { to: '/terminal',         label: 'Remote Terminal',   icon: <Monitor size={18} />,    roles: ['superadmin','admin','technician'] },
-  { to: '/profile',          label: 'Profile',           icon: <UserCircle size={18} /> },
+  { to: '/disk',             label: 'Disk Management',   icon: <HardDrive size={18} />,  roles: ['superadmin','admin','technician'] },
+  { to: '/maintenance',      label: 'Maintenance',        icon: <Wrench size={18} />,     roles: ['superadmin','admin','technician'] },
+  { to: '/client-portal',    label: 'My Tickets',         icon: <MessageSquare size={18} />, roles: ['client'] },
+  { to: '/profile',          label: 'Profile',            icon: <UserCircle size={18} /> },
 ];
 
 const ROLE_COLORS: Record<string, string> = {
