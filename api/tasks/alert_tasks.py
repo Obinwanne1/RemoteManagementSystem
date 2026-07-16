@@ -83,15 +83,22 @@ def evaluate_all_rules(self):
                 ).all()
             }
 
-            # Batch-load ALL open/acknowledged alerts for online devices — one query total
-            cooldown_since = now - timedelta(minutes=max((r.cooldown_minutes for r in rules), default=15))
-            existing_alerts = Alert.query.filter(
+            # ALL open/acknowledged alerts — used for deduplication (no time filter)
+            open_alerts = Alert.query.filter(
                 Alert.device_id.in_(all_device_ids),
                 Alert.status.in_(["open", "acknowledged"]),
-                Alert.triggered_at >= cooldown_since,
             ).all()
-            # Key: (rule_id, device_id) → alert
-            active_alert_map = {(a.rule_id, a.device_id): a for a in existing_alerts}
+            open_alert_map = {(a.rule_id, a.device_id): a for a in open_alerts}
+
+            # Recently resolved alerts — used for cooldown check after recovery
+            max_cooldown = max((r.cooldown_minutes for r in rules), default=15)
+            cooldown_since = now - timedelta(minutes=max_cooldown)
+            resolved_alerts = Alert.query.filter(
+                Alert.device_id.in_(all_device_ids),
+                Alert.status == "resolved",
+                Alert.resolved_at >= cooldown_since,
+            ).all()
+            resolved_alert_map = {(a.rule_id, a.device_id): a for a in resolved_alerts}
 
             # Track which (rule_id, device_id) pairs need auto-resolve
             to_resolve_keys = []  # list of (rule_id, device_id)
@@ -110,6 +117,8 @@ def evaluate_all_rules(self):
 
                 rule_cooldown_since = now - timedelta(minutes=rule.cooldown_minutes)
 
+                rule_cooldown_since = now - timedelta(minutes=rule.cooldown_minutes)
+
                 for device in devices:
                     latest = latest_metrics_by_device.get(device.id)
                     if not latest:
@@ -123,13 +132,17 @@ def evaluate_all_rules(self):
                     key = (rule.id, device.id)
 
                     if not triggered:
-                        if key in active_alert_map:
+                        if key in open_alert_map:
                             to_resolve_keys.append(key)
                         continue
 
-                    # Check cooldown using in-memory map (no extra DB query)
-                    existing = active_alert_map.get(key)
-                    if existing and existing.triggered_at >= rule_cooldown_since:
+                    # Already open — don't storm
+                    if key in open_alert_map:
+                        continue
+
+                    # Respect cooldown after last resolve
+                    resolved = resolved_alert_map.get(key)
+                    if resolved and resolved.resolved_at and resolved.resolved_at >= rule_cooldown_since:
                         continue
 
                     # Create alert

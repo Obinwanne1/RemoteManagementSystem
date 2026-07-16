@@ -226,6 +226,7 @@ def main():
                 config.set("agent", "agent_token", _protect_token(new_token))
                 save_config(config)
                 client.session.headers.update({"Authorization": f"Bearer {new_token}"})
+                terminal_worker.update_token(new_token)
                 logger.info("Agent token rotated and saved to config.ini")
 
             # Poll and execute tasks
