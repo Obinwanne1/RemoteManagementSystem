@@ -104,6 +104,11 @@ def summary():
 def health_map():
     from sqlalchemy.orm import load_only
     cid = _scoped_customer_id()
+    cache_key = f"rmm:dash:health_map:{cid or 'all'}"
+    cached = cache_get(cache_key)
+    if cached:
+        return jsonify(cached), 200
+
     q = Device.query.options(load_only(
         Device.id, Device.hostname, Device.display_name,
         Device.status, Device.is_online, Device.customer_id, Device.last_seen,
@@ -111,7 +116,7 @@ def health_map():
     if cid:
         q = q.filter(Device.customer_id == cid)
     devices = q.order_by(Device.hostname).limit(500).all()
-    return jsonify([
+    result = [
         {
             "id": d.id,
             "hostname": d.display_name or d.hostname,
@@ -121,7 +126,9 @@ def health_map():
             "last_seen": d.last_seen.isoformat() if d.last_seen else None,
         }
         for d in devices
-    ]), 200
+    ]
+    cache_set(cache_key, result, _HEALTHMAP_TTL)
+    return jsonify(result), 200
 
 
 @dashboard_bp.route("/recent_alerts", methods=["GET"])
@@ -142,7 +149,12 @@ def activity_feed():
     from models.user import User
     claims = get_jwt()
     if claims.get("role") == "client":
-        return jsonify([]), 200  # audit log is MSP-internal; clients see empty feed
+        return jsonify([]), 200
+
+    _FEED_TTL = 20
+    cached = cache_get("rmm:dash:activity_feed")
+    if cached:
+        return jsonify(cached), 200
 
     rows = (
         db.session.query(AuditLog, User.email, User.full_name)
@@ -159,4 +171,5 @@ def activity_feed():
         d["user_full_name"] = user_full_name or "—"
         result.append(d)
 
+    cache_set("rmm:dash:activity_feed", result, _FEED_TTL)
     return jsonify(result), 200

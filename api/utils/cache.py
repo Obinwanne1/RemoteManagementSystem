@@ -1,25 +1,30 @@
-"""Simple Redis-backed cache helpers for hot endpoints."""
+"""Redis-backed cache helpers. Module-level singleton — one connection pool, not one connection per call."""
 import json
 import logging
 import os
 
 logger = logging.getLogger(__name__)
 
+_client = None
 
-def _r():
-    import redis
-    return redis.from_url(
-        os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-        socket_timeout=1,
-        socket_connect_timeout=1,
-        decode_responses=True,
-    )
+
+def _get_client():
+    global _client
+    if _client is None:
+        import redis
+        _client = redis.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+            socket_timeout=1,
+            socket_connect_timeout=1,
+            decode_responses=True,
+            max_connections=20,
+        )
+    return _client
 
 
 def cache_get(key: str):
-    """Return deserialized cached value or None on miss/error."""
     try:
-        raw = _r().get(key)
+        raw = _get_client().get(key)
         return json.loads(raw) if raw is not None else None
     except Exception as exc:
         logger.debug("cache_get miss [%s]: %s", key, exc)
@@ -27,16 +32,25 @@ def cache_get(key: str):
 
 
 def cache_set(key: str, value, ttl: int) -> None:
-    """Serialize value and store with TTL seconds. Silently ignores Redis errors."""
     try:
-        _r().setex(key, ttl, json.dumps(value, default=str))
+        _get_client().setex(key, ttl, json.dumps(value, default=str))
     except Exception as exc:
         logger.debug("cache_set failed [%s]: %s", key, exc)
 
 
 def cache_delete(key: str) -> None:
-    """Delete a cache key. Silently ignores Redis errors."""
     try:
-        _r().delete(key)
+        _get_client().delete(key)
     except Exception as exc:
         logger.debug("cache_delete failed [%s]: %s", key, exc)
+
+
+def cache_delete_pattern(pattern: str) -> None:
+    """Delete all keys matching a glob pattern. Use sparingly — SCAN-based."""
+    try:
+        r = _get_client()
+        keys = list(r.scan_iter(pattern, count=100))
+        if keys:
+            r.delete(*keys)
+    except Exception as exc:
+        logger.debug("cache_delete_pattern failed [%s]: %s", pattern, exc)

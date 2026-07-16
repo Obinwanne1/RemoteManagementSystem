@@ -145,13 +145,41 @@ with tab_status:
     statuses = ["open", "in_progress", "resolved", "closed"]
     cur_idx = statuses.index(status_val) if status_val in statuses else 0
     new_status = st.selectbox("Status", statuses, index=cur_idx, key="detail_status_sel")
+
+    status_changing = new_status != status_val
+    if status_changing:
+        st.markdown(
+            f'<div style="background:#FEF3C7;border:1px solid #D97706;border-radius:6px;'
+            f'padding:0.4rem 0.75rem;font-size:0.82rem;color:#92400E;margin-bottom:0.5rem">'
+            f'⚠ Changing status from <b>{status_val.replace("_", " ")}</b> to '
+            f'<b>{new_status.replace("_", " ")}</b> — a comment is required.</div>',
+            unsafe_allow_html=True,
+        )
+        status_comment = st.text_area(
+            "Comment *",
+            placeholder=(
+                "Explain what was done, what changed, or what needs to happen next. "
+                "This will be visible to the customer."
+            ),
+            height=100,
+            key="detail_status_comment",
+        )
+    else:
+        status_comment = ""
+
     if st.button("Update Status", key="detail_status_btn", type="primary"):
-        _, uerr = client.update_ticket(ticket_id, {"status": new_status})
-        if uerr:
-            st.error(f"Update failed: {uerr}")
+        if status_changing and not status_comment.strip():
+            st.error("A comment is required before changing the ticket status.")
         else:
-            st.success("Status updated.")
-            st.rerun()
+            payload = {"status": new_status}
+            if status_changing:
+                payload["status_comment"] = status_comment.strip()
+            _, uerr = client.update_ticket(ticket_id, payload)
+            if uerr:
+                st.error(f"Update failed: {uerr}")
+            else:
+                st.success("Status updated." if not status_changing else "Status updated and comment posted.")
+                st.rerun()
 
 # ── Assignment tab ────────────────────────────────────────────────────────────
 with tab_assign:

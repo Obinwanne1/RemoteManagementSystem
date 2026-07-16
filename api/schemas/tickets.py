@@ -32,6 +32,7 @@ class TicketUpdateSchema(Schema):
     department_id = fields.String(allow_none=True)
     priority = fields.String(validate=validate.OneOf(_PRIORITIES))
     status = fields.String(validate=validate.OneOf(_STATUSES))
+    status_comment = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=5000))
     due_date = fields.DateTime(allow_none=True)
     tags = fields.List(fields.String())
 
