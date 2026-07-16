@@ -297,7 +297,14 @@ class TestPasswordChange:
             delete_user(app, uid)
 
     def test_force_change_password(self, app, client):
+        from extensions import db
+        from models.user import User
         uid, email, pw = create_user(app)
+        # Endpoint requires must_change_password=True
+        with app.app_context():
+            u = User.query.get(uid)
+            u.must_change_password = True
+            db.session.commit()
         try:
             tok = login(client, email, pw).get_json()["access_token"]
             r = client.post(
@@ -311,7 +318,13 @@ class TestPasswordChange:
             delete_user(app, uid)
 
     def test_force_change_password_weak(self, app, client):
+        from extensions import db
+        from models.user import User
         uid, email, pw = create_user(app)
+        with app.app_context():
+            u = User.query.get(uid)
+            u.must_change_password = True
+            db.session.commit()
         try:
             tok = login(client, email, pw).get_json()["access_token"]
             r = client.post(
