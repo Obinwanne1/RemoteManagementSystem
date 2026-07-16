@@ -15,6 +15,16 @@ from tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
+_app = None
+
+
+def _get_app():
+    global _app
+    if _app is None:
+        from app import create_app
+        _app = create_app()
+    return _app
+
 
 def _period_bounds(ref: datetime):
     """Return (period_start, period_end) for the month prior to ref."""
@@ -35,14 +45,12 @@ def _next_invoice_number(year: int, db_session) -> str:
 @celery.task(name="tasks.billing_tasks.generate_recurring_invoices", bind=True, max_retries=2)
 def generate_recurring_invoices(self):
     """Auto-generate draft invoices for customers whose billing_day matches today."""
-    from app import create_app
     from extensions import db
     from models.customer import Customer
     from models.billing import Invoice
     from models.device import Device
 
-    app = create_app()
-    with app.app_context():
+    with _get_app().app_context():
         try:
             now = datetime.now(timezone.utc)
             today_day = now.day

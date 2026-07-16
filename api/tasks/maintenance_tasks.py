@@ -5,6 +5,17 @@ from tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
+# Shared Flask app — created once per worker process, not per task invocation
+_app = None
+
+
+def _get_app():
+    global _app
+    if _app is None:
+        from app import create_app
+        _app = create_app()
+    return _app
+
 
 @celery.task(name="tasks.maintenance_tasks.execute_profile")
 def execute_profile(profile_id: str, run_id: str):
@@ -21,14 +32,12 @@ def prune_old_data():
       - audit_log      : 365 days (compliance, lower volume)
       - script_run     : 180 days (execution history)
     """
-    from app import create_app
     from extensions import db
     from models.device import DeviceMetrics
     from models.audit import AuditLog
     from models.script import ScriptRun
 
-    app = create_app()
-    with app.app_context():
+    with _get_app().app_context():
         now = datetime.now(timezone.utc)
 
         metrics_cutoff = now - timedelta(days=90)

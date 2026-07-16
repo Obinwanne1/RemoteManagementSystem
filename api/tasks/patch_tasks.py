@@ -5,6 +5,16 @@ from tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
+_app = None
+
+
+def _get_app():
+    global _app
+    if _app is None:
+        from app import create_app
+        _app = create_app()
+    return _app
+
 
 def _within_maintenance_window(window: dict | None) -> bool:
     """Return True if current UTC time falls within the policy's maintenance window.
@@ -44,14 +54,12 @@ def _within_maintenance_window(window: dict | None) -> bool:
 @celery.task(name="tasks.patch_tasks.deploy_patches", bind=True, max_retries=3)
 def deploy_patches(self, device_id: str, patch_ids: list):
     """Create a ScriptRun to install approved patches on a device via PSWindowsUpdate."""
-    from app import create_app
     from extensions import db
     from models.patch import PatchRecord
     from models.script import Script, ScriptRun
     from sqlalchemy.exc import OperationalError
 
-    app = create_app()
-    with app.app_context():
+    with _get_app().app_context():
         try:
             patches = PatchRecord.query.filter(
                 PatchRecord.id.in_(patch_ids),
@@ -138,14 +146,12 @@ def deploy_patches(self, device_id: str, patch_ids: list):
 @celery.task(name="tasks.patch_tasks.sync_patch_status", bind=True, max_retries=3)
 def sync_patch_status(self):
     """Auto-approve patches based on PatchPolicy rules."""
-    from app import create_app
     from extensions import db
     from models.patch import PatchRecord, PatchPolicy
     from models.device import Device
     from sqlalchemy.exc import OperationalError
 
-    app = create_app()
-    with app.app_context():
+    with _get_app().app_context():
         try:
             policies = PatchPolicy.query.all()
             approved_count = 0

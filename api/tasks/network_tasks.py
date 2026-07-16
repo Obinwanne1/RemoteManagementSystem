@@ -21,6 +21,16 @@ from tasks.celery_app import celery
 # Windows: suppress console window for subprocesses (CLAUDE.md rule)
 CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
+_app = None
+
+
+def _get_app():
+    global _app
+    if _app is None:
+        from app import create_app
+        _app = create_app()
+    return _app
+
 
 # ── Low-level helpers ─────────────────────────────────────────────────────────
 
@@ -347,13 +357,7 @@ def _run_scan(scan_id: str):
 @celery.task(name="tasks.network_tasks.run_network_scan", bind=True, max_retries=2)
 def run_network_scan(self, scan_id: str):
     """Celery wrapper — delegates to _run_scan inside a Flask app context."""
-    import os, sys
-    from pathlib import Path
-    _api = str(Path(__file__).resolve().parent.parent)
-    sys.path.insert(0, _api)
-    os.chdir(_api)
-    from app import create_app
-    with create_app().app_context():
+    with _get_app().app_context():
         _run_scan(scan_id)
 
 
@@ -363,18 +367,10 @@ def ping_agentless_devices(self):
     Ping all known agentless devices and update online/offline status.
     Runs every 5 minutes via Celery beat.
     """
-    import os, sys
-    from pathlib import Path
-    _api = str(Path(__file__).resolve().parent.parent)
-    sys.path.insert(0, _api)
-    os.chdir(_api)
-
-    from app import create_app
     from extensions import db
     from models.device import Device
 
-    app = create_app()
-    with app.app_context():
+    with _get_app().app_context():
         now = datetime.now(timezone.utc)
         devices = Device.query.filter_by(is_agentless=True).filter(
             Device.ip_address.isnot(None)

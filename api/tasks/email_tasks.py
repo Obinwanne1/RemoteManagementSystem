@@ -12,6 +12,16 @@ from tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
+_app = None
+
+
+def _get_app():
+    global _app
+    if _app is None:
+        from app import create_app
+        _app = create_app()
+    return _app
+
 _TICKET_REF_RE = re.compile(r"\[Ticket #([A-F0-9]{8})\]", re.IGNORECASE)
 _SLA_HOURS = {"critical": 4, "high": 8, "medium": 24, "low": 72}
 
@@ -128,7 +138,6 @@ def poll_support_inbox(self):
         logger.warning("SUPPORT_IMAP_USER or SUPPORT_IMAP_PASSWORD not set — skipping")
         return
 
-    from app import create_app
     from extensions import db
     from models.ticket import Ticket, TicketComment
     from utils.notifications import (
@@ -137,8 +146,7 @@ def poll_support_inbox(self):
         send_ticket_comment_to_client,
     )
 
-    app = create_app()
-    with app.app_context():
+    with _get_app().app_context():
         try:
             mail = imaplib.IMAP4_SSL(imap_host, imap_port)
             mail.login(imap_user, imap_pass)

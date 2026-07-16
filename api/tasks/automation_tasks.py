@@ -8,17 +8,25 @@ from tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
+_app = None
+
+
+def _get_app():
+    global _app
+    if _app is None:
+        from app import create_app
+        _app = create_app()
+    return _app
+
 
 @celery.task(name="tasks.automation_tasks.enqueue_profile_run", bind=True, max_retries=3)
 def enqueue_profile_run(self, profile_id: str):
-    from app import create_app
     from extensions import db
     from models.automation import AutomationProfile, ScheduledTaskRun
     from models.device import Device
     from sqlalchemy.exc import OperationalError
 
-    app = create_app()
-    with app.app_context():
+    with _get_app().app_context():
         try:
             profile = AutomationProfile.query.get(profile_id)
             if not profile:
