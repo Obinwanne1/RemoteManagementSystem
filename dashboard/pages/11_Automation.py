@@ -27,9 +27,10 @@ with tab1:
     if err:
         st.error(f"API error: {err}")
     else:
-        if not data:
+        profiles = (data or {}).get("items", [])
+        if not profiles:
             st.info("No automation profiles. Create one to get started.")
-        for profile in data:
+        for profile in profiles:
             is_active = profile.get("is_active", False)
             status_dot = f'<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:{"#22C55E" if is_active else "#8492A6"};margin-right:6px;vertical-align:middle"></span>'
             status_label = "Active" if is_active else "Inactive"
@@ -73,7 +74,7 @@ with tab2:
 
     # Profile selector
     profiles_data, _ = client.list_profiles()
-    profiles = profiles_data or []
+    profiles = (profiles_data or {}).get("items", [])
     profile_names = ["— New Profile —"] + [p["name"] for p in profiles]
     selected = st.selectbox("Select profile to edit (or create new)", profile_names)
 
