@@ -58,6 +58,9 @@ class TerminalWorker:
     def stop(self):
         self._stop.set()
 
+    def update_token(self, new_token: str):
+        self._session.headers.update({"Authorization": f"Bearer {new_token}"})
+
     # ── internal ──────────────────────────────────────────────────────────────
 
     def _loop(self):
@@ -82,8 +85,10 @@ class TerminalWorker:
             resp = self._session.get(url, timeout=10)
             if resp.status_code == 200:
                 return resp.json().get("sessions", [])
+            if resp.status_code == 401:
+                logger.warning("Terminal poll 401 — agent token revoked or expired; re-registration required")
         except requests.RequestException as e:
-            logger.debug("Terminal poll failed: %s", e)
+            logger.warning("Terminal poll failed: %s", e)
         return []
 
     def _mark_running(self, command_id: str) -> bool:
