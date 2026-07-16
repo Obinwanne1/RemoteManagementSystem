@@ -1,5 +1,4 @@
 """Remote Terminal — execute shell commands on managed devices."""
-import time
 import streamlit as st
 
 from utils.auth import require_auth
@@ -109,32 +108,7 @@ if not session_id:
     )
     st.stop()
 
-# ── Poll for new output ───────────────────────────────────────────────────────
-poll_data, poll_err = client.get_terminal_output(session_id, after=st.session_state["_term_output_seq"])
-if poll_err:
-    st.error(f"Session error: {poll_err}")
-    st.session_state["_term_session_id"] = None
-    st.rerun()
-
-session_info = poll_data.get("session", {})
-new_chunks = poll_data.get("output", [])
-
-if new_chunks:
-    for chunk in new_chunks:
-        st.session_state["_term_output_buf"].append(chunk)
-    st.session_state["_term_output_seq"] = new_chunks[-1]["id"]
-
-# Auto-close if session was closed server-side
-if session_info.get("status") == "closed":
-    st.session_state["_term_output_buf"].append({
-        "content": "\r\n[Session closed]\r\n",
-        "stream": "system",
-    })
-    st.session_state["_term_session_id"] = None
-
-# ── Terminal output box ───────────────────────────────────────────────────────
 def _render_content(content: str) -> str:
-    """Escape HTML, convert CRLF → newline."""
     return (
         content
         .replace("&", "&amp;")
@@ -144,35 +118,58 @@ def _render_content(content: str) -> str:
         .replace("\r", "\n")
     )
 
-output_html_parts = []
-for chunk in st.session_state["_term_output_buf"]:
-    stream = chunk.get("stream", "stdout")
-    text = _render_content(chunk.get("content", ""))
-    if stream == "stderr":
-        color = "#FF6B6B"
-    elif stream == "system":
-        color = "#94A3B8"
-    else:
-        color = "#E2E8F0"
-    output_html_parts.append(f'<span style="color:{color}">{text}</span>')
 
-output_html = "".join(output_html_parts) or '<span style="color:#94A3B8">Waiting for output...</span>'
+@st.fragment(run_every=2)
+def _output_panel():
+    sid = st.session_state.get("_term_session_id")
+    if not sid:
+        return
+    poll_data, poll_err = client.get_terminal_output(sid, after=st.session_state["_term_output_seq"])
+    if poll_err:
+        st.error(f"Session error: {poll_err}")
+        st.session_state["_term_session_id"] = None
+        st.rerun()
+        return
 
-# Limit display buffer to last 500 chunks
-if len(st.session_state["_term_output_buf"]) > 500:
-    st.session_state["_term_output_buf"] = st.session_state["_term_output_buf"][-500:]
+    session_info = poll_data.get("session", {})
+    new_chunks = poll_data.get("output", [])
 
-st.markdown(
-    f'<div id="term-output" style="'
-    f'background:#0D1117;border-radius:8px;padding:1rem;'
-    f'font-family:Consolas,monospace;font-size:0.82rem;'
-    f'height:420px;overflow-y:auto;white-space:pre-wrap;'
-    f'border:1px solid #2D3748;line-height:1.5">'
-    f'{output_html}'
-    f'</div>'
-    f'<script>var t=document.getElementById("term-output");if(t)t.scrollTop=t.scrollHeight;</script>',
-    unsafe_allow_html=True,
-)
+    if new_chunks:
+        for chunk in new_chunks:
+            st.session_state["_term_output_buf"].append(chunk)
+        st.session_state["_term_output_seq"] = new_chunks[-1]["id"]
+        if len(st.session_state["_term_output_buf"]) > 500:
+            st.session_state["_term_output_buf"] = st.session_state["_term_output_buf"][-500:]
+
+    if session_info.get("status") == "closed":
+        st.session_state["_term_output_buf"].append({
+            "content": "\r\n[Session closed]\r\n",
+            "stream": "system",
+        })
+        st.session_state["_term_session_id"] = None
+
+    output_html_parts = []
+    for chunk in st.session_state["_term_output_buf"]:
+        stream = chunk.get("stream", "stdout")
+        text = _render_content(chunk.get("content", ""))
+        color = "#FF6B6B" if stream == "stderr" else "#94A3B8" if stream == "system" else "#E2E8F0"
+        output_html_parts.append(f'<span style="color:{color}">{text}</span>')
+
+    output_html = "".join(output_html_parts) or '<span style="color:#94A3B8">Waiting for output...</span>'
+    st.markdown(
+        f'<div id="term-output" style="'
+        f'background:#0D1117;border-radius:8px;padding:1rem;'
+        f'font-family:Consolas,monospace;font-size:0.82rem;'
+        f'height:420px;overflow-y:auto;white-space:pre-wrap;'
+        f'border:1px solid #2D3748;line-height:1.5">'
+        f'{output_html}'
+        f'</div>'
+        f'<script>var t=document.getElementById("term-output");if(t)t.scrollTop=t.scrollHeight;</script>',
+        unsafe_allow_html=True,
+    )
+
+
+_output_panel()
 
 # ── Command input ─────────────────────────────────────────────────────────────
 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
@@ -194,8 +191,6 @@ if send_clicked and command.strip():
         st.error(f"Failed to send command: {err}")
     else:
         st.session_state["_term_pending_cmd"] = command.strip()
-        # Small delay then rerun so user sees the echo immediately
-        time.sleep(0.3)
         st.rerun()
 
 # ── Legend ────────────────────────────────────────────────────────────────────
@@ -210,8 +205,3 @@ st.markdown(
 )
 
 render_ai_assistant("Remote Terminal")
-
-# ── Auto-refresh while session is active ─────────────────────────────────────
-if st.session_state.get("_term_session_id"):
-    time.sleep(2)
-    st.rerun()
