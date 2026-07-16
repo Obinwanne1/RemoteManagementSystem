@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Monitor, LayoutDashboard, Computer, Bell, Ticket,
   Users, LogOut, Shield, Terminal, Zap, FileText,
-  DollarSign, Settings,
+  DollarSign, Settings, Network, Package, UserCircle,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -19,7 +19,11 @@ const NAV: NavItem[] = [
   { to: '/automation', label: 'Automation',  icon: <Zap size={18} />, roles: ['superadmin','admin','technician'] },
   { to: '/reports',    label: 'Reports',     icon: <FileText size={18} />, roles: ['superadmin','admin'] },
   { to: '/billing',    label: 'Billing',     icon: <DollarSign size={18} />, roles: ['superadmin','admin'] },
-  { to: '/admin',      label: 'Admin',       icon: <Settings size={18} />, roles: ['superadmin','admin'] },
+  { to: '/admin',            label: 'Admin',            icon: <Settings size={18} />,   roles: ['superadmin','admin'] },
+  { to: '/network',          label: 'Network Discovery', icon: <Network size={18} />,    roles: ['superadmin','admin','technician'] },
+  { to: '/software-patches', label: 'Software',          icon: <Package size={18} />,    roles: ['superadmin','admin','technician'] },
+  { to: '/terminal',         label: 'Remote Terminal',   icon: <Monitor size={18} />,    roles: ['superadmin','admin','technician'] },
+  { to: '/profile',          label: 'Profile',           icon: <UserCircle size={18} /> },
 ];
 
 const ROLE_COLORS: Record<string, string> = {

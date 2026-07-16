@@ -13,6 +13,10 @@ import AutomationPage from './pages/AutomationPage';
 import ReportsPage from './pages/ReportsPage';
 import BillingPage from './pages/BillingPage';
 import AdminPage from './pages/AdminPage';
+import NetworkPage from './pages/NetworkPage';
+import SoftwarePatchesPage from './pages/SoftwarePatchesPage';
+import TerminalPage from './pages/TerminalPage';
+import ProfilePage from './pages/ProfilePage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -44,6 +48,10 @@ export default function App() {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="billing" element={<BillingPage />} />
           <Route path="admin" element={<AdminPage />} />
+          <Route path="network" element={<NetworkPage />} />
+          <Route path="software-patches" element={<SoftwarePatchesPage />} />
+          <Route path="terminal" element={<TerminalPage />} />
+          <Route path="profile" element={<ProfilePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
