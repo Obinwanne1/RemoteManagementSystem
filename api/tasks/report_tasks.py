@@ -11,6 +11,16 @@ logger = logging.getLogger(__name__)
 
 REPORTS_DIR = Path(__file__).parent.parent / "reports"
 
+_app = None
+
+
+def _get_app():
+    global _app
+    if _app is None:
+        from app import create_app
+        _app = create_app()
+    return _app
+
 
 def _ensure_reports_dir():
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -19,13 +29,11 @@ def _ensure_reports_dir():
 @celery.task(name="tasks.report_tasks.generate_report", bind=True, max_retries=2)
 def generate_report(self, report_id: str):
     """Generate a CSV report and store file path on the Report record."""
-    from app import create_app
     from extensions import db
     from models.report import Report
     from sqlalchemy.exc import OperationalError
 
-    app = create_app()
-    with app.app_context():
+    with _get_app().app_context():
         try:
             report = Report.query.get(report_id)
             if not report:

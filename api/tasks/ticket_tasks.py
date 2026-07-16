@@ -5,16 +5,24 @@ from tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
+_app = None
+
+
+def _get_app():
+    global _app
+    if _app is None:
+        from app import create_app
+        _app = create_app()
+    return _app
+
 
 @celery.task(name="tasks.ticket_tasks.check_sla_breaches", bind=True, max_retries=2)
 def check_sla_breaches(self):
     """Mark tickets as SLA-breached when due_date has passed and ticket is still open/in_progress."""
-    from app import create_app
     from extensions import db
     from models.ticket import Ticket
 
-    app = create_app()
-    with app.app_context():
+    with _get_app().app_context():
         try:
             now = datetime.now(timezone.utc)
             breached = Ticket.query.filter(
