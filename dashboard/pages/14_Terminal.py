@@ -32,7 +32,7 @@ dev_data, dev_err = client.list_devices(per_page=200)
 devices = (dev_data.get("items", []) if dev_data else [])
 online_agents = [
     d for d in devices
-    if not d.get("is_agentless") and d.get("status") in ("online", "healthy", "warning")
+    if not d.get("is_agentless") and d.get("is_online") and d.get("status") != "offline"
 ]
 
 if not online_agents:
