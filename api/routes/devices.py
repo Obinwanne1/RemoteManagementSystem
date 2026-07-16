@@ -260,6 +260,22 @@ def ping_check(device_id):
     return jsonify({"is_online": alive, "checked_at": now.isoformat()}), 200
 
 
+@devices_bp.route("/<device_id>/screenshot", methods=["GET"])
+@jwt_required()
+def get_screenshot(device_id):
+    """Return latest screenshot for a device as JPEG/PNG, or 404 if none captured yet."""
+    Device.query.get_or_404(device_id)
+    from pathlib import Path
+    from flask import send_file
+    screenshots_dir = Path(__file__).parent.parent / "screenshots"
+    for ext in ("jpg", "png"):
+        path = screenshots_dir / f"{device_id}.{ext}"
+        if path.exists():
+            mimetype = "image/jpeg" if ext == "jpg" else "image/png"
+            return send_file(str(path), mimetype=mimetype)
+    return jsonify({"error": "No screenshot available for this device"}), 404
+
+
 def _queue_builtin_task(device_id: str, task_type: str, timeout: int = 300):
     """Create a ScriptRun for a built-in task. Returns run_id or None."""
     from models.script import ScriptRun
