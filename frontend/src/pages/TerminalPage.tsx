@@ -4,25 +4,41 @@ import { Terminal, Send, X } from 'lucide-react';
 import api from '../api/client';
 import type { Device } from '../api/types';
 
-interface TermOutput {
-  output: string;
-  is_complete: boolean;
+interface OutputRow {
+  id: number;
+  content: string;
+  stream: 'stdout' | 'stderr' | 'system';
 }
 
 interface SessionState {
   sessionId: string;
   deviceId: string;
   deviceName: string;
-  history: Array<{ cmd: string; out: string }>;
 }
 
 export default function TerminalPage() {
   const [selectedDevice, setSelectedDevice] = useState('');
   const [session, setSession] = useState<SessionState | null>(null);
   const [cmd, setCmd] = useState('');
+  const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
+  const [outputRows, setOutputRows] = useState<OutputRow[]>([]);
+  const lastOutputIdRef = useRef(0);
   const outputRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Reset output when session changes
+  useEffect(() => {
+    setOutputRows([]);
+    lastOutputIdRef.current = 0;
+  }, [session?.sessionId]);
+
+  // Auto-scroll on new output
+  useEffect(() => {
+    if (outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [outputRows]);
 
   const { data: devicesData } = useQuery<{ items: Device[] }>({
     queryKey: ['devices-online'],
@@ -30,6 +46,31 @@ export default function TerminalPage() {
   });
 
   const onlineDevices = (devicesData?.items ?? []).filter((d) => d.is_online && !d.is_agentless);
+
+  // Poll output every 2s while session is active
+  const { data: outputData } = useQuery({
+    queryKey: ['terminal-output', session?.sessionId],
+    queryFn: () =>
+      api
+        .get(`/terminal/sessions/${session!.sessionId}/output`, {
+          params: { after: lastOutputIdRef.current },
+        })
+        .then((r) => r.data),
+    enabled: !!session?.sessionId,
+    refetchInterval: 2000,
+    staleTime: 0,
+  });
+
+  useEffect(() => {
+    if (!outputData?.output?.length) return;
+    setOutputRows((prev) => {
+      const existingIds = new Set(prev.map((r) => r.id));
+      const fresh = (outputData.output as OutputRow[]).filter((r) => !existingIds.has(r.id));
+      if (!fresh.length) return prev;
+      lastOutputIdRef.current = fresh[fresh.length - 1].id;
+      return [...prev, ...fresh];
+    });
+  }, [outputData]);
 
   const openSession = useMutation({
     mutationFn: (device_id: string) =>
@@ -40,7 +81,6 @@ export default function TerminalPage() {
         sessionId: data.session_id ?? data.id,
         deviceId: device_id,
         deviceName: dev?.display_name || dev?.hostname || device_id,
-        history: [],
       });
       setTimeout(() => inputRef.current?.focus(), 100);
     },
@@ -48,12 +88,9 @@ export default function TerminalPage() {
 
   const sendCmd = useMutation({
     mutationFn: ({ sessionId, command }: { sessionId: string; command: string }) =>
-      api.post(`/terminal/sessions/${sessionId}/commands`, { command }).then((r) => r.data as TermOutput),
-    onSuccess: (data, vars) => {
-      setSession((prev) => prev ? {
-        ...prev,
-        history: [...prev.history, { cmd: vars.command, out: data.output ?? '' }],
-      } : prev);
+      api.post(`/terminal/sessions/${sessionId}/commands`, { command }).then((r) => r.data),
+    onSuccess: (_data, vars) => {
+      setCmdHistory((prev) => [vars.command, ...prev].slice(0, 50));
       setCmd('');
       setHistoryIdx(-1);
     },
@@ -61,36 +98,42 @@ export default function TerminalPage() {
 
   const closeSession = useMutation({
     mutationFn: (sessionId: string) => api.delete(`/terminal/sessions/${sessionId}`),
-    onSuccess: () => setSession(null),
+    onSuccess: () => {
+      setSession(null);
+      setOutputRows([]);
+      lastOutputIdRef.current = 0;
+    },
   });
-
-  useEffect(() => {
-    if (outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
-  }, [session?.history]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && cmd.trim() && session && !sendCmd.isPending) {
       sendCmd.mutate({ sessionId: session.sessionId, command: cmd.trim() });
     }
-    if (e.key === 'ArrowUp' && session) {
-      const newIdx = Math.min(historyIdx + 1, session.history.length - 1);
+    if (e.key === 'ArrowUp') {
+      const newIdx = Math.min(historyIdx + 1, cmdHistory.length - 1);
       setHistoryIdx(newIdx);
-      setCmd(session.history[session.history.length - 1 - newIdx]?.cmd ?? '');
+      setCmd(cmdHistory[newIdx] ?? '');
     }
     if (e.key === 'ArrowDown') {
       const newIdx = Math.max(historyIdx - 1, -1);
       setHistoryIdx(newIdx);
-      setCmd(newIdx === -1 ? '' : (session?.history[session.history.length - 1 - newIdx]?.cmd ?? ''));
+      setCmd(newIdx === -1 ? '' : (cmdHistory[newIdx] ?? ''));
     }
+  };
+
+  const streamClass = (stream: string) => {
+    if (stream === 'stderr') return 'text-red-400';
+    if (stream === 'system') return 'text-gray-500';
+    return 'text-gray-200';
   };
 
   return (
     <div className="p-6 space-y-5">
       <div>
         <h1 className="text-xl font-bold text-gray-900">Remote Terminal</h1>
-        <p className="text-sm text-gray-500">Run commands on online managed devices</p>
+        <p className="text-sm text-gray-500">
+          Execute shell commands on managed devices — all commands are audit-logged
+        </p>
       </div>
 
       {!session ? (
@@ -104,7 +147,9 @@ export default function TerminalPage() {
             >
               <option value="">Select online device…</option>
               {onlineDevices.map((d) => (
-                <option key={d.id} value={d.id}>{d.display_name || d.hostname}</option>
+                <option key={d.id} value={d.id}>
+                  {d.display_name || d.hostname}
+                </option>
               ))}
             </select>
           </div>
@@ -124,10 +169,10 @@ export default function TerminalPage() {
         </div>
       ) : (
         <div className="flex flex-col h-[calc(100vh-200px)] bg-gray-900 rounded-xl overflow-hidden border border-gray-700">
-          {/* Terminal header */}
+          {/* Header */}
           <div className="flex items-center justify-between px-4 py-2.5 bg-gray-800 border-b border-gray-700">
             <div className="flex items-center gap-2">
-              <Terminal size={14} className="text-green-400" />
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
               <span className="text-sm font-mono text-green-400">{session.deviceName}</span>
               <span className="text-xs text-gray-500 font-mono">· session active</span>
             </div>
@@ -136,25 +181,25 @@ export default function TerminalPage() {
               className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-400 transition"
             >
               <X size={13} />
-              Close
+              Disconnect
             </button>
           </div>
 
-          {/* Output area */}
-          <div ref={outputRef} className="flex-1 overflow-y-auto p-4 space-y-3 font-mono text-sm">
-            <p className="text-gray-500 text-xs">Connected to {session.deviceName}. Type commands below.</p>
-            {session.history.map((h, i) => (
-              <div key={i} className="space-y-1">
-                <p className="text-green-400">
-                  <span className="text-gray-500">$</span> {h.cmd}
-                </p>
-                {h.out && (
-                  <pre className="text-gray-300 whitespace-pre-wrap text-xs leading-relaxed">{h.out}</pre>
-                )}
-              </div>
+          {/* Output */}
+          <div ref={outputRef} className="flex-1 overflow-y-auto p-4 font-mono text-sm">
+            {outputRows.length === 0 && (
+              <p className="text-gray-600 text-xs">Waiting for output…</p>
+            )}
+            {outputRows.map((row) => (
+              <pre
+                key={row.id}
+                className={`whitespace-pre-wrap leading-relaxed ${streamClass(row.stream)}`}
+              >
+                {row.content}
+              </pre>
             ))}
             {sendCmd.isPending && (
-              <p className="text-yellow-400 text-xs animate-pulse">Running…</p>
+              <span className="text-yellow-400 text-xs animate-pulse">▌</span>
             )}
           </div>
 
@@ -174,12 +219,28 @@ export default function TerminalPage() {
               spellCheck={false}
             />
             <button
-              onClick={() => cmd.trim() && sendCmd.mutate({ sessionId: session.sessionId, command: cmd.trim() })}
+              onClick={() =>
+                cmd.trim() && sendCmd.mutate({ sessionId: session.sessionId, command: cmd.trim() })
+              }
               disabled={!cmd.trim() || sendCmd.isPending}
               className="p-1.5 text-gray-400 hover:text-green-400 disabled:opacity-30 transition"
             >
               <Send size={14} />
             </button>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center gap-4 px-4 py-1.5 bg-gray-950 border-t border-gray-800 text-xs text-gray-600">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-500 inline-block" /> stdout
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" /> stderr
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-600 inline-block" /> system
+            </span>
+            <span className="ml-auto">Auto-refresh every 2s while connected — all commands audit-logged</span>
           </div>
         </div>
       )}
