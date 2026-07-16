@@ -17,6 +17,9 @@ import NetworkPage from './pages/NetworkPage';
 import SoftwarePatchesPage from './pages/SoftwarePatchesPage';
 import TerminalPage from './pages/TerminalPage';
 import ProfilePage from './pages/ProfilePage';
+import DiskManagementPage from './pages/DiskManagementPage';
+import MaintenancePage from './pages/MaintenancePage';
+import ClientPortalPage from './pages/ClientPortalPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -52,6 +55,9 @@ export default function App() {
           <Route path="software-patches" element={<SoftwarePatchesPage />} />
           <Route path="terminal" element={<TerminalPage />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="disk" element={<DiskManagementPage />} />
+          <Route path="maintenance" element={<MaintenancePage />} />
+          <Route path="client-portal" element={<ClientPortalPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
