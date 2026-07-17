@@ -315,4 +315,4 @@ elif not st.session_state["nd_polling"]:
             unsafe_allow_html=True,
         )
 
-render_ai_assistant("Network Discovery")
+render_ai_assistant("Network Discovery", {"context": "navigation_only"})

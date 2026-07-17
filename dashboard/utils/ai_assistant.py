@@ -4,8 +4,8 @@ from utils.api_client import RMMClient
 
 _ONBOARD_MSG = (
     "👋 **Welcome to Remote Management System!**\n\n"
-    "I'm your AI guide. I know this platform inside out — ask me anything about what you can "
-    "do on any page, and I'll walk you through it step by step.\n\n"
+    "I'm your AI navigation guide. I can help you find features and walk through steps on any page.\n\n"
+    "**Important:** Always verify my suggestions before taking action — I can make mistakes.\n\n"
     "Try: *How do I add a new device?* or *What does a critical alert mean?*"
 )
 
@@ -65,12 +65,22 @@ def render_ai_assistant(page_name: str = "Overview", context: dict = None) -> No
         if not st.session_state["_ai_open"]:
             return
 
+        # ── Persistent disclaimer ──────────────────────────────────────────────
+        st.markdown(
+            '<div style="font-size:0.68rem;color:#b0b0b0;text-align:center;'
+            'padding:0.15rem 0 0.3rem;line-height:1.3">'
+            '⚠️ AI may make mistakes. Verify before acting.</div>',
+            unsafe_allow_html=True,
+        )
+
         # ── Chat history ───────────────────────────────────────────────────────
         history = st.session_state["_ai_history"]
         if history:
             with st.container(height=260, border=False):
                 for msg in history[-14:]:
                     with st.chat_message(msg["role"]):
+                        if msg.get("warning"):
+                            st.warning("Potentially destructive operation mentioned above — verify before executing.", icon="⚠️")
                         st.markdown(msg["content"])
         else:
             st.markdown(
@@ -134,10 +144,12 @@ def _send_message(client, message: str, page_name: str, context: dict) -> None:
     if err or not data:
         reply = "⚠️ AI assistant is temporarily unavailable. Please try again."
         suggested = []
+        contains_warning = False
     else:
         reply = data.get("reply") or "No response received."
         suggested = data.get("suggested_actions") or []
+        contains_warning = bool(data.get("contains_warning"))
 
-    st.session_state["_ai_history"].append({"role": "assistant", "content": reply})
+    st.session_state["_ai_history"].append({"role": "assistant", "content": reply, "warning": contains_warning})
     st.session_state["_ai_suggested"] = suggested
     st.rerun()

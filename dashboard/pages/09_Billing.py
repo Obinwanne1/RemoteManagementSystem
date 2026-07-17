@@ -219,4 +219,10 @@ else:
                 st.success(f"Invoice {new_num} generated for {inv_cust}.")
                 st.rerun()
 
-render_ai_assistant("Billing")
+render_ai_assistant("Billing", {
+    "total_invoices": len(invoices),
+    "revenue_paid": fmt_currency(paid_total, _currency),
+    "outstanding": fmt_currency(pending_total, _currency),
+    "overdue_amount": fmt_currency(overdue_total, _currency),
+    "customer_count": len(customers),
+})

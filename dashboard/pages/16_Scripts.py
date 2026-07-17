@@ -206,4 +206,4 @@ with tab3:
                     if not run.get("stdout") and not run.get("stderr"):
                         st.caption("No output captured.")
 
-render_ai_assistant("Scripts")
+render_ai_assistant("Scripts", {"context": "navigation_only"})

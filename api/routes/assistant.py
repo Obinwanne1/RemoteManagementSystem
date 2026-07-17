@@ -1,12 +1,37 @@
 """AI Assistant — context-aware chat endpoint for dashboard guidance."""
 import os
+import re
+import logging
 
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt
+from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 
-from extensions import limiter
+from extensions import db, limiter
+from models.audit import AuditLog
+
+log = logging.getLogger(__name__)
 
 assistant_bp = Blueprint("assistant", __name__)
+
+# ── High-risk pages: AI restricted to navigation guidance only ────────────────
+_RESTRICTED_PAGES = {"Remote Terminal", "Scripts"}
+
+# ── Patterns that flag a response as potentially destructive ──────────────────
+_DANGER_PATTERNS = [
+    re.compile(r'\brm\s+-rf?\b', re.IGNORECASE),
+    re.compile(r'\bdrop\s+(?:table|database|schema)\b', re.IGNORECASE),
+    re.compile(r'\bformat\s+[a-z]:\\', re.IGNORECASE),
+    re.compile(r'--force\b', re.IGNORECASE),
+    re.compile(r'\bkill\s+-9\b', re.IGNORECASE),
+    re.compile(r'\bshutdown\s+(?:/s|/r|now|-h|-r)\b', re.IGNORECASE),
+    re.compile(r'\btruncate\s+table\b', re.IGNORECASE),
+    re.compile(r'\brd\s+/s\b', re.IGNORECASE),
+    re.compile(r'\bdel\s+/[fqs]\b', re.IGNORECASE),
+    re.compile(r'Remove-Item\s+-Recurse\s+-Force\b', re.IGNORECASE),
+    re.compile(r'\bwipe\s+(?:disk|drive|all|data)\b', re.IGNORECASE),
+]
+
+_CODE_BLOCK_RE = re.compile(r'```[\s\S]*?```', re.MULTILINE)
 
 # ── Page descriptions (injected into system prompt) ───────────────────────────
 _PAGE_INFO = {
@@ -160,12 +185,13 @@ _PAGE_ACTIONS = {
 
 def _build_system_prompt(role: str, page: str, context: dict) -> str:
     role_desc = _ROLE_CAPABILITIES.get(role, "standard platform user")
-    page_desc = _PAGE_INFO.get(page, f"a page in the Remote Management System")
+    page_desc = _PAGE_INFO.get(page, "a page in the Remote Management System")
 
     ctx_lines = [f"- {k}: {v}" for k, v in context.items() if k and v is not None]
+    has_live_data = bool(ctx_lines) and not (len(ctx_lines) == 1 and "navigation_only" in str(ctx_lines[0]))
     ctx_text = "\n".join(ctx_lines) if ctx_lines else "No specific context data available."
 
-    return f"""You are the AI Assistant embedded in Remote Management System (RMS) — a professional Remote Monitoring & Management platform similar to NinjaOne and ConnectWise. Your sole job is to help users navigate and use this platform effectively.
+    base = f"""You are the AI Assistant embedded in Remote Management System (RMS) — a professional Remote Monitoring & Management platform similar to NinjaOne and ConnectWise. Your sole job is to help users navigate and use this platform effectively.
 
 USER ROLE: {role}
 ROLE PERMISSIONS: {role_desc}
@@ -185,7 +211,24 @@ RESPONSE RULES:
 6. If asked something unrelated to this RMM platform, say: "I can only help with navigating this system. For other questions, please contact your administrator."
 7. Use plain language. Assume the user may be new to RMM tools — avoid jargon unless explaining it.
 8. For multi-step tasks, number the steps clearly.
-9. If the live context shows a problem (e.g. offline devices, critical alerts), proactively mention the most urgent action first."""
+9. If the live context shows a problem (e.g. offline devices, critical alerts), proactively mention the most urgent action first.
+10. {"If you do not see specific numbers in LIVE CONTEXT above, do NOT state or estimate any counts, percentages, or status values — say: 'I don't have live data for this page right now. I can describe the UI, but check the page directly for current values.'" if not has_live_data else "You have live context data — use it. Do not contradict it or invent additional values."}
+11. Never state specific numbers (device counts, alert counts, revenue figures) unless they appear explicitly in LIVE CONTEXT.
+12. For any action that modifies, deletes, or executes something, end your response with: "Verify this step before proceeding."
+13. When you are uncertain about any detail, say "I'm not certain — verify with your administrator or documentation." Never present uncertain information as fact."""
+
+    if page in _RESTRICTED_PAGES:
+        base += """
+
+RESTRICTED MODE — HIGH-RISK PAGE:
+- You are in navigation-only mode. This page can execute commands on remote devices.
+- NEVER suggest any commands, scripts, terminal inputs, shell syntax, or code of any kind.
+- NEVER complete or continue partial commands the user pastes.
+- NEVER recommend running, executing, or pasting anything in the terminal or script fields.
+- If asked for a command or script, respond exactly: "I can't suggest commands on this page — consult your documentation or administrator for safe command references."
+- Only answer: how to navigate the UI, what buttons/fields do, how to connect/disconnect, what permissions are needed."""
+
+    return base
 
 
 @assistant_bp.route("/chat", methods=["POST"])
@@ -249,5 +292,36 @@ def chat():
             return jsonify({"error": "AI service is busy. Please try again in a moment."}), 429
         return jsonify({"error": "AI assistant temporarily unavailable"}), 503
 
+    # ── Post-process: strip code blocks on restricted pages ───────────────────
+    if page in _RESTRICTED_PAGES:
+        reply = _CODE_BLOCK_RE.sub("[code removed — command suggestions are disabled on this page]", reply)
+
+    # ── Danger pattern detection ──────────────────────────────────────────────
+    contains_warning = any(p.search(reply) for p in _DANGER_PATTERNS)
+    if contains_warning:
+        reply = (
+            "⚠️ **CAUTION:** This response references a potentially destructive operation. "
+            "Do not execute without supervisor review.\n\n" + reply
+        )
+
+    # ── Audit log (fire-and-forget — never block the response) ───────────────
+    try:
+        user_id = get_jwt_identity()
+        db.session.add(AuditLog(
+            user_id=user_id,
+            action="ai_assistant_chat",
+            resource_type="page",
+            resource_id=page[:36],
+            ip_address=request.remote_addr,
+            payload={"msg_len": len(message), "contains_warning": contains_warning},
+        ))
+        db.session.commit()
+    except Exception:
+        log.exception("AI assistant audit log write failed")
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
     suggested = _PAGE_ACTIONS.get(page, [])
-    return jsonify({"reply": reply, "suggested_actions": suggested})
+    return jsonify({"reply": reply, "suggested_actions": suggested, "contains_warning": contains_warning})

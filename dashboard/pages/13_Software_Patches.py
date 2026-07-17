@@ -145,4 +145,4 @@ with right_col:
             )
             st.markdown(table_html, unsafe_allow_html=True)
 
-render_ai_assistant("Software Patches")
+render_ai_assistant("Software Patches", {"context": "navigation_only"})

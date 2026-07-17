@@ -171,4 +171,7 @@ with tab_hist:
                 else:
                     st.button("Download", icon=":material/download:", disabled=True, key=f"dl_none_{rpt.get('id', r_name)}", use_container_width=True)
 
-render_ai_assistant("Reports")
+render_ai_assistant("Reports", {
+    "report_count": len(reports),
+    "report_types_available": "Device Health, Patch Compliance, Alert Summary, Software Inventory, Ticket Summary",
+})

@@ -251,4 +251,4 @@ else:
                 else:
                     st.rerun()
 
-render_ai_assistant("Maintenance")
+render_ai_assistant("Maintenance", {"context": "navigation_only"})

@@ -258,4 +258,4 @@ with tab2:
                 st.success("Profile saved!")
                 st.rerun()
 
-render_ai_assistant("Automation")
+render_ai_assistant("Automation", {"context": "navigation_only"})
