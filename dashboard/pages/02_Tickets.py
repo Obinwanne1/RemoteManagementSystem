@@ -481,4 +481,9 @@ with tab_unassigned:
         unassigned = [t for t in all_items if not t.get("assignee_id")]
         _render_tickets(unassigned, "unassigned")
 
-render_ai_assistant("Tickets")
+_ai_tlist = data.get("items", []) if (data and not err) else []
+render_ai_assistant("Tickets", {
+    "total_tickets": len(_ai_tlist),
+    "open_or_in_progress": sum(1 for t in _ai_tlist if t.get("status") in ("open", "in_progress")),
+    "sla_breached": sum(1 for t in _ai_tlist if t.get("sla_breached")),
+})

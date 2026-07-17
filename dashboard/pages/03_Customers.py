@@ -206,4 +206,4 @@ with st.expander("+ Add New Customer", expanded=show_add):
                 st.success(f"Customer '{add_name.strip()}' created.")
                 st.rerun()
 
-render_ai_assistant("Customers")
+render_ai_assistant("Customers", {"context": "navigation_only"})

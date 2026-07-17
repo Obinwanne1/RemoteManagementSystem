@@ -336,7 +336,8 @@ def _body():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    render_ai_assistant("Overview", {
+    # Store context for AI assistant — must be called outside fragment (st.sidebar not allowed in fragments)
+    st.session_state["_ai_overview_ctx"] = {
         "total_devices": d.get("total", 0),
         "online_devices": d.get("online", 0),
         "offline_devices": d.get("offline", 0),
@@ -346,7 +347,8 @@ def _body():
         "critical_alerts": a.get("critical", 0),
         "open_tickets": t.get("open", 0),
         "in_progress_tickets": t.get("in_progress", 0),
-    })
+    }
 
 
 _body()
+render_ai_assistant("Overview", st.session_state.get("_ai_overview_ctx", {}))

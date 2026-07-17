@@ -204,4 +204,4 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-render_ai_assistant("Remote Terminal")
+render_ai_assistant("Remote Terminal", {"context": "navigation_only"})

@@ -144,4 +144,4 @@ with tab3:
     )
     st.info("Configure patch policies via Automation Profiles")
 
-render_ai_assistant("OS Patches")
+render_ai_assistant("OS Patches", {"context": "navigation_only"})

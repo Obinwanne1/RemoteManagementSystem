@@ -180,4 +180,4 @@ for t in tickets:
 
     st.markdown('<hr class="tbl-row-sep">', unsafe_allow_html=True)
 
-render_ai_assistant("Client Tickets")
+render_ai_assistant("Client Tickets", {"context": "navigation_only"})

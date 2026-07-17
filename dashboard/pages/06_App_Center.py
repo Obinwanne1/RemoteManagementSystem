@@ -125,4 +125,4 @@ if selected_device:
             unsafe_allow_html=True
         )
 
-render_ai_assistant("App Center")
+render_ai_assistant("App Center", {"context": "navigation_only"})

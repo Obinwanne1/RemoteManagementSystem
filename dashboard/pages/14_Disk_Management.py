@@ -200,4 +200,4 @@ else:
             else:
                 st.success("Temp file cleanup queued. Agent will execute on next poll.")
 
-render_ai_assistant("Disk Management")
+render_ai_assistant("Disk Management", {"context": "navigation_only"})

@@ -944,4 +944,4 @@ with tab_org:
             st.session_state.pop("_org_settings", None)
             st.success(f"Saved — currency: {sel_currency}, timezone: {sel_timezone}. Reload pages to apply.")
 
-render_ai_assistant("Admin Panel")
+render_ai_assistant("Admin Panel", {"context": "navigation_only"})

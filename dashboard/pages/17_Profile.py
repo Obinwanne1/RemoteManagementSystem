@@ -274,4 +274,4 @@ with col_right:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-render_ai_assistant("My Profile")
+render_ai_assistant("My Profile", {"context": "navigation_only"})
