@@ -10,6 +10,11 @@ from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 
+SENSOR_METRICS = {
+    "temperature", "humidity", "co2", "pm25", "voc",
+    "motion", "door", "power_watts", "ups_battery", "ups_load",
+}
+
 _EVAL_LOCK_KEY = "rmm:alert_eval:lock"
 _EVAL_LOCK_TTL = 55  # seconds — expires just before next 60s beat fires
 
@@ -120,11 +125,14 @@ def evaluate_all_rules(self):
                 rule_cooldown_since = now - timedelta(minutes=rule.cooldown_minutes)
 
                 for device in devices:
-                    latest = latest_metrics_by_device.get(device.id)
-                    if not latest:
-                        continue
+                    if rule.metric in SENSOR_METRICS:
+                        metric_val = _get_latest_sensor_value(device.id, rule.metric)
+                    else:
+                        latest = latest_metrics_by_device.get(device.id)
+                        if not latest:
+                            continue
+                        metric_val = _get_metric_value(latest, rule.metric)
 
-                    metric_val = _get_metric_value(latest, rule.metric)
                     if metric_val is None:
                         continue
 
@@ -295,6 +303,23 @@ def _get_metric_value(metrics, metric_name: str):
         "battery": metrics.battery_pct,
     }
     return mapping.get(metric_name)
+
+
+def _get_latest_sensor_value(device_id: str, sensor_type: str):
+    """Return most recent sensor reading value within last 10 minutes, or None."""
+    from models.device import DeviceSensorReading
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
+    reading = (
+        DeviceSensorReading.query
+        .filter(
+            DeviceSensorReading.device_id == device_id,
+            DeviceSensorReading.sensor_type == sensor_type,
+            DeviceSensorReading.collected_at >= cutoff,
+        )
+        .order_by(DeviceSensorReading.collected_at.desc())
+        .first()
+    )
+    return reading.value if reading else None
 
 
 def _evaluate(value, operator: str, threshold: float) -> bool:

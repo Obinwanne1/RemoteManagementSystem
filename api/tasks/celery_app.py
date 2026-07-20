@@ -29,6 +29,8 @@ def make_celery(app=None):
             "tasks.email_tasks",
             "tasks.backup_tasks",
             "tasks.billing_tasks",
+            "tasks.mqtt_tasks",
+            "tasks.snmp_tasks",
         ],
     )
 
@@ -92,6 +94,14 @@ def make_celery(app=None):
             "generate-recurring-invoices-daily": {
                 "task": "tasks.billing_tasks.generate_recurring_invoices",
                 "schedule": 86400.0,
+            },
+            "mqtt-sensor-poll-every-30s": {
+                "task": "tasks.mqtt_tasks.subscribe_mqtt_sensors",
+                "schedule": 30.0,
+            },
+            "snmp-device-poll-every-5min": {
+                "task": "tasks.snmp_tasks.poll_snmp_devices",
+                "schedule": 300.0,
             },
         },
     )

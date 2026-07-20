@@ -518,6 +518,16 @@ class RMMClient:
     def delete_device(self, device_id: str):
         return self._delete(f"/api/devices/{device_id}")
 
+    # --- IoT Sensors ---
+    def get_sensor_data(self, device_id: str, sensor_type: str = None, hours: int = 24, limit: int = 5000):
+        params = {"hours": hours, "limit": limit}
+        if sensor_type:
+            params["sensor_type"] = sensor_type
+        return self._get(f"/api/sensors/{device_id}/data", params=params)
+
+    def get_sensor_summary(self):
+        return self._get("/api/sensors/summary")
+
     def delete_customer(self, customer_id: str):
         return self._delete(f"/api/customers/{customer_id}")
 

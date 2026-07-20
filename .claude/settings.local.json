@@ -307,7 +307,19 @@
       "PowerShell(Start-Process python -ArgumentList \"-m\",\"celery\",\"-A\",\"tasks.celery_app\",\"worker\",\"--pool=solo\",\"-l\",\"info\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\api\" -RedirectStandardOutput \"C:\\\\Users\\\\rigwe\\\\AppData\\\\Local\\\\Temp\\\\celery_worker.log\" -RedirectStandardError \"C:\\\\Users\\\\rigwe\\\\AppData\\\\Local\\\\Temp\\\\celery_worker.err\" -WindowStyle Hidden; Write-Host \"Celery worker started\")",
       "PowerShell(Start-Process python -ArgumentList \"-m\",\"celery\",\"-A\",\"tasks.celery_app\",\"beat\",\"-l\",\"info\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\api\" -RedirectStandardOutput \"C:\\\\Users\\\\rigwe\\\\AppData\\\\Local\\\\Temp\\\\celery_beat.log\" -RedirectStandardError \"C:\\\\Users\\\\rigwe\\\\AppData\\\\Local\\\\Temp\\\\celery_beat.err\" -WindowStyle Hidden; Start-Sleep -Seconds 4; Get-Content \"C:\\\\Users\\\\rigwe\\\\AppData\\\\Local\\\\Temp\\\\celery_beat.err\" -Tail 10)",
       "PowerShell(Start-Process python -ArgumentList \"rmm_agent.py\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\agent\" -RedirectStandardOutput \"C:\\\\Users\\\\rigwe\\\\AppData\\\\Local\\\\Temp\\\\agent.log\" -RedirectStandardError \"C:\\\\Users\\\\rigwe\\\\AppData\\\\Local\\\\Temp\\\\agent.err\" -Verb RunAs -WindowStyle Hidden; Write-Host \"Agent started\")",
-      "PowerShell(Start-Process python -ArgumentList \"rmm_agent.py\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\agent\" -Verb RunAs -WindowStyle Hidden; Write-Host \"Agent started\")"
+      "PowerShell(Start-Process python -ArgumentList \"rmm_agent.py\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\agent\" -Verb RunAs -WindowStyle Hidden; Write-Host \"Agent started\")",
+      "PowerShell(Start-Process -FilePath \"python\" -ArgumentList \"-m\", \"streamlit\", \"run\", \"app.py\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\dashboard\" -WindowStyle Hidden -RedirectStandardOutput \"C:\\\\temp\\\\streamlit_out.log\" -RedirectStandardError \"C:\\\\temp\\\\streamlit_err.log\")",
+      "PowerShell(Start-Sleep -Seconds 6; try { $r = Invoke-WebRequest -Uri \"http://localhost:8501\" -TimeoutSec 5 -UseBasicParsing; $r.StatusCode } catch { \"Error: $_\" })",
+      "Bash(npm --version)",
+      "Bash(npm create *)",
+      "Bash(npm install *)",
+      "Bash(npx tailwindcss *)",
+      "Bash(npm run *)",
+      "Bash(echo \"PID: $!\")",
+      "PowerShell(Start-Process -FilePath \"python\" -ArgumentList \"-m streamlit run app.py --server.headless true\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\dashboard\" -WindowStyle Hidden -RedirectStandardOutput \"C:\\\\Temp\\\\dashboard.log\" -RedirectStandardError \"C:\\\\Temp\\\\dashboard_err.log\")",
+      "PowerShell(Start-Sleep -Seconds 5; $code = try { \\(Invoke-WebRequest -Uri \"http://localhost:8501\" -TimeoutSec 5 -UseBasicParsing\\).StatusCode } catch { \"no_response\" }; Write-Output $code)",
+      "PowerShell(Start-Process -FilePath \"python\" -ArgumentList \"-m\", \"streamlit\", \"run\", \"app.py\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\dashboard\" -WindowStyle Hidden -PassThru | Select-Object Id)",
+      "PowerShell(Start-Process -FilePath \"python\" -ArgumentList \"-m\", \"celery\", \"-A\", \"tasks.celery_app\", \"worker\", \"--pool=solo\", \"-l\", \"info\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\api\" -WindowStyle Hidden -PassThru | Select-Object Id)"
     ]
   }
 }
