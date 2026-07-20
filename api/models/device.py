@@ -127,6 +127,45 @@ class DeviceMetrics(db.Model):
         }
 
 
+SENSOR_TYPES = {
+    "temperature", "humidity", "co2", "pm25", "voc",
+    "motion", "door", "power_watts", "ups_battery", "ups_load",
+}
+
+
+class DeviceSensorReading(db.Model):
+    __tablename__ = "device_sensor_readings"
+
+    id = db.Column(
+        db.BigInteger().with_variant(db.Integer(), "sqlite"),
+        primary_key=True, autoincrement=True,
+    )
+    device_id = db.Column(db.String(36), db.ForeignKey("devices.id"), nullable=False, index=True)
+    customer_id = db.Column(db.String(36), db.ForeignKey("customers.id"), nullable=True, index=True)
+    collected_at = db.Column(
+        db.DateTime(timezone=True), nullable=False,
+        default=lambda: datetime.now(timezone.utc), index=True,
+    )
+    sensor_type = db.Column(db.String(50), nullable=False)   # temperature|humidity|co2|…
+    value = db.Column(db.Float, nullable=False)
+    unit = db.Column(db.String(20), nullable=True)            # °C, %, ppm, W, bool, μg/m³
+    channel = db.Column(db.String(50), nullable=True)         # optional — BME680 "ch1", UPS "output1"
+    source = db.Column(db.String(20), nullable=True)          # http_push|mqtt|snmp
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "device_id": self.device_id,
+            "customer_id": self.customer_id,
+            "collected_at": self.collected_at.isoformat() if self.collected_at else None,
+            "sensor_type": self.sensor_type,
+            "value": self.value,
+            "unit": self.unit,
+            "channel": self.channel,
+            "source": self.source,
+        }
+
+
 class InstalledSoftware(db.Model):
     __tablename__ = "installed_software"
 
