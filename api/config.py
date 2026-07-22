@@ -10,7 +10,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ["DATABASE_URL"]
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_pre_ping": True,
+        "pool_pre_ping": False,  # pool_recycle=300 handles stale connections; pre_ping adds ~100ms per cold hit
         "pool_recycle": 300,
         "pool_size": 10,
         "max_overflow": 20,
