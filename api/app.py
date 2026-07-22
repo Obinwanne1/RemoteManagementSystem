@@ -5,7 +5,7 @@ from flask import Flask, request, g
 from dotenv import load_dotenv
 
 from config import config_map
-from extensions import db, migrate, jwt, cors, limiter
+from extensions import db, migrate, jwt, cors, limiter, compress
 
 load_dotenv()
 
@@ -62,6 +62,7 @@ def create_app(config_name=None):
     allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:8501").split(",")
     cors.init_app(app, resources={r"/api/*": {"origins": [o.strip() for o in allowed_origins]}})
     limiter.init_app(app)
+    compress.init_app(app)
 
     # Warn when running in insecure development mode
     if config_name != "production":
@@ -323,4 +324,4 @@ if __name__ == "__main__":
     else:
         from waitress import serve
         print(f" * Serving on http://{host}:{port} (waitress)")
-        serve(app, host=host, port=port, threads=8)
+        serve(app, host=host, port=port, threads=16)

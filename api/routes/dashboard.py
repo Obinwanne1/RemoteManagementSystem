@@ -158,7 +158,7 @@ def activity_feed():
     if claims.get("role") == "client":
         return jsonify([]), 200
 
-    _FEED_TTL = 20
+    _FEED_TTL = 60
     cached = cache_get("rmm:dash:activity_feed")
     if cached:
         return jsonify(cached), 200
@@ -167,7 +167,7 @@ def activity_feed():
         db.session.query(AuditLog, User.email, User.full_name)
         .outerjoin(User, AuditLog.user_id == User.id)
         .order_by(AuditLog.created_at.desc())
-        .limit(100)
+        .limit(25)
         .all()
     )
 
