@@ -6,7 +6,8 @@ from models.device import Device
 from models.alert import Alert
 from models.ticket import Ticket
 from models.customer import Customer
-from utils.cache import cache_get, cache_set
+from flask import Response
+from utils.cache import cache_get, cache_set, cache_get_raw, cache_set_raw
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -105,9 +106,9 @@ def health_map():
     from sqlalchemy.orm import load_only
     cid = _scoped_customer_id()
     cache_key = f"rmm:dash:health_map:{cid or 'all'}"
-    cached = cache_get(cache_key)
-    if cached:
-        return jsonify(cached), 200
+    raw = cache_get_raw(cache_key)
+    if raw:
+        return Response(raw, mimetype="application/json")
 
     q = Device.query.options(load_only(
         Device.id, Device.hostname, Device.display_name,
@@ -116,7 +117,8 @@ def health_map():
     if cid:
         q = q.filter(Device.customer_id == cid)
     devices = q.order_by(Device.hostname).limit(500).all()
-    result = [
+    import json as _json
+    raw_json = _json.dumps([
         {
             "id": d.id,
             "hostname": d.display_name or d.hostname,
@@ -126,9 +128,9 @@ def health_map():
             "last_seen": d.last_seen.isoformat() if d.last_seen else None,
         }
         for d in devices
-    ]
-    cache_set(cache_key, result, _HEALTHMAP_TTL)
-    return jsonify(result), 200
+    ])
+    cache_set_raw(cache_key, raw_json, _HEALTHMAP_TTL)
+    return Response(raw_json, mimetype="application/json")
 
 
 @dashboard_bp.route("/recent_alerts", methods=["GET"])

@@ -64,6 +64,9 @@ def create_app(config_name=None):
     limiter.init_app(app)
     compress.init_app(app)
 
+    from utils.jwt_cache import install as _install_jwt_cache
+    _install_jwt_cache()
+
     # Warn when running in insecure development mode
     if config_name != "production":
         app.logger.warning(

@@ -119,10 +119,16 @@ with tab_sysinfo:
             unsafe_allow_html=True,
         )
 
-    # ── Agent Enrollment Token ────────────────────────────────────────────────
+    # ── Agent Enrollment Token + Server IPs (fetched in parallel) ───────────────
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
-    org_data, org_err = client.get_org_token()
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    with _TPE(max_workers=2) as _ex:
+        _fo = _ex.submit(client.get_org_token)
+        _fi = _ex.submit(client.get_server_ips)
+        org_data, org_err = _fo.result()
+        ip_data, ip_err = _fi.result()
+
     org_token_val = org_data.get("org_token", "") if org_data else ""
 
     masked = org_token_val[:6] + "•" * (len(org_token_val) - 6) if len(org_token_val) > 6 else "••••••••"
@@ -143,7 +149,6 @@ with tab_sysinfo:
 
     # ── Server IP / Agent Setup ───────────────────────────────────────────────
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-    ip_data, ip_err = client.get_server_ips()
     lan_ips = (ip_data or {}).get("lan_ips", [])
     server_hostname = (ip_data or {}).get("hostname", "—")
 
@@ -340,7 +345,8 @@ with tab_users:
     }
 
     # Pre-load customers + departments for the create/edit forms
-    _cust_raw, _ = client.list_customers(per_page=200)
+    from utils.cached_calls import cached_list_customers
+    _cust_raw, _ = cached_list_customers(st.session_state.get("access_token", ""), per_page=200)
     _cust_list = (_cust_raw.get("items", []) if _cust_raw else [])
     _cust_map = {c["name"]: c["id"] for c in _cust_list}
     _dept_raw, _ = client.list_departments()
