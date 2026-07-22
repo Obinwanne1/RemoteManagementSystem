@@ -11,12 +11,7 @@ _ONBOARD_MSG = (
 
 
 def render_ai_assistant(page_name: str = "Overview", context: dict = None) -> None:
-    """Render the AI assistant panel at the bottom of the sidebar.
-
-    Args:
-        page_name: Human-readable name of the current page (must match keys in assistant.py).
-        context:   Dict of live page data (device counts, alert counts, etc.) sent to the AI.
-    """
+    """Render the AI assistant panel at the bottom of the sidebar."""
     if context is None:
         context = {}
 

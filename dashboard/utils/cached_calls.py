@@ -15,7 +15,7 @@ import streamlit as st
 from utils.auth import get_client
 
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def cached_summary(_token: str):
     client = get_client()
     if not client:
@@ -31,7 +31,7 @@ def cached_health_map(_token: str):
     return client.get_health_map()
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def cached_recent_alerts(_token: str):
     client = get_client()
     if not client:

@@ -113,6 +113,15 @@ def create_app(config_name=None):
         except Exception:
             app.logger.warning("Could not clean up stale network scans")
 
+        # Warm connection pool — prevents first-request latency spike
+        try:
+            from sqlalchemy import text as _text
+            for _ in range(min(3, app.config.get("SQLALCHEMY_ENGINE_OPTIONS", {}).get("pool_size", 10))):
+                db.session.execute(_text("SELECT 1"))
+            db.session.remove()
+        except Exception:
+            pass
+
     # Register blueprints
     from routes.auth import auth_bp
     from routes.agents import agents_bp

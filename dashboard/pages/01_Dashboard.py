@@ -24,7 +24,7 @@ require_auth()
 render_sidebar()
 
 
-@st.fragment(run_every=30)
+@st.fragment(run_every=60)
 def _body():
     _tok = st.session_state.get("access_token", "")
 
