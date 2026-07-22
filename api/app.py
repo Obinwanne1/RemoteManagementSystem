@@ -122,6 +122,55 @@ def create_app(config_name=None):
         except Exception:
             pass
 
+        # Pre-warm dashboard Redis cache so first real user never hits DB cold
+        try:
+            from utils.cache import cache_get, cache_set
+            if not cache_get("rmm:dash:summary:all"):
+                from sqlalchemy import func, case, and_
+                from models.device import Device as _Dev
+                from models.alert import Alert as _Alr
+                from models.ticket import Ticket as _Tkt
+                from models.customer import Customer as _Cust
+
+                dev = db.session.execute(db.select(
+                    func.count().label("total"),
+                    func.sum(case((_Dev.is_online == True, 1), else_=0)).label("online"),
+                    func.sum(case((_Dev.status == "critical", 1), else_=0)).label("critical"),
+                    func.sum(case((_Dev.status == "warning", 1), else_=0)).label("warning"),
+                ).select_from(_Dev)).one()
+
+                alr = db.session.execute(db.select(
+                    func.sum(case((_Alr.status == "open", 1), else_=0)).label("open"),
+                    func.sum(case((and_(_Alr.status == "open", _Alr.severity == "critical"), 1), else_=0)).label("critical"),
+                ).select_from(_Alr)).one()
+
+                _active = _Tkt.status.in_(["open", "in_progress"])
+                tkt = db.session.execute(db.select(
+                    func.sum(case((_active, 1), else_=0)).label("open"),
+                    func.sum(case((and_(_active, _Tkt.priority == "critical"), 1), else_=0)).label("critical"),
+                    func.sum(case((and_(_active, _Tkt.assignee_id == None), 1), else_=0)).label("unassigned"),  # noqa: E711
+                    func.sum(case((and_(_active, _Tkt.sla_breached == True), 1), else_=0)).label("sla_breached"),  # noqa: E712
+                ).select_from(_Tkt)).one()
+
+                total_customers = db.session.execute(
+                    db.select(func.count()).select_from(_Cust).where(_Cust.is_active == True)  # noqa: E712
+                ).scalar()
+
+                total = dev.total or 0
+                online = dev.online or 0
+                cache_set("rmm:dash:summary:all", {
+                    "devices": {"total": total, "online": online, "offline": total - online,
+                                "critical": dev.critical or 0, "warning": dev.warning or 0},
+                    "alerts": {"open": alr.open or 0, "critical": alr.critical or 0},
+                    "tickets": {"open": tkt.open or 0, "critical": tkt.critical or 0,
+                                "unassigned": tkt.unassigned or 0, "sla_breached": tkt.sla_breached or 0},
+                    "customers": {"total": total_customers or 0},
+                }, 60)
+                db.session.remove()
+                app.logger.info("Dashboard cache pre-warmed at startup")
+        except Exception as _e:
+            app.logger.warning("Cache pre-warm failed: %s", _e)
+
     # Register blueprints
     from routes.auth import auth_bp
     from routes.agents import agents_bp
