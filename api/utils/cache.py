@@ -31,11 +31,28 @@ def cache_get(key: str):
         return None
 
 
+def cache_get_raw(key: str):
+    """Return the raw JSON string from Redis (no deserialize). None on miss."""
+    try:
+        return _get_client().get(key)
+    except Exception as exc:
+        logger.debug("cache_get_raw miss [%s]: %s", key, exc)
+        return None
+
+
 def cache_set(key: str, value, ttl: int) -> None:
     try:
         _get_client().setex(key, ttl, json.dumps(value, default=str))
     except Exception as exc:
         logger.debug("cache_set failed [%s]: %s", key, exc)
+
+
+def cache_set_raw(key: str, raw_json: str, ttl: int) -> None:
+    """Store a pre-serialized JSON string — skips double serialize on cache hit."""
+    try:
+        _get_client().setex(key, ttl, raw_json)
+    except Exception as exc:
+        logger.debug("cache_set_raw failed [%s]: %s", key, exc)
 
 
 def cache_delete(key: str) -> None:

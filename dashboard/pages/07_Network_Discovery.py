@@ -77,7 +77,8 @@ if _can_scan:
         )
 
     # Load customers for selector
-    cust_data, _ = client.list_customers(per_page=200)
+    from utils.cached_calls import cached_list_customers
+    cust_data, _ = cached_list_customers(st.session_state.get("access_token", ""), per_page=200)
     customers = (cust_data or {}).get("items", [])
     cust_map = {c["name"]: c["id"] for c in customers}
 

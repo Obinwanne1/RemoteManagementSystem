@@ -38,7 +38,8 @@ org = org_data or {}
 _currency = org.get("currency") or st.session_state.get("_org_settings", {}).get("currency", "USD")
 
 # Load customer name for display
-cust_data, _ = client.list_customers(per_page=200)
+from utils.cached_calls import cached_list_customers
+cust_data, _ = cached_list_customers(st.session_state.get("access_token", ""), per_page=200)
 customers = (cust_data or {}).get("items", [])
 cust_map_by_id = {c["id"]: c for c in customers}
 customer = cust_map_by_id.get(str(inv.get("customer_id", ""))) or {}

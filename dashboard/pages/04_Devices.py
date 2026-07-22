@@ -36,11 +36,16 @@ PLATFORM_ICON_HTML = {
     "unknown": '<i class="fa-solid fa-question"></i>',
 }
 
-# ── Load all devices + platform counts + update info ─────────────────────────
+# ── Load all devices + platform counts + update info (parallel) ──────────────
+from concurrent.futures import ThreadPoolExecutor
 with st.spinner("Loading devices..."):
-    data, err = client.list_devices(per_page=200)
-    counts_data, _ = client.get_platform_counts()
-    _upd_info, _ = client.get_agent_update_info()
+    with ThreadPoolExecutor(max_workers=3) as _ex:
+        _f1 = _ex.submit(client.list_devices, per_page=200)
+        _f2 = _ex.submit(client.get_platform_counts)
+        _f3 = _ex.submit(client.get_agent_update_info)
+        data, err = _f1.result()
+        counts_data, _ = _f2.result()
+        _upd_info, _ = _f3.result()
 
 _latest_agent_version = (_upd_info or {}).get("latest_version", "")
 _download_available = (_upd_info or {}).get("download_available", False)

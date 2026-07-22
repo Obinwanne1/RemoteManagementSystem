@@ -47,7 +47,7 @@ def cached_list_devices(_token: str, **params):
     return client.list_devices(**params)
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def cached_list_customers(_token: str, **params):
     client = get_client()
     if not client:

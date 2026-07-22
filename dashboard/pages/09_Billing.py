@@ -21,7 +21,8 @@ _curr_sym = CURRENCY_SYMBOLS.get(_currency, _currency + " ")
 st.markdown('<h1 style="margin:0">Billing</h1><p style="color:#6B7B6B;margin:2px 0 1rem;font-size:0.88rem">Customer invoices and billing management</p>', unsafe_allow_html=True)
 
 # ── Load customers ────────────────────────────────────────────────────────────
-cust_data, cust_err = client.list_customers(per_page=100)
+from utils.cached_calls import cached_list_customers
+cust_data, cust_err = cached_list_customers(st.session_state.get("access_token", ""), per_page=100)
 customers = cust_data.get("items", []) if cust_data else []
 cust_map = {c["name"]: c["id"] for c in customers}
 cust_names_all = ["All Customers"] + list(cust_map.keys())
