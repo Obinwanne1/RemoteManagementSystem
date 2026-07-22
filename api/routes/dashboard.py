@@ -10,8 +10,8 @@ from utils.cache import cache_get, cache_set
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
-_SUMMARY_TTL = 30   # seconds
-_HEALTHMAP_TTL = 15  # seconds
+_SUMMARY_TTL = 60   # seconds
+_HEALTHMAP_TTL = 30  # seconds
 
 
 def _scoped_customer_id():
@@ -135,11 +135,18 @@ def health_map():
 @jwt_required()
 def recent_alerts():
     cid = _scoped_customer_id()
+    cache_key = f"rmm:dash:recent_alerts:{cid or 'all'}"
+    cached = cache_get(cache_key)
+    if cached:
+        return jsonify(cached), 200
+
     q = Alert.query.order_by(Alert.triggered_at.desc())
     if cid:
         q = q.join(Device, Alert.device_id == Device.id).filter(Device.customer_id == cid)
     alerts = q.limit(20).all()
-    return jsonify([a.to_dict() for a in alerts]), 200
+    result = [a.to_dict() for a in alerts]
+    cache_set(cache_key, result, 15)
+    return jsonify(result), 200
 
 
 @dashboard_bp.route("/activity_feed", methods=["GET"])
