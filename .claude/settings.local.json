@@ -338,7 +338,20 @@
       "PowerShell($pid5000 = \\(netstat -ano | Select-String \":5000 \" | Select-String \"LISTENING\" | ForEach-Object { \\($_ -split '\\\\s+'\\)[-1] } | Select-Object -First 1\\); if \\($pid5000\\) { taskkill /F /PID $pid5000 }; Start-Sleep -Seconds 2; Start-Process -FilePath \"python\" -ArgumentList \"app.py\" -WorkingDirectory \"C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\api\" -WindowStyle Normal; Start-Sleep -Seconds 8; $r = try{\\(Invoke-WebRequest \"http://localhost:5000/api/health\" -UseBasicParsing -TimeoutSec 4\\).StatusCode}catch{\"down\"}; \"API: $r\")",
       "PowerShell(Out-Null *)",
       "PowerShell($tok = \\(Invoke-RestMethod \"http://localhost:5000/api/auth/login\" -Method POST -ContentType \"application/json\" -Body '{\"email\":\"superadmin@rmm.local\",\"password\":\"SuperAdmin@RMM1!\"}'\\).access_token; $h = @{Authorization=\"Bearer $tok\"}; $endpoints = @\\(\"/api/dashboard/summary\",\"/api/dashboard/health_map\",\"/api/dashboard/recent_alerts\",\"/api/dashboard/activity_feed\"\\); foreach \\($ep in $endpoints\\) { $t=\\(Get-Date\\); try { Invoke-RestMethod \"http://localhost:5000$ep\" -Headers $h | Out-Null } catch {}; \"$ep : $\\([int]\\(\\(Get-Date\\)-$t\\).TotalMilliseconds\\)ms\" })",
-      "PowerShell(Start-Sleep -Seconds 5; $api = try{\\(Invoke-WebRequest \"http://localhost:5000/api/health\" -UseBasicParsing -TimeoutSec 3\\).StatusCode}catch{\"down\"}; \"API=$api\")"
+      "PowerShell(Start-Sleep -Seconds 5; $api = try{\\(Invoke-WebRequest \"http://localhost:5000/api/health\" -UseBasicParsing -TimeoutSec 3\\).StatusCode}catch{\"down\"}; \"API=$api\")",
+      "PowerShell(choco install *)",
+      "PowerShell(winget search *)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(gh release *)",
+      "PowerShell(C:\\\\pgbouncer\\\\pgbouncer.exe -regservice C:\\\\pgbouncer\\\\pgbouncer.ini)",
+      "PowerShell(sc.exe start pgbouncer)",
+      "PowerShell(sc.exe query pgbouncer)",
+      "Bash(pip show *)",
+      "PowerShell(Invoke-RestMethod -Uri \"http://localhost:5000/api/health\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Set-Content *)",
+      "Bash(C:/Program Files/PostgreSQL/15/bin/psql.exe *)",
+      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\15\\\\bin\\\\psql.exe\" -U rmm_app -d rmmdb -c \"SHOW shared_buffers; SHOW effective_cache_size; SHOW work_mem;\" 2>&1)"
     ]
   }
 }

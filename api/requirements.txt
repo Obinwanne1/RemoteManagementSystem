@@ -21,5 +21,6 @@ Pillow==11.2.1
 stripe==12.3.0
 anthropic>=0.40.0
 sentry-sdk[flask]>=2.0.0
+cryptography>=42.0.0
 paho-mqtt>=1.6.1
 pysnmp>=4.4.12

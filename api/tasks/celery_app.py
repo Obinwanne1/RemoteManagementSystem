@@ -1,5 +1,6 @@
 import os
 import sys
+import platform
 from pathlib import Path
 from celery import Celery
 from dotenv import load_dotenv
@@ -31,6 +32,8 @@ def make_celery(app=None):
             "tasks.billing_tasks",
             "tasks.mqtt_tasks",
             "tasks.snmp_tasks",
+            "tasks.anomaly_tasks",
+            "tasks.psa_tasks",
         ],
     )
 
@@ -40,7 +43,7 @@ def make_celery(app=None):
         result_serializer="json",
         timezone="UTC",
         enable_utc=True,
-        worker_pool="solo",  # Required on Windows
+        worker_pool="solo" if platform.system() == "Windows" else "prefork",
         task_acks_late=True,
         task_reject_on_worker_lost=True,
         task_default_retry_delay=60,
@@ -102,6 +105,14 @@ def make_celery(app=None):
             "snmp-device-poll-every-5min": {
                 "task": "tasks.snmp_tasks.poll_snmp_devices",
                 "schedule": 300.0,
+            },
+            "anomaly-detection-every-10min": {
+                "task": "tasks.anomaly_tasks.detect_metric_anomalies",
+                "schedule": 600.0,
+            },
+            "psa-sync-every-15min": {
+                "task": "tasks.psa_tasks.sync_all_psa_integrations",
+                "schedule": 900.0,
             },
         },
     )

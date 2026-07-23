@@ -1,0 +1,36 @@
+{
+  "name": "RMM System",
+  "short_name": "RMM",
+  "description": "Remote Monitoring & Management — device health, alerts, and tickets.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#407E3C",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "url": "/dashboard",
+      "description": "Live system overview"
+    },
+    {
+      "name": "Alerts",
+      "url": "/alerts",
+      "description": "Open alerts"
+    },
+    {
+      "name": "Tickets",
+      "url": "/tickets",
+      "description": "Support tickets"
+    }
+  ]
+}
