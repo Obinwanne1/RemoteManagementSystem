@@ -38,9 +38,11 @@ PLATFORM_ICON_HTML = {
 
 # ── Load all devices + platform counts + update info (parallel) ──────────────
 from concurrent.futures import ThreadPoolExecutor
+from utils.cached_calls import cached_list_devices
+_tok = st.session_state.get("access_token", "")
 with st.spinner("Loading devices..."):
     with ThreadPoolExecutor(max_workers=3) as _ex:
-        _f1 = _ex.submit(client.list_devices, per_page=200)
+        _f1 = _ex.submit(cached_list_devices, _tok, per_page=200)
         _f2 = _ex.submit(client.get_platform_counts)
         _f3 = _ex.submit(client.get_agent_update_info)
         data, err = _f1.result()

@@ -1,10 +1,12 @@
+import json
 from datetime import datetime, timezone, timedelta
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy import func
 from extensions import db, limiter
 from models.device import Device, DeviceMetrics
 from utils.validation import validate_body
+from utils.cache import cache_get_raw, cache_set_raw, cache_delete_pattern
 from schemas.devices import DeviceUpdateSchema, QueueTaskSchema, DeployPatchesSchema
 
 devices_bp = Blueprint("devices", __name__)
@@ -45,10 +47,16 @@ def list_devices():
     status = request.args.get("status")
     is_online = request.args.get("is_online")
     q = request.args.get("q", "")
-
     platform_filter = request.args.get("platform")
     is_agentless = request.args.get("is_agentless")
     device_type = request.args.get("device_type")
+
+    _ck = (f"rmm:devices:list:p{page}:pp{per_page}:c{customer_id or ''}:"
+           f"g{group_id or ''}:s{status or ''}:o{is_online or ''}:"
+           f"pf{platform_filter or ''}:ia{is_agentless or ''}:dt{device_type or ''}:q{q}")
+    raw = cache_get_raw(_ck)
+    if raw:
+        return Response(raw, mimetype="application/json")
 
     query = Device.query
     if customer_id:
@@ -70,7 +78,7 @@ def list_devices():
 
     paginated = query.order_by(Device.hostname).paginate(page=page, per_page=per_page)
     metrics_by_device = _batch_latest_metrics([d.id for d in paginated.items])
-    return jsonify({
+    result = {
         "items": [
             d.to_dict(include_latest_metrics=True, latest_metrics_data=metrics_by_device.get(d.id))
             for d in paginated.items
@@ -78,7 +86,10 @@ def list_devices():
         "total": paginated.total,
         "page": page,
         "pages": paginated.pages,
-    }), 200
+    }
+    raw_json = json.dumps(result, default=str)
+    cache_set_raw(_ck, raw_json, 30)
+    return Response(raw_json, mimetype="application/json")
 
 
 @devices_bp.route("/platform_counts", methods=["GET"])
@@ -127,6 +138,7 @@ def update_device(device_id):
         if field in data:
             setattr(device, field, data[field])
     db.session.commit()
+    cache_delete_pattern("rmm:devices:list:*")
     return jsonify(device.to_dict()), 200
 
 
@@ -139,6 +151,7 @@ def delete_device(device_id):
     device = Device.query.get_or_404(device_id)
     db.session.delete(device)
     db.session.commit()
+    cache_delete_pattern("rmm:devices:list:*")
     return jsonify({"message": "Device removed"}), 200
 
 

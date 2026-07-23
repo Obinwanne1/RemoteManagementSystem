@@ -1,9 +1,11 @@
+import json
 from datetime import datetime, timezone
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from extensions import db
 from models.alert import Alert, AlertRule
 from utils.validation import validate_body
+from utils.cache import cache_get_raw, cache_set_raw, cache_delete_pattern
 from schemas.alerts import AlertRuleCreateSchema, AlertRuleUpdateSchema
 
 alerts_bp = Blueprint("alerts", __name__)
@@ -115,6 +117,11 @@ def list_alerts():
     severity = request.args.get("severity")
     device_id = request.args.get("device_id")
 
+    _ck = f"rmm:alerts:list:p{page}:pp{per_page}:s{status or ''}:sv{severity or ''}:d{device_id or ''}"
+    raw = cache_get_raw(_ck)
+    if raw:
+        return Response(raw, mimetype="application/json")
+
     query = Alert.query
     if status:
         query = query.filter_by(status=status)
@@ -124,11 +131,14 @@ def list_alerts():
         query = query.filter_by(device_id=device_id)
 
     paginated = query.order_by(Alert.triggered_at.desc()).paginate(page=page, per_page=per_page)
-    return jsonify({
+    result = {
         "items": [a.to_dict() for a in paginated.items],
         "total": paginated.total,
         "page": page,
-    }), 200
+    }
+    raw_json = json.dumps(result, default=str)
+    cache_set_raw(_ck, raw_json, 20)
+    return Response(raw_json, mimetype="application/json")
 
 
 @alerts_bp.route("/alerts/<alert_id>/acknowledge", methods=["POST"])
@@ -139,6 +149,7 @@ def acknowledge_alert(alert_id):
     alert.acknowledged_by = get_jwt_identity()
     alert.acknowledged_at = datetime.now(timezone.utc)
     db.session.commit()
+    cache_delete_pattern("rmm:alerts:list:*")
     return jsonify(alert.to_dict()), 200
 
 
@@ -149,4 +160,5 @@ def resolve_alert(alert_id):
     alert.status = "resolved"
     alert.resolved_at = datetime.now(timezone.utc)
     db.session.commit()
+    cache_delete_pattern("rmm:alerts:list:*")
     return jsonify(alert.to_dict()), 200
