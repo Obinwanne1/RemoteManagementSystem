@@ -39,6 +39,21 @@ def _next_invoice_number():
     return f"INV-{year}-{count + 1:04d}"
 
 
+@billing_bp.route("/tier-features", methods=["GET"])
+@jwt_required()
+def get_tier_features():
+    """
+    Return the feature set for the caller's tier.
+    Used by the React frontend to gate premium UI elements.
+    """
+    from utils.tier_gates import tier_features, _get_customer_tier_from_jwt
+    current_tier = _get_customer_tier_from_jwt()
+    return jsonify({
+        "tier": current_tier,
+        "features": tier_features(current_tier),
+    }), 200
+
+
 @billing_bp.route("/invoices", methods=["GET"])
 @jwt_required()
 def list_invoices():

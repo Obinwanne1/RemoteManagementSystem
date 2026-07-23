@@ -1,18 +1,42 @@
-import { useQuery } from '@tanstack/react-query';
-import { Monitor, Wifi, AlertTriangle, Bell, Ticket, RefreshCw } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Monitor, Wifi, AlertTriangle, Bell, Ticket, RefreshCw, Radio } from 'lucide-react';
+import { useState, useCallback } from 'react';
 import api from '../api/client';
 import type { DashboardSummary } from '../api/types';
 import StatCard from '../components/StatCard';
+import { useAuth } from '../contexts/AuthContext';
+import { useSSE } from '../hooks/useSSE';
+
+const LIVE_EVENTS = new Set([
+  'alert_fired', 'alert_resolved', 'device_online', 'device_offline',
+  'ticket_created', 'ticket_closed', 'heartbeat',
+]);
 
 function fetchSummary(): Promise<DashboardSummary> {
   return api.get('/dashboard/summary').then((r) => r.data);
 }
 
 export default function DashboardPage() {
+  const { token } = useAuth();
+  const queryClient = useQueryClient();
+  const [liveConnected, setLiveConnected] = useState(false);
+
+  const handleSSEMessage = useCallback((type: string) => {
+    if (LIVE_EVENTS.has(type)) {
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    }
+  }, [queryClient]);
+
+  useSSE(token, {
+    onConnect: () => setLiveConnected(true),
+    onError: () => setLiveConnected(false),
+    onMessage: handleSSEMessage,
+  });
+
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: fetchSummary,
-    refetchInterval: 30_000,
+    refetchInterval: 60_000, // fallback poll every 60s; SSE triggers faster updates
   });
 
   return (
@@ -23,14 +47,20 @@ export default function DashboardPage() {
           <h1 className="text-xl font-bold text-gray-900">Overview</h1>
           <p className="text-sm text-gray-500">Live system status</p>
         </div>
-        <button
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="flex items-center gap-2 text-sm text-gray-500 hover:text-brand-600 transition disabled:opacity-50"
-        >
-          <RefreshCw size={15} className={isFetching ? 'animate-spin' : ''} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <span className={`flex items-center gap-1.5 text-xs font-medium ${liveConnected ? 'text-green-600' : 'text-gray-400'}`}>
+            <Radio size={13} className={liveConnected ? 'animate-pulse' : ''} />
+            {liveConnected ? 'Live' : 'Polling'}
+          </span>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="flex items-center gap-2 text-sm text-gray-500 hover:text-brand-600 transition disabled:opacity-50"
+          >
+            <RefreshCw size={15} className={isFetching ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {isError && (

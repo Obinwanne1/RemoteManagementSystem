@@ -92,7 +92,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A tasks.celery_app worker --pool=solo -l info
+    command: celery -A tasks.celery_app worker --pool=prefork --concurrency=4 -l info
 
   celery_beat:
     build:
@@ -111,21 +111,6 @@ services:
       redis:
         condition: service_healthy
     command: celery -A tasks.celery_app beat -l info
-
-  dashboard:
-    build:
-      context: ./dashboard
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      API_BASE_URL: http://api:5000
-    # Port 8501 intentionally NOT exposed externally — nginx proxies all traffic
-    expose:
-      - "8501"
-    depends_on:
-      - api
-    command: python -m streamlit run app.py --server.port=8501 --server.address=0.0.0.0
 
 volumes:
   postgres_data:
