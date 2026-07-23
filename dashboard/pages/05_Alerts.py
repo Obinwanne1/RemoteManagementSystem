@@ -29,8 +29,9 @@ tab_alerts, tab_rules = st.tabs(["Active Alerts", "Alert Rules"])
 with tab_alerts:
 
     # Load all open alerts
+    from utils.cached_calls import cached_list_alerts
     with st.spinner("Loading alerts..."):
-        data, err = client.list_alerts(status="open", per_page=100)
+        data, err = cached_list_alerts(st.session_state.get("access_token", ""), status="open", per_page=100)
     if err:
         st.warning(f"Could not load alerts — {err}")
         data = None
