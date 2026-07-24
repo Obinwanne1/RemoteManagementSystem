@@ -14,9 +14,9 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-at-least-32-chars-longx")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret-key-at-least-32-charsx")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("SUPERADMIN_PASSWORD", "TestSuperAdmin@1")
-os.environ.setdefault("ORG_REGISTRATION_TOKEN", "test-org-token-unique-secret-value")
-# Prevent load_dotenv from overriding our test DATABASE_URL with the real Postgres URL
+# Force-set values that CI env vars would otherwise override via setdefault
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["ORG_REGISTRATION_TOKEN"] = "test-org-token-unique-secret-value"
 
 
 @pytest.fixture(scope="session")
