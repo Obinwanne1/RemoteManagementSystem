@@ -83,7 +83,7 @@ jobs:
         uses: codecov/codecov-action@v7
         if: always()
         with:
-          file: api/coverage.xml
+          files: api/coverage.xml
           fail_ci_if_error: false
 
   # Frontend: TypeScript build
