@@ -244,9 +244,13 @@ def get_output(session_id):
         .limit(200)
         .all()
     )
+    pending_count = TerminalCommand.query.filter_by(
+        session_id=session_id, status="pending"
+    ).count()
     return jsonify({
         "session": session.to_dict(),
         "output": [r.to_dict() for r in rows],
+        "pending_commands": pending_count,
     }), 200
 
 
