@@ -133,6 +133,7 @@ def _output_panel():
 
     session_info = poll_data.get("session", {})
     new_chunks = poll_data.get("output", [])
+    pending_commands = poll_data.get("pending_commands", 0)
 
     if new_chunks:
         for chunk in new_chunks:
@@ -155,8 +156,18 @@ def _output_panel():
         color = "#FF6B6B" if stream == "stderr" else "#94A3B8" if stream == "system" else "#E2E8F0"
         output_html_parts.append(f'<span style="color:{color}">{text}</span>')
 
+    if pending_commands > 0:
+        output_html_parts.append(
+            '<span style="color:#F59E0B">&#9650; waiting for agent to execute command'
+            ' <span class="term-blink">▋</span></span>'
+        )
+
     output_html = "".join(output_html_parts) or '<span style="color:#94A3B8">Waiting for output...</span>'
     st.markdown(
+        '<style>'
+        '@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}'
+        '.term-blink{animation:blink 1s step-start infinite}'
+        '</style>'
         f'<div id="term-output" style="'
         f'background:#0D1117;border-radius:8px;padding:1rem;'
         f'font-family:Consolas,monospace;font-size:0.82rem;'
