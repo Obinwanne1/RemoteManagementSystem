@@ -148,6 +148,7 @@ def _output_panel():
             "stream": "system",
         })
         st.session_state["_term_session_id"] = None
+        st.session_state["_term_output_seq"] = 0
 
     output_html_parts = []
     for chunk in st.session_state["_term_output_buf"]:
