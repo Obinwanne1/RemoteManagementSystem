@@ -351,7 +351,14 @@
       "PowerShell(Invoke-RestMethod -Uri \"http://localhost:5000/api/health\" -ErrorAction SilentlyContinue)",
       "PowerShell(Set-Content *)",
       "Bash(C:/Program Files/PostgreSQL/15/bin/psql.exe *)",
-      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\15\\\\bin\\\\psql.exe\" -U rmm_app -d rmmdb -c \"SHOW shared_buffers; SHOW effective_cache_size; SHOW work_mem;\" 2>&1)"
+      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\15\\\\bin\\\\psql.exe\" -U rmm_app -d rmmdb -c \"SHOW shared_buffers; SHOW effective_cache_size; SHOW work_mem;\" 2>&1)",
+      "Bash(ping -n 5 127.0.0.1)",
+      "Skill(claude-in-chrome)",
+      "Bash(gh run *)",
+      "Bash(gh api *)",
+      "PowerShell(psql *)",
+      "PowerShell(Start-Sleep -Seconds 4; try { $r = Invoke-WebRequest -Uri \"http://localhost:5000/api/health\" -UseBasicParsing -TimeoutSec 5; $r.StatusCode } catch { $_.Exception.Message })",
+      "PowerShell(Start-Sleep -Seconds 5; try { $r = Invoke-WebRequest -Uri \"http://localhost:8501\" -UseBasicParsing -TimeoutSec 5; $r.StatusCode } catch { $_.Exception.Message })"
     ]
   }
 }
