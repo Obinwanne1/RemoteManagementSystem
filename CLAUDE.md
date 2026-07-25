@@ -24,6 +24,17 @@ Stack: Flask API + Streamlit dashboard + Python agent + PostgreSQL + Redis/Celer
 - Commercial Audit (Track A — Security): Agent multi-customer routing — `customer_id` field in `AgentRegisterSchema` + registration API + `agent/heartbeat.py` + `agent/config.ini`; DPAPI token encryption — `_protect_token`/`_unprotect_token` in `agent/rmm_agent.py` with graceful plaintext migration; Alembic migration `i0j1k2l3m4n5` adding `ix_devices_customer_status` composite index; OpenAPI 3.0 spec at `api/swagger_spec.py` (47 paths, 16 tags) served via SwaggerUI CDN at `/api/docs` + `/api/openapi.json` (`api/routes/docs.py`); pagination added to `alerts`, `admin/users`, `automation/profiles`, `customers/groups` list endpoints; Redis SET NX distributed lock in `evaluate_all_rules` preventing thundering herd; webhook dispatch in `api/utils/webhook.py` — Slack Block Kit, MS Teams MessageCard, generic JSON POST on alert fire
 - Commercial Audit (Track C — Stability): Redis query cache `api/utils/cache.py` (`cache_get`/`cache_set`/`cache_delete`); dashboard summary cached 30s per-tenant; platform_counts cached 60s; terminal `create_session` + script `run_script` enforce `device.customer_id` ownership for client-role JWTs; `api/tasks/backup_tasks.py` — nightly pg_dump → gzip, prunes backups older than `BACKUP_RETAIN_DAYS`, registered in Celery beat (86400s); `api/tasks/billing_tasks.py` — daily task generates draft invoices for customers where `billing_day == today`, idempotent; Customer model gains `billing_day`, `per_device_rate`, `tax_rate` columns (migration `j1k2l3m4n5o6`)
 - Commercial Audit (Track B — Features): Script `run_script` emits `AuditLog` entry (script name, device count, device IDs); GDPR Art. 20 export — `GET /api/admin/users/<id>/gdpr-export` returns profile + audit log + ticket comments; GDPR Art. 17 delete — `DELETE /api/admin/users/<id>/gdpr-delete` anonymizes PII, scrubs IPs, nulls comment author emails; configurable SLA policies — `api/models/sla_policy.py` + migration `k2l3m4n5o6p7` (creates table + seeds 4 global defaults); CRUD at `/api/sla-policies/`; `api/routes/tickets.py` `create_ticket` now calls `_sla_resolution_hours()` — customer-specific policy → global policy → hardcoded fallback
+- Post-ship (Tier 1 — Stability): Celery app context leak fix — `_get_app()` singleton added to 8 task files (automation, billing, email, maintenance, network, patch, report, ticket); replaces per-invocation `create_app()` that caused DB pool exhaustion under load; CI enhanced with postgres+redis services, coverage upload, Docker build gate on main, TypeScript type-check; `.gitattributes` added with `eol=lf` normalization for all text files
+- Post-ship (Tier 2 — Tests): 80 new tests added — `test_tickets.py`, `test_alerts.py`, `test_devices.py`, `test_cache.py`; total 102/102 passing; `conftest.py` force-sets `ORG_REGISTRATION_TOKEN`; CI runs full suite with postgres+redis service containers
+- Post-ship (Tier 3 — Production Hardening): Sentry SDK (`sentry-sdk[flask]>=2.0.0`) integrated in `api/app.py` — no-op when `SENTRY_DSN` unset, `traces_sample_rate=0.05`, `send_default_pii=False`; login rate limit tightened from 10/min to 5/min (`POST /api/auth/login`); `SENTRY_DSN` stub added to `.env.example`
+- Post-ship (Tier 4 — Cross-Platform Agent): `agent/collector.py` refactored to dispatch on `sys.platform` — macOS uses `sysctl`/`system_profiler`/`softwareupdate`/`brew`, Linux uses `/proc/cpuinfo`/`dmidecode`/`apt`/`dnf`/`yum`/`pacman`/`dpkg`; all Windows-specific code guarded by `_PLATFORM == "win32"`; `agent/build.py` added — PyInstaller single-file binary builder, auto-detects platform, outputs `dist/rmm_agent[.exe]` + copies `config.ini` template
+- Post-ship (Tier 5 — Screenshot Pipeline): `agent/screenshot.py` — cross-platform screen capture (PIL.ImageGrab on Windows/macOS, scrot/gnome-screenshot on Linux), max 1920px, JPEG quality 72, returns None silently on headless; `agent/heartbeat.py` gains `send_screenshot(jpeg_bytes)` — POST raw bytes to `POST /api/agents/<id>/screenshot`; `agent/rmm_agent.py` captures every 300s (configurable via `[agent] screenshot_interval`); API: `POST /api/agents/<id>/screenshot` (agent auth, 5MB cap, saves to `api/screenshots/<device_id>.jpg`), `GET /api/devices/<id>/screenshot` (JWT, streams via `send_file`); `Pillow>=10.0.0` added to `agent/requirements.txt`
+- Post-ship (Auto-resolve alerts): `evaluate_all_rules` now resolves open alerts when metric drops back below threshold; heartbeat resolves open offline alerts when device reconnects; fixes indefinite alert pile-up; alert storm fix — split `active_alert_map` into `open_alert_map` (no time filter) + `resolved_alert_map` (cooldown after recovery) to prevent re-fire of alerts older than cooldown_minutes
+- Post-ship (Terminal improvements): Terminal output polling — React `TerminalPage.tsx` polls `GET /terminal/sessions/<id>/output?after=<last_id>` every 2s; pending-command indicator — `GET /terminal/sessions/<id>/output` returns `pending_commands` count; `14_Terminal.py` shows amber blinking indicator when commands queued but agent offline; terminal token rotation — `terminal_worker.update_token()` called from `rmm_agent` on rotation; session seq reset on auto-close prevents stale buffer on next connect
+- Post-ship (Performance): gzip compression via `flask-compress` (all JSON >500B); Waitress 16 threads; `api/utils/jwt_cache.py` — TTLCache(512, 60s) monkey-patch skips HMAC verify for repeated tokens (60-86ms vs 135-177ms); raw JSON cache (`cache_get_raw`/`cache_set_raw`) for `health_map` — returns pre-serialized `Response` bypassing double serialization; PgBouncer support — route `DATABASE_URL` through port 6432, `pool_pre_ping` disabled; cache pre-warm at API startup; `dashboard/utils/cached_calls.py` — `st.cache_data` wrappers for all major read endpoints; `01_Dashboard.py` and `14_Terminal.py` use `@st.fragment` auto-refresh instead of `time.sleep`+rerun; `ThreadPoolExecutor` parallel API calls in `04_Devices.py` and `10_Admin.py`; PostgreSQL `work_mem` raised to 16MB for `rmm_app`
+- Post-ship (IoT/MQTT/SNMP): `agent/iot_agent.py` — IoT sensor agent for Raspberry Pi/Linux SBC; reads from `/sys/class/hwmon`, DHT11/DHT22, BME680, PIR, door switch; all sensor libs optional; `api/routes/sensors.py` blueprint at `/api/sensors/`; `SensorReading` model + Alembic migration `l3m4n5o6p7q8`; `api/tasks/mqtt_tasks.py` — Celery MQTT subscription task (no-op when `MQTT_HOST` unset); `api/tasks/snmp_tasks.py` — per-device SNMP polling; `dashboard/pages/18_IoT_Sensors.py` — sensor charts page; `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_TOPIC_PREFIX`, `SNMP_TIMEOUT` env vars added
+- Post-ship (React Frontend): Full TypeScript/React 19/Vite 8 frontend in `frontend/` — 19 pages matching all Streamlit pages; TanStack Query for server state; React Router 7; Tailwind CSS; axios; CORS configured via `CORS_ORIGINS` + `DASHBOARD_URL` env var; `frontend/src/pages/` contains all page components; `frontend/src/api/` has axios client; production build via `npm run build` → `frontend/dist/`; TypeScript type-check in CI
+- Post-ship (AI Assistant hardening): Hallucination liability reduction — system prompt rules added: no invented numbers, uncertainty disclosure, "verify before proceeding" on action responses; Terminal + Scripts pages use restricted/navigation-only mode (no commands suggested, code blocks stripped post-generation); danger pattern detection (rm -rf, DROP TABLE, kill -9, etc.) prepends CAUTION banner + returns `contains_warning` flag; dashboard renders warning banner on flagged messages; audit log entry per AI chat message (user, page, warning flag, IP); live context injected for Billing/Tickets/Reports pages; persistent disclaimer shown when widget opens
 
 ## State File
 Check `.claude/state.md` at session start for current phase and context.
@@ -39,8 +50,10 @@ Check `.claude/state.md` at session start for current phase and context.
 ## Services & Ports
 - Flask API: http://localhost:5000
 - Streamlit dashboard: http://localhost:8501
+- React frontend (dev): http://localhost:3000
 - PostgreSQL: localhost:5432 (db: rmmdb, user: rmm_app)
 - Redis/Memurai: localhost:6379
+- PgBouncer (optional): localhost:6432
 
 ## Kill by port (Windows)
 ```
@@ -59,11 +72,20 @@ cd api ; celery -A tasks.celery_app worker --pool=solo -l info
 # Celery beat
 cd api ; celery -A tasks.celery_app beat -l info
 
-# Dashboard
+# Dashboard (Streamlit)
 cd dashboard ; streamlit run app.py
+
+# React frontend (dev)
+cd frontend ; npm run dev
 
 # Agent (run as admin for patch management)
 cd agent ; python rmm_agent.py
+
+# IoT sensor agent (Raspberry Pi / Linux SBC)
+cd agent ; python iot_agent.py
+
+# PyInstaller binary build
+cd agent ; python build.py
 ```
 
 ## Brand
@@ -94,6 +116,15 @@ Apply to all UI. Dark sidebar, white text, green accents.
 - `api/routes/admin.py` — `GET /api/admin/users/<id>/gdpr-export` (GDPR Art. 20 data export) and `DELETE /api/admin/users/<id>/gdpr-delete` (Art. 17 anonymization — irreversible).
 - `api/tasks/backup_tasks.py` — `backup_database` Celery task: finds pg_dump, runs it, gzip-compresses to `BACKUP_DIR`, prunes files older than `BACKUP_RETAIN_DAYS` (default 7). Runs daily via Celery beat.
 - `api/tasks/billing_tasks.py` — `generate_recurring_invoices` Celery task: runs daily, finds customers where `billing_day == today` and `per_device_rate > 0`, generates draft invoices for prior calendar month. Idempotent — skips if invoice for that period already exists.
+- `api/utils/jwt_cache.py` — `TTLCache(512, 60s)` process-local JWT decode cache. Monkey-patches `flask_jwt_extended._decode_jwt_from_request` to skip HMAC verify for repeated tokens. Installed via `_install_jwt_cache()` in `create_app()`. Reduces JWT overhead 135-177ms ��� 60-86ms.
+- `api/utils/cache.py` — gains `cache_get_raw(key)` / `cache_set_raw(key, raw_bytes, ttl)` for pre-serialized JSON storage. `health_map` uses this to return a `Response` directly, bypassing double serialization.
+- `agent/screenshot.py` — `capture()` returns JPEG bytes or None. Windows/macOS: PIL.ImageGrab; Linux: scrot → gnome-screenshot → PIL fallback. Max 1920px, quality 72. Returns None silently on headless.
+- `agent/iot_agent.py` — IoT sensor agent for Raspberry Pi/Linux SBC. Reads hwmon/DHT/BME680/PIR/door sensors. All sensor libs optional. Reuses `config.ini` and `heartbeat.py`. Configure via `[iot]` section in `config.ini`.
+- `agent/build.py` — PyInstaller single-file binary builder. `python build.py` in `agent/`. Output: `agent/dist/rmm_agent[.exe]` + `config.ini` template.
+- `dashboard/utils/cached_calls.py` — `st.cache_data` wrappers for major read endpoints. Use instead of calling `client.*` directly on frequently re-rendered pages. Call `st.cache_data.clear()` after mutations.
+- `api/routes/sensors.py` — IoT sensor readings CRUD at `/api/sensors/`. Agent token auth for POST, JWT for GET.
+- `api/tasks/mqtt_tasks.py` — Celery MQTT subscription. Subscribes to `{MQTT_TOPIC_PREFIX}/#`. No-op when `MQTT_HOST` unset.
+- `api/tasks/snmp_tasks.py` — Per-device SNMP polling. Community string in `Device.metadata_.snmp_community`. Timeout from `SNMP_TIMEOUT` env var.
 
 ## Build Order (Phases)
 1. ✓ Agent Core → 2. ✓ API Foundation → 3. ✓ Dashboard UI → 4. ✓ Scripts →
