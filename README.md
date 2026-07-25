@@ -2,7 +2,7 @@
 
 A NinjaOne-style Remote Monitoring & Management platform built in-house. Monitor devices, manage patches, run scripts, respond to alerts, and handle client billing — all from a single dashboard.
 
-**Stack:** Flask API · Streamlit Dashboard · Python Agent · PostgreSQL · Redis/Celery
+**Stack:** Flask API · Streamlit Dashboard · React Frontend (optional) · Python Agent · PostgreSQL · Redis/Celery
 
 ---
 
@@ -10,19 +10,21 @@ A NinjaOne-style Remote Monitoring & Management platform built in-house. Monitor
 
 | Category | What's included |
 |----------|----------------|
-| **Monitoring** | Real-time CPU/RAM/disk metrics, device health map, 7-day history fallback |
-| **Alerts** | Rule-based alerting (threshold + offline), SMTP + Slack + Teams + custom webhook notifications |
-| **Devices** | Agent-managed (Windows/macOS/Linux) + agentless WiFi devices (iOS/Android/IoT) |
+| **Monitoring** | Real-time CPU/RAM/disk metrics, device health map, 7-day history fallback, auto-refresh via `st.fragment` |
+| **Alerts** | Rule-based alerting (threshold + offline), auto-resolve on recovery, SMTP + Slack + Teams + custom webhook |
+| **Devices** | Agent-managed (Windows/macOS/Linux) + agentless WiFi devices (iOS/Android/IoT) + screenshot capture |
 | **Tickets** | Full helpdesk ticketing with comments, priority, assignee, SLA due dates, status workflow |
 | **SLA Policies** | Configurable SLA resolution targets per priority, per-customer overrides, auto due-date calc |
-| **Patch Management** | OS patches via WUA, software patches via winget, maintenance window enforcement |
+| **Patch Management** | OS patches via WUA (Windows), softwareupdate/brew (macOS), apt/dnf/yum/pacman (Linux), winget |
 | **Scripts** | Run PowerShell/bat/Python/shell scripts remotely, 7 built-in maintenance scripts |
 | **Automation** | Scheduled automation profiles (weekly maintenance, patching, cleanup) |
 | **Network Discovery** | ICMP sweep + OUI/port/rDNS platform detection, saves agentless device records |
 | **Reports** | CSV reports: device health, patch compliance, alert summary, software inventory |
 | **Billing** | Invoice creation, recurring auto-invoices by device count, per-customer billing profiles |
-| **Auth & Security** | JWT + refresh tokens, TOTP MFA, role-based access control (5 roles), superadmin |
-| **AI Assistant** | Context-aware chat widget on every page, JWT role-scoped, rate-limited, Claude Haiku 4.5 |
+| **Auth & Security** | JWT + refresh tokens, TOTP MFA, role-based access control (5 roles), superadmin, Sentry error tracking |
+| **AI Assistant** | Context-aware chat widget on every page, JWT role-scoped, rate-limited, hallucination guardrails |
+| **IoT / MQTT** | IoT sensor agent for Raspberry Pi, MQTT ingestion, SNMP polling, sensor dashboard page |
+| **React Frontend** | Full TypeScript/React/Vite frontend — equivalent to all Streamlit pages, served from `frontend/` |
 | **GDPR** | Data export (Art. 20) + erasure/anonymisation (Art. 17) endpoints for admin use |
 | **Database Backup** | Nightly pg_dump via Celery beat, gzip compressed, configurable retention |
 | **API Docs** | Interactive Swagger/OpenAPI 3.0 UI at `/api/docs`, raw spec at `/api/openapi.json` |
@@ -33,17 +35,23 @@ A NinjaOne-style Remote Monitoring & Management platform built in-house. Monitor
 ## Architecture
 
 ```
-Browser → Streamlit Dashboard (:8501)
-               │ REST/JWT
-               ▼
-          Flask API (:5000)
-          ├── PostgreSQL (:5432)  — all persistent data
-          ├── Redis (:6379)       — Celery broker/backend
-          └── Celery Worker + Beat — background tasks
+Browser → Streamlit Dashboard (:8501)   OR   React Frontend (:3000)
+               │ REST/JWT                              │ REST/JWT
+               └──────────────┬────────────────────────┘
+                              ▼
+                         Flask API (:5000)
+                         ├── PostgreSQL (:5432)  — all persistent data
+                         ├── Redis (:6379)       — Celery broker/backend + response cache
+                         └── Celery Worker + Beat — background tasks
 
-Agent (on each managed machine)
+Agent (on each managed Windows/macOS/Linux machine)
   └── heartbeat every 60s → POST /api/agents/<id>/heartbeat
   └── polls tasks → GET /api/agents/<id>/tasks
+  └── screenshot every 5 min → POST /api/agents/<id>/screenshot
+
+IoT Sensor Agent (Raspberry Pi / Linux SBC)
+  └── sensor readings → POST /api/sensors/<device_id>/readings
+  └── (optional) MQTT broker → Celery MQTT task → same endpoint
 ```
 
 ---
@@ -110,7 +118,7 @@ celery -A tasks.celery_app worker --pool=solo -l info   # Terminal 2
 celery -A tasks.celery_app beat -l info                 # Terminal 3
 ```
 
-### 4 — Dashboard
+### 4 — Dashboard (Streamlit)
 
 ```powershell
 cd dashboard
@@ -119,6 +127,18 @@ python -m venv venv
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+### 4b — React Frontend (optional alternative UI)
+
+```powershell
+cd frontend
+npm install
+npm run dev    # dev server at http://localhost:3000
+# Production build:
+npm run build  # output in frontend/dist/
+```
+
+Set `CORS_ORIGINS=http://localhost:3000` in `api/.env` when using the React frontend.
 
 ### 5 — Agent (on each managed machine)
 
@@ -132,6 +152,27 @@ python rmm_agent.py
 ```
 
 The org token is shown in **Admin → System Info → Agent Enrollment Token**.
+
+**PyInstaller binary (no-Python deployment):**
+
+```powershell
+cd agent
+pip install pyinstaller
+python build.py
+# Output: agent/dist/rmm_agent.exe (Windows) or agent/dist/rmm_agent (Linux/macOS)
+# Copy dist/rmm_agent* + dist/config.ini to target machine and run directly
+```
+
+**IoT Sensor Agent (Raspberry Pi / Linux SBC):**
+
+```bash
+cd agent
+pip install -r requirements.txt
+python setup_agent.py <server_ip> <org_token>
+python iot_agent.py
+```
+
+Reads from hwmon (CPU temp), DHT11/DHT22, BME680, PIR motion, door reed switch. All sensor libraries are optional — missing ones are silently skipped.
 
 ---
 
@@ -155,6 +196,16 @@ Copy `.env.example` to `api/.env` and fill in:
 | `AI_ASSISTANT_ENABLED` | — | Default: `true`. Set `false` to hide widget. |
 | `BACKUP_DIR` | — | Directory for nightly DB backups. Default: `../backups` |
 | `BACKUP_RETAIN_DAYS` | — | Days to keep backup files. Default: `7` |
+| `SENTRY_DSN` | — | Sentry error tracking DSN. Omit to disable. Free tier: 10K errors/month. |
+| `MQTT_HOST` | — | MQTT broker hostname for IoT ingestion. Omit to disable MQTT polling. |
+| `MQTT_PORT` | — | Default: `1883` |
+| `MQTT_USERNAME` | — | MQTT broker credentials (optional) |
+| `MQTT_PASSWORD` | — | MQTT broker credentials (optional) |
+| `MQTT_TOPIC_PREFIX` | — | Default: `rmm`. Topic pattern: `{prefix}/{device_id}/sensors/{type}` |
+| `SNMP_TIMEOUT` | — | SNMP GET request timeout in seconds. Default: `3` |
+| `DASHBOARD_URL` | — | React frontend URL for CORS. Default: `http://localhost:3000` |
+| `STRIPE_SECRET_KEY` | — | Stripe secret key for payment processing integration |
+| `STRIPE_WEBHOOK_SECRET` | — | Stripe webhook signing secret |
 
 Generate secrets:
 ```bash
@@ -180,10 +231,10 @@ After first startup the superadmin account is auto-seeded from your `.env`:
 
 | # | Page | Access |
 |---|------|--------|
-| 01 | Overview — stat cards, health map, alerts feed | All |
+| 01 | Overview — stat cards, health map, alerts feed (auto-refreshes every 30s) | All |
 | 02 | Tickets | All |
 | 03 | Customers | All |
-| 04 | Devices — agent + agentless, metrics history | All |
+| 04 | Devices — agent + agentless, metrics history, screenshot viewer | All |
 | 05 | Alerts — rules + active alerts | All |
 | 06 | App Center — software inventory | All |
 | 07 | Network Discovery — ICMP scan, save agentless devices | Admin/Tech |
@@ -191,12 +242,15 @@ After first startup the superadmin account is auto-seeded from your `.env`:
 | 09 | Billing — invoices | Admin |
 | 10 | Admin — audit log, users, system info | Admin |
 | 11 | Automation — scheduled profiles | Admin/Tech |
-| 12 | OS Patches — WUA patch records, approve + deploy | Admin/Tech |
-| 13 | Software Patches — winget updates | Admin/Tech |
+| 12 | OS Patches — WUA/softwareupdate/apt patch records, approve + deploy | Admin/Tech |
+| 13 | Software Patches — winget/brew updates (agent devices only) | Admin/Tech |
 | 14 | Disk Management | Admin/Tech |
+| 14 | Terminal — interactive remote shell (pending-command indicator) | Admin/Tech |
 | 15 | Maintenance — reboot, shutdown, cleanup | Admin/Tech |
 | 16 | Scripts — run custom scripts remotely | Admin/Tech |
 | 17 | My Profile — password change, MFA setup | All |
+| 18 | IoT Sensors — sensor readings, charts, MQTT/SNMP status | Admin/Tech |
+| 20 | Client Portal — self-service ticket submission (client role only) | Client |
 
 ---
 
@@ -252,31 +306,47 @@ Full reference: see `TECHNICAL_GUIDE.md`.
 ```
 RemoteManagementSystem/
 ├── api/                    # Flask API
-│   ├── app.py              # Application factory
-│   ├── config.py           # Environment configs
-│   ├── models/             # SQLAlchemy models (12 models incl. SLAPolicy)
-│   ├── routes/             # Blueprint handlers (18 blueprints incl. assistant, docs, sla_policies)
-│   ├── tasks/              # Celery tasks (alert, patch, network, report, automation, backup, billing)
-│   ├── utils/              # Helpers (superadmin, oui, notifications, builtin_scripts, cache, webhook)
+│   ├── app.py              # Application factory (Sentry init, JWT cache, cache pre-warm)
+│   ├── config.py           # Environment configs (PgBouncer support)
+│   ├── models/             # SQLAlchemy models (incl. SLAPolicy, IoT SensorReading)
+│   ├── routes/             # Blueprint handlers (incl. assistant, docs, sla_policies, sensors, terminal)
+│   ├── tasks/              # Celery tasks (alert, patch, network, report, automation, backup, billing, mqtt, snmp)
+│   ├── utils/              # Helpers (superadmin, oui, cache, webhook, jwt_cache, tier_gates)
 │   ├── migrations/         # Alembic migrations
+│   ├── screenshots/        # Latest screenshot per device (gitignored, .gitkeep present)
+│   ├── tests/              # pytest suite — 102 tests (agents, auth, alerts, tickets, devices, cache)
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── dashboard/              # Streamlit frontend
 │   ├── app.py              # Login + routing entrypoint
-│   ├── pages/              # 19 pages
-│   ├── utils/              # api_client, auth, nav, styles, formatters
+│   ├── pages/              # 21 pages (incl. 18_IoT_Sensors, 20_Client_Portal)
+│   ├── utils/              # api_client, auth, nav, styles, formatters, cached_calls, ai_assistant
 │   ├── Dockerfile
 │   └── requirements.txt
+├── frontend/               # React/Vite/TypeScript frontend (alternative UI)
+│   ├── src/
+│   │   ├── App.tsx          # Router + auth context
+│   │   ├── pages/           # 19 pages matching all Streamlit pages
+│   │   ├── components/      # Shared UI components
+│   │   ├── api/             # Axios API client
+│   │   ├── contexts/        # Auth context
+│   │   └── hooks/           # Data-fetching hooks (TanStack Query)
+│   ├── vite.config.ts
+│   └── package.json         # React 19, Vite 8, TanStack Query, Tailwind, lucide-react
 ├── agent/                  # Python monitoring agent
-│   ├── rmm_agent.py        # Main loop
-│   ├── collector.py        # Metrics + software + patch collection
-│   ├── heartbeat.py        # API client
+│   ├── rmm_agent.py        # Main loop (screenshot sync, terminal worker)
+│   ├── collector.py        # Cross-platform metrics + software + patch collection
+│   ├── heartbeat.py        # API client (incl. send_screenshot)
 │   ├── executor.py         # Task execution
 │   ├── script_runner.py    # PS1/bat/py/sh runner
+│   ├── screenshot.py       # Cross-platform screen capture (Pillow, scrot fallback)
+│   ├── iot_agent.py        # IoT sensor agent (hwmon, DHT, BME680, PIR, door switch)
+│   ├── terminal_worker.py  # WebSocket terminal worker
+│   ├── build.py            # PyInstaller single-file binary builder
 │   └── setup_agent.py      # One-command WiFi deployment
 ├── docker-compose.yml      # 6-service stack
 ├── .env.example            # Environment template
-├── HANDOVER_GUIDE.md       # Full user + ops guide (also as PDF)
+├── HANDOVER_GUIDE.md       # Full user + ops guide
 └── TECHNICAL_GUIDE.md      # Developer reference
 ```
 
@@ -295,7 +365,7 @@ RemoteManagementSystem/
 
 - [ ] Set `FLASK_DEBUG=0`, `FLASK_ENV=production`
 - [ ] Use HTTPS (nginx reverse proxy + Let's Encrypt)
-- [ ] Set `CORS_ORIGINS` to your dashboard URL (not `*`)
+- [ ] Set `CORS_ORIGINS` to your dashboard/frontend URL (not `*`)
 - [ ] Add Redis password (`requirepass` in Memurai/Redis config)
 - [ ] Rotate `ORG_REGISTRATION_TOKEN` after all agents registered
 - [ ] Enable MFA for all admin accounts
@@ -304,6 +374,9 @@ RemoteManagementSystem/
 - [ ] Set `ANTHROPIC_API_KEY` or set `AI_ASSISTANT_ENABLED=false` to disable the widget
 - [ ] Set `BACKUP_DIR` to a path outside the project directory (network share or cloud-synced)
 - [ ] Verify Celery beat is running so nightly backups and recurring invoices fire
+- [ ] Set `SENTRY_DSN` to capture production errors (free tier: 10K errors/month at sentry.io)
+- [ ] Configure PgBouncer on port 6432 and point `DATABASE_URL` at it for connection pooling
+- [ ] Set `MQTT_HOST` only if you have IoT devices publishing to an MQTT broker
 
 ---
 

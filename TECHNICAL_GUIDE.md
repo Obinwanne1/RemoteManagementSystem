@@ -1,8 +1,8 @@
 # RMM System — Technical Guide
 
 **Audience:** Developers, system architects, and advanced administrators  
-**Stack:** Flask 3 · SQLAlchemy 2 · Celery 5 · Streamlit 1.58 · PostgreSQL 15 · Redis/Memurai  
-**Version:** 1.2 (responsive design, multi-currency/timezone, network scan fix)
+**Stack:** Flask 3 · SQLAlchemy 2 · Celery 5 · Streamlit 1.58 · React 19/Vite 8/TypeScript · PostgreSQL 15 · Redis/Memurai  
+**Version:** 1.3 (React frontend, cross-platform agent, screenshot pipeline, IoT/MQTT, performance hardening)
 
 ---
 
@@ -22,6 +22,10 @@
 12. [Environment Variables Reference](#12-environment-variables-reference)
 13. [Docker Deployment](#13-docker-deployment)
 14. [AI Assistant](#14-ai-assistant)
+15. [React Frontend](#15-react-frontend)
+16. [Screenshot Capture Pipeline](#16-screenshot-capture-pipeline)
+17. [IoT / MQTT / SNMP](#17-iot--mqtt--snmp)
+18. [Test Suite](#18-test-suite)
 
 ---
 
@@ -30,47 +34,56 @@
 ### Component Diagram
 
 ```
+┌──────────────────────────────────────┐  ┌──────────────────────────────────┐
+│  Browser  http://localhost:8501       │  │  Browser  http://localhost:3000   │
+│  Streamlit Dashboard (Python)         │  │  React Frontend (TypeScript/Vite) │
+│  dashboard/app.py  (21 pages)         │  │  frontend/src/App.tsx  (19 pages) │
+│  utils/cached_calls.py (st.cache_data)│  │  TanStack Query  (client cache)   │
+└────────────────┬─────────────────────┘  └──────────────┬───────────────────┘
+                 │ HTTP REST  (JWT Bearer)                │ HTTP REST  (JWT Bearer)
+                 │ 3-attempt retry + 401 auto-refresh     │ axios + React Query
+                 └─────────────────┬──────────────────────┘
+                                   ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  Browser  http://localhost:8501                                   │
-│  Streamlit Dashboard (Python)                                     │
-│  dashboard/app.py  +  dashboard/pages/*.py  (16 pages)           │
-│  dashboard/utils/api_client.py  →  RMMClient (session + retry)   │
-└────────────────────────┬─────────────────────────────────────────┘
-                         │ HTTP REST  (JWT Bearer in Authorization header)
-                         │ 3-attempt retry, 0.5/1.0/2.0s backoff
-                         │ 401 → auto-refresh → retry once
-┌────────────────────────▼─────────────────────────────────────────┐
 │  Flask API  http://localhost:5000                                 │
-│  api/app.py  (application factory)                               │
-│  api/routes/*.py   (13 blueprints)                               │
-│  api/models/*.py   (13 SQLAlchemy models, 23 tables)             │
-│  api/utils/builtin_scripts.py   (7 built-in PS1 scripts)         │
-│  api/utils/notifications.py     (SMTP email, opt-in)             │
-│  api/utils/invoice_pdf.py       (ReportLab A4 PDF generator)     │
-│  api/utils/oui.py               (MAC vendor lookup, 500+ entries)│
-│  api/tasks/network_tasks.py     (ICMP scan + agentless ping beat) │
+│  api/app.py  (Sentry init, JWT decode cache, cache pre-warm)     │
+│  api/routes/*.py   (21 blueprints incl. sensors, terminal)       │
+│  api/models/*.py   (SQLAlchemy models incl. SensorReading)       │
+│  api/utils/cache.py    (Redis JSON cache + raw Response cache)   │
+│  api/utils/jwt_cache.py (TTLCache 512 tokens, 60s — skips HMAC) │
+│  api/utils/oui.py      (MAC vendor lookup, 500+ entries)         │
+│  flask-compress        (gzip all JSON responses >500B)            │
+│  waitress              (16 threads)                               │
 └──────┬──────────────┬───────────────────┬────────────────────────┘
        │              │                   │
   PostgreSQL      Redis (broker)      Agent API endpoints
-  :5432           :6379               /api/agents/*
-  db: rmmdb       Celery backend      X-Agent-Token auth
+  :5432           :6379 / PgBouncer   /api/agents/*
+  db: rmmdb       :6432 (optional)    X-Agent-Token auth
        │              │
-       │    ┌─────────▼──────────────────────────────┐
-       │    │  Celery Worker  (--pool=solo on Windows) │
-       │    │  tasks/alert_tasks.py   — beat 60s/180s  │
-       │    │  tasks/patch_tasks.py   — beat 1800s      │
-       │    │  tasks/automation_tasks.py — on demand    │
-       │    │  tasks/report_tasks.py  — on demand       │
-       │    │  tasks/network_tasks.py — beat 300s       │
-       │    └────────────────────────────────────────┘
+       │    ┌─────────▼──────────────────────────────────┐
+       │    │  Celery Worker  (--pool=solo on Windows)    │
+       │    │  tasks/alert_tasks.py   — beat 60s/180s     │
+       │    │  tasks/patch_tasks.py   — beat 1800s        │
+       │    │  tasks/automation_tasks.py — on demand      │
+       │    │  tasks/report_tasks.py  — on demand         │
+       │    │  tasks/network_tasks.py — beat 300s         │
+       │    │  tasks/backup_tasks.py  — beat 86400s       │
+       │    │  tasks/billing_tasks.py — beat 86400s       │
+       │    │  tasks/mqtt_tasks.py    — MQTT subscription │
+       │    │  tasks/snmp_tasks.py    — SNMP polling      │
+       │    └────────────────────────────────────────────┘
        │
 ┌──────▼──────────────────────────────────────────────────────────┐
-│  Python Agent  (on each managed Windows machine)                 │
-│  agent/rmm_agent.py  — main loop (60s heartbeat)                │
-│  agent/collector.py  — hardware/metrics/software/patches         │
-│  agent/heartbeat.py  — APIClient (register/heartbeat/tasks)      │
-│  agent/executor.py   — task execution engine                     │
+│  Python Agent  (Windows / macOS / Linux)                         │
+│  agent/rmm_agent.py    — main loop (60s heartbeat, screenshot)  │
+│  agent/collector.py    — cross-platform metrics/software/patches │
+│  agent/heartbeat.py    — APIClient (incl. send_screenshot)       │
+│  agent/executor.py     — task execution engine                   │
 │  agent/script_runner.py — ps1/bat/py/sh execution                │
+│  agent/screenshot.py   — PIL/scrot screen capture (300s interval)│
+│  agent/terminal_worker.py — WebSocket terminal bridge            │
+│  agent/iot_agent.py    — IoT sensor readings (hwmon/DHT/BME680)  │
+│  agent/build.py        — PyInstaller single-file binary builder  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -713,6 +726,8 @@ On 401: agent re-registers (full registration flow).
 | `mark_offline_devices` | Every 180s | `tasks.alert_tasks` |
 | `sync_patch_status` | Every 1800s | `tasks.patch_tasks` |
 | `ping_agentless_devices` | Every 300s | `tasks.network_tasks` |
+| `backup_database` | Every 86400s | `tasks.backup_tasks` |
+| `generate_recurring_invoices` | Every 86400s | `tasks.billing_tasks` |
 
 ### Task Signatures
 
@@ -728,9 +743,10 @@ On 401: agent re-registers (full registration flow).
   Previously fired one DB query per device per rule (up to 5,000 queries/cycle).
   Now: 1 query per rule batch regardless of device count.
 - Evaluates `metric operator threshold` (e.g., `cpu_pct > 90`)
-- Respects `cooldown_minutes` — no duplicate alert within cooldown
+- Respects `cooldown_minutes` using two separate maps: `open_alert_map` (no time filter, prevents re-fire while alert is open) and `resolved_alert_map` (recently resolved, for post-recovery cooldown). Fixes storm where alerts older than cooldown_minutes were evicted and re-fired every 60s indefinitely.
+- **Auto-resolve:** when metric drops back below threshold, any open alerts for that rule+device are resolved automatically (`status="resolved"`, `resolved_at=now()`).
 - Creates `Alert` record on breach
-- Alert message now includes last-seen timestamp for offline alerts:
+- Alert message includes last-seen timestamp for offline alerts:
   `"DESKTOP-ABC has gone offline (last seen: 2024-01-15 14:32 UTC)"`
 - Calls `send_alert_notification()` if `notification_channels.email` is set
 
@@ -835,6 +851,33 @@ celery -A tasks.celery_app beat -l info
 
 ## 6. Agent Internals
 
+### Cross-Platform Support
+
+`collector.py` dispatches on `sys.platform` for all hardware/software/patch collection:
+
+| Platform | `sys.platform` | Hardware info | Patches | Software |
+|----------|---------------|---------------|---------|----------|
+| Windows | `win32` | WMI + winreg | WUA COM via PowerShell | Registry + winget |
+| macOS | `darwin` | sysctl + system_profiler + platform.mac_ver() | softwareupdate -l + brew outdated | /Applications plist + brew list |
+| Linux | `linux` | /proc/cpuinfo + dmidecode + /etc/os-release | apt-get/dnf/yum/pacman (auto-detected) | dpkg-query/rpm -qa/pacman -Q |
+
+The `platform` field in `hardware_info` is auto-detected (`windows`/`mac`/`linux`) instead of hardcoded. All Windows-specific code (winreg, WMI, DPAPI, winget) is guarded by `_PLATFORM == "win32"` checks.
+
+### PyInstaller Binary Builder
+
+`agent/build.py` produces a single-file executable with no Python dependency on the target machine:
+
+```bash
+pip install pyinstaller
+python build.py
+# Output: dist/rmm_agent.exe (Windows) or dist/rmm_agent (Linux/macOS)
+```
+
+- `--onefile` mode, auto-detects `--noconsole` on Windows
+- Hidden imports per platform: `wmi`/`win32crypt`/`plistlib` included only when relevant
+- `config.ini` template copied next to binary after build
+- Deploy: copy `dist/` to target, edit `config.ini`, run binary
+
 ### Main Loop
 
 ```
@@ -850,9 +893,12 @@ startup
        ├─ get_tasks()
        │    └─ executor.run(task) for each queued task
        ├─ if time − last_patch > patch_interval:
-       │    ├─ get_pending_patches()  (WUA COM via PowerShell)
+       │    ├─ get_pending_patches()  (platform-specific)
        │    └─ report_patches(patches)
-       └─ flush pending_results.json (Phase C-6 local queue)
+       ├─ if time − last_screenshot > screenshot_interval (default 300s):
+       │    ├─ screenshot.capture()   (PIL/scrot, None on headless)
+       │    └─ heartbeat.send_screenshot(jpeg_bytes)
+       └─ flush pending_results.json (local queue)
 ```
 
 ### Task Execution
@@ -1062,13 +1108,27 @@ def _request(self, method, path, **kwargs):
 | `OperationalError` retry | DB connection drops retry with exponential backoff |
 | Automation offloaded | Device-loop in `enqueue_profile_run` runs in Celery, not in request thread |
 
+### API Server
+
+| Optimization | Detail |
+|-------------|--------|
+| gzip compression | `flask-compress` gzips all JSON responses >500B. health_map: 5KB→1.2KB, activity_feed: 40KB→877B |
+| Waitress threads | 16 threads (up from 8) — headroom for Celery beat contention |
+| JWT decode cache | `api/utils/jwt_cache.py` — `TTLCache(512, 60s)` monkey-patches `_decode_jwt_from_request`. Repeated tokens skip HMAC: 60-86ms vs 135-177ms. Process-local, no Redis needed. |
+| Raw JSON cache | `cache_get_raw`/`cache_set_raw` stores pre-serialized JSON bytes in Redis. `health_map` returns `Response(raw, mimetype="application/json")` — bypasses double serialization. |
+| Cache pre-warm | `create_app()` pre-populates `rmm:dash:summary:all` at startup so first user hits Redis not DB. Cold hits: ~1300ms → ~100-260ms. |
+| PgBouncer | Route `DATABASE_URL` through PgBouncer on port 6432 for persistent backend connections. `pool_pre_ping` disabled (saves ~100ms per cold acquisition; `pool_recycle=300` covers stale connections). |
+| PostgreSQL work_mem | `ALTER ROLE rmm_app SET work_mem = '16MB'` — improves sort/hash query performance. |
+
 ### Dashboard
 
 | Optimization | Detail |
 |-------------|--------|
 | `RMMClient` session reuse | One `requests.Session` per browser session — persistent HTTP connection |
 | Retry backoff | `ConnectionError`/`Timeout` only — 0.5s/1.0s/2.0s |
-| `st.cache_data` | TTL caching on list endpoints — prevents repeated API calls on re-renders |
+| `dashboard/utils/cached_calls.py` | `st.cache_data` wrappers for all major read endpoints (`cached_summary` TTL 60s, `cached_health_map` TTL 30s, `cached_list_devices` TTL 30s, etc.). Call `st.cache_data.clear()` after mutations. |
+| `st.fragment` auto-refresh | `01_Dashboard.py` body wrapped in `@st.fragment(run_every=30)` — no longer blocks server thread. `14_Terminal.py` output panel wrapped in `@st.fragment(run_every=2)`. |
+| Parallel API calls | `04_Devices.py` and `10_Admin.py` use `ThreadPoolExecutor` to fire independent API calls in parallel. |
 | `st.spinner` | All data loads wrapped — user sees progress feedback |
 | Graceful degradation | `st.warning` instead of `st.stop()` — page stays interactive on partial failure |
 | Token URL security | `require_auth()` strips `?tok=`/`?rtok=` from URL after first restore. Tokens no longer re-stamped on every page load — reduces browser history exposure. |
@@ -1393,6 +1453,18 @@ COLLECTORS = {
 | `DB_PASSWORD` | — | `changeme` | PostgreSQL password used in `docker-compose.yml` only. |
 | `FLASK_ENV` | — | `production` | Set to `development` for debug mode |
 | `FLASK_DEBUG` | — | `0` | Set to `1` only in development |
+| `SENTRY_DSN` | — | — | Sentry DSN. Omit to disable. No-op when unset. `traces_sample_rate=0.05`, `send_default_pii=False` |
+| `DASHBOARD_URL` | — | `http://localhost:3000` | React frontend URL — used in CORS and Stripe redirect URLs |
+| `MQTT_HOST` | — | — | MQTT broker hostname. Omit to disable MQTT ingestion. |
+| `MQTT_PORT` | — | `1883` | MQTT broker port |
+| `MQTT_USERNAME` | — | — | MQTT broker credentials (optional) |
+| `MQTT_PASSWORD` | — | — | MQTT broker credentials (optional) |
+| `MQTT_TOPIC_PREFIX` | — | `rmm` | Topic pattern: `{prefix}/{device_id}/sensors/{type}` |
+| `SNMP_TIMEOUT` | — | `3` | SNMP GET request timeout in seconds |
+| `STRIPE_SECRET_KEY` | — | — | Stripe secret key for payment processing |
+| `STRIPE_WEBHOOK_SECRET` | — | — | Stripe webhook signing secret |
+| `LATEST_AGENT_VERSION` | — | `1.0.0` | Current agent version for auto-update checks |
+| `AGENT_UPDATE_PATH` | — | — | URL path to download updated agent binary |
 
 Generate secrets:
 ```bash
@@ -1709,6 +1781,16 @@ Redis `SET NX EX 55` lock in `evaluate_all_rules`. Lock key: `rmm:lock:evaluate_
 
 Formats: Slack Block Kit (color-coded), MS Teams MessageCard, generic JSON POST. 5s timeout. Never raises.
 
+### Terminal Improvements
+
+| Fix | Detail |
+|-----|--------|
+| Output polling | `TerminalPage.tsx` polls `GET /terminal/sessions/<id>/output?after=<last_id>` every 2s instead of reading from the POST /commands response (which only returns a pending status object, not output). |
+| Pending-command indicator | `GET /terminal/sessions/<id>/output` now returns `pending_commands` count. Dashboard shows amber blinking indicator when commands are queued but agent has not yet picked them up. |
+| Alert storm fix | `evaluate_all_rules` uses separate `open_alert_map` (no time filter) and `resolved_alert_map` (cooldown after recovery) — prevents indefinite re-fire of open alerts that aged past `cooldown_minutes`. |
+| Token rotation | `terminal_worker.update_token()` called from `rmm_agent` on token rotation — terminal worker no longer continues with a revoked token. |
+| Session seq reset | Auto-close fragment resets `_term_output_seq` to 0 on session close — prevents stale buffer on next connect. |
+
 ### F.7 Device Ownership (Client Role)
 
 - `POST /api/terminal/sessions` — returns 404 if `device.customer_id != claims["customer_id"]`
@@ -1754,4 +1836,164 @@ d746c05420bd → 2c8f1d3e9a4b → 93baa3927b0c → f3e2d1c0b9a8 → a1b2c3d4e5f6
 → e5d4c3b2a1f0 → b5c4d3e2f1a0 → c1d2e3f4a5b6 → d2e3f4a5b6c7 → e6f7a8b9c0d1
 → f1a2b3c4d5e6 → a2b3c4d5e6f7 → b3c4d5e6f7a8 → c4d5e6f7a8b9 → d5e6f7a8b9c0
 → f7a8b9c0d1e2 → h9i0j1k2l3m4 → i0j1k2l3m4n5 → j1k2l3m4n5o6 → k2l3m4n5o6p7
+→ l3m4n5o6p7q8 (IoT sensor_readings table)
 ```
+
+---
+
+## 15. React Frontend
+
+### Stack
+
+| Package | Version | Role |
+|---------|---------|------|
+| React | 19 | UI framework |
+| Vite | 8 | Dev server + build tool |
+| TypeScript | 6 | Type safety |
+| TanStack Query | 5 | Server state + caching |
+| React Router | 7 | Client-side routing |
+| Tailwind CSS | 3 | Utility-first styling |
+| axios | 1.x | HTTP client |
+| lucide-react | 1.x | Icon library |
+
+### Pages
+
+All 19 pages match Streamlit equivalents: `DashboardPage`, `TicketsPage`, `CustomersPage`, `DevicesPage`, `AlertsPage`, `AdminPage`, `AutomationPage`, `BillingPage`, `ClientPortalPage`, `DiskManagementPage`, `MaintenancePage`, `NetworkPage`, `OSPatchesPage`, `ProfilePage`, `ReportsPage`, `ScriptsPage`, `SoftwarePatchesPage`, `TerminalPage` (with output polling fix applied), `auth/` (login flow).
+
+### Running
+
+```bash
+cd frontend
+npm install
+npm run dev       # http://localhost:3000
+npm run build     # production build → frontend/dist/
+npm run lint      # oxlint
+```
+
+### CORS configuration
+
+Set `CORS_ORIGINS=http://localhost:3000` in `api/.env`. For production, include both the Streamlit and React URLs:
+```
+CORS_ORIGINS=http://localhost:8501,https://dashboard.example.com
+```
+
+### Auth flow
+
+Same JWT Bearer token flow as Streamlit. Tokens stored in `localStorage` (React) vs `st.session_state` + URL params (Streamlit). The React frontend uses `AuthContext` to hold `access_token` and `refresh_token`; axios interceptors handle 401 → refresh → retry automatically.
+
+---
+
+## 16. Screenshot Capture Pipeline
+
+### Agent side (`agent/screenshot.py`)
+
+`capture()` returns JPEG bytes or `None`:
+- **Windows/macOS:** `PIL.ImageGrab.grab()` (Pillow)
+- **Linux:** `scrot` subprocess → `gnome-screenshot` → PIL fallback
+- Resizes to max 1920px wide, JPEG quality 72 (~100–400 KB per capture)
+- Returns `None` silently on headless/no-display — non-fatal
+
+Periodic sync in `rmm_agent.py`:
+```python
+screenshot_interval = config.getint("agent", "screenshot_interval", fallback=300)
+```
+All errors caught at DEBUG level — never breaks the heartbeat loop.
+
+### API endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/agents/<device_id>/screenshot` | X-Agent-Token | Accepts `image/jpeg` or `image/png`, 5 MB cap. Saves to `api/screenshots/<device_id>.jpg`. Replaces on each upload. |
+| GET | `/api/devices/<device_id>/screenshot` | JWT | Returns latest screenshot via `send_file`. 404 JSON error if no screenshot captured yet. |
+
+Screenshots are stored in `api/screenshots/` (gitignored, `.gitkeep` present). One file per device — only the latest capture is retained. The directory is not served via HTTP; the API streams the file through `send_file`.
+
+### Dashboard
+
+The Devices page (agent device rows) shows the latest screenshot inline when available. The React `DevicesPage` fetches `GET /api/devices/<id>/screenshot` and renders it as an `<img>` tag.
+
+---
+
+## 17. IoT / MQTT / SNMP
+
+### IoT Sensor Agent (`agent/iot_agent.py`)
+
+Lightweight sensor collector for Raspberry Pi / Linux SBC. Reuses `agent/config.ini` and `heartbeat.py` APIClient for auth.
+
+Sensor backends (all optional — skipped if library not installed):
+
+| Backend | Library | Sensors |
+|---------|---------|---------|
+| `/sys/class/hwmon` | none | CPU/board temperature |
+| DHT11/DHT22 | `adafruit-dht` | Temperature + humidity |
+| BME680 | `adafruit-circuitpython-bme680` | Temp, humidity, pressure, gas |
+| PIR motion | `gpiozero` | Motion detection |
+| Door reed switch | `gpiozero` | Open/closed state |
+
+Config in `agent/config.ini` under `[iot]`:
+```ini
+[iot]
+interval = 60
+dht_type = DHT22
+dht_pin = 4
+bme680_i2c_addr = 0x77
+pir_pin = 17
+door_pin = 27
+```
+
+Setup: `python setup_agent.py <server_ip> <org_token>` (same as standard agent), then `python iot_agent.py`.
+
+### API: Sensor Readings (`api/routes/sensors.py`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/sensors/<device_id>/readings` | X-Agent-Token | Ingest sensor readings. Body: `[{sensor_type, value, unit, channel}]` |
+| GET | `/api/sensors/<device_id>/readings` | JWT | List readings for device (filterable by sensor_type, time range) |
+| GET | `/api/sensors/<device_id>/latest` | JWT | Latest reading per sensor_type |
+
+### MQTT Ingestion (`api/tasks/mqtt_tasks.py`)
+
+Celery task subscribes to `{MQTT_TOPIC_PREFIX}/#` when `MQTT_HOST` is set. Topic convention: `{prefix}/{device_id}/sensors/{sensor_type}`. Payload: `{"value": <float>, "unit": "<str>", "channel": "<str|null>"}`. Writes to `SensorReading` via the same path as the direct agent POST.
+
+No-op when `MQTT_HOST` is blank — no errors raised.
+
+### SNMP Polling (`api/tasks/snmp_tasks.py`)
+
+Per-device SNMP polling task. Community string stored in `Device.metadata_.snmp_community` (set via device Edit form in Admin). `SNMP_TIMEOUT` env var controls per-request timeout (default 3s).
+
+### Dashboard: IoT Sensors page (`dashboard/pages/18_IoT_Sensors.py`)
+
+Shows sensor readings as time-series charts per sensor type. Displays latest value, unit, and channel for each sensor. Admin/Tech access only.
+
+---
+
+## 18. Test Suite
+
+102 tests across 6 files, all passing.
+
+| File | Tests | Coverage |
+|------|-------|---------|
+| `api/tests/test_auth.py` | Auth flows, MFA, force-change-password, rate limits | JWT, bcrypt, TOTP |
+| `api/tests/test_agents.py` | Registration, heartbeat, task result, patch/software submit | Agent token, device upsert |
+| `api/tests/test_alerts.py` | Alert CRUD, acknowledge, resolve, auto-resolve on recovery | Rule evaluation logic |
+| `api/tests/test_tickets.py` | Ticket CRUD, comments, SLA due-date calc, GDPR export/delete | Role guards, SLA policy lookup |
+| `api/tests/test_devices.py` | Device list/get/update/delete, metrics, screenshot endpoint | Pagination, platform_counts |
+| `api/tests/test_cache.py` | `cache_get`/`cache_set`/`cache_delete`, TTL expiry, Redis unavailability no-op | Redis mock |
+
+### Running tests
+
+```powershell
+cd api
+.\venv\Scripts\Activate.ps1
+pytest tests/ -v --cov=. --cov-report=term-missing
+```
+
+Requires a running PostgreSQL + Redis (or the CI services defined in `.github/workflows/ci.yml`). `conftest.py` force-sets `ORG_REGISTRATION_TOKEN` and creates an in-memory test app via `create_app("testing")`.
+
+### CI pipeline (`.github/workflows/ci.yml`)
+
+- PostgreSQL 15 + Redis 7 service containers
+- `flask db upgrade` with `FLASK_ENV=development`
+- `pytest` with coverage upload to Codecov
+- TypeScript type-check (`tsc --noEmit`) on `frontend/`
+- Docker build gate on `main` branch pushes

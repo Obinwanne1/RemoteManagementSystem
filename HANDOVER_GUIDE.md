@@ -8,7 +8,7 @@ Version 1.0 — Built exclusively for Faiyke-AI Agency
 **Prepared for:** Faiyke-AI Agency
 **System URL:** http://localhost:8501
 **API URL:** http://localhost:5000
-**Document version:** 6.0 (Commercial Audit: Security, SLA Policies, GDPR, Billing Automation, Webhooks, API Docs, Backup)
+**Document version:** 7.0 (React Frontend, Cross-Platform Agent, Screenshot Capture, IoT/MQTT, Performance Hardening, Binary Deployment)
 
 ---
 
@@ -124,6 +124,12 @@ This document is written in plain language. Technical jargon is explained when f
 - Chapter 48: Billing Automation — Recurring Invoices
 - Chapter 49: Database Backup and Recovery
 - Chapter 50: GDPR Compliance — Data Export and Erasure
+
+**PART XII — NEW FEATURES AND DEPLOYMENT OPTIONS**
+- Chapter 51: React Frontend — Alternative Web Interface
+- Chapter 52: Agent Binary Deployment (No Python Required)
+- Chapter 53: Remote Screenshot Viewer
+- Chapter 54: IoT Sensor Monitoring
 
 **Appendix A: Glossary**
 **Appendix B: Quick Reference Cards**
@@ -5276,6 +5282,256 @@ When you receive a data erasure request:
 
 ---
 
-*End of RMM System Complete Handbook — Version 6.0*
+---
+
+# PART XII — NEW FEATURES AND DEPLOYMENT OPTIONS
+
+---
+
+## Chapter 51: React Frontend — Alternative Web Interface
+
+### What it is
+
+In addition to the Streamlit dashboard, the system ships a full React/TypeScript frontend in the `frontend/` directory. It covers all the same pages as the Streamlit dashboard and communicates with the same Flask API using the same JWT authentication.
+
+You can run both simultaneously — the Streamlit dashboard on port 8501 and the React frontend on port 3000 — or choose one as your primary interface.
+
+### When to use the React frontend
+
+| Situation | Recommendation |
+|-----------|---------------|
+| Staff using modern browsers on fast networks | Either works |
+| Embedding the UI in another web product | React (easier to customise) |
+| Rapid internal deployment with minimal setup | Streamlit |
+| Custom branding or white-label delivery | React |
+| IoT/mobile-optimised views needed | React |
+
+### Installing and starting the React frontend
+
+**Prerequisites:** Node.js 20 or later. Verify with:
+```powershell
+node --version
+npm --version
+```
+
+**Step 1: Install dependencies**
+```powershell
+Set-Location C:\RMM\RemoteManagementSystem\frontend
+npm install
+```
+
+**Step 2: Configure API URL**
+
+The React frontend reads the API base URL from the Vite environment. In `frontend/`, create a `.env.local` file:
+```
+VITE_API_BASE_URL=http://localhost:5000
+```
+
+**Step 3: Start the dev server**
+```powershell
+npm run dev
+```
+Open **http://localhost:3000** — you will see the RMM login page.
+
+**Step 4: Production build**
+```powershell
+npm run build
+```
+Output is in `frontend/dist/`. Serve with any static file server (nginx, Caddy, etc.).
+
+### CORS setting
+
+When using the React frontend, set `CORS_ORIGINS` in `api/.env` to include the frontend URL:
+```
+CORS_ORIGINS=http://localhost:3000,http://localhost:8501
+```
+
+### Login and navigation
+
+Login, MFA, and all role-based access rules work identically to the Streamlit dashboard. The React frontend stores tokens in `localStorage` rather than URL parameters.
+
+---
+
+## Chapter 52: Agent Binary Deployment (No Python Required)
+
+### What it is
+
+The standard agent deployment requires Python 3.11 to be installed on every managed machine. For environments where installing Python is not possible (locked-down machines, USB deployment, air-gapped networks), the agent can be compiled into a single self-contained executable using PyInstaller.
+
+### Building the binary
+
+Run this on the **same platform** you want to deploy on. A Windows build must be done on Windows; a Linux build on Linux; a macOS build on macOS.
+
+```powershell
+# On the RMM server or any machine with Python + the agent code
+Set-Location C:\RMM\RemoteManagementSystem\agent
+.\venv\Scripts\Activate.ps1
+python build.py
+```
+
+The build script:
+1. Installs PyInstaller automatically if not present
+2. Packages `rmm_agent.py` and all dependencies into a single file
+3. Copies `config.ini` template next to the binary
+
+Output:
+```
+agent\dist\rmm_agent.exe    (Windows)
+agent/dist/rmm_agent        (Linux / macOS)
+agent/dist/config.ini       (template — edit before deploying)
+```
+
+### Deploying the binary
+
+1. Copy the entire `dist\` folder to the target machine (USB drive, network share, etc.)
+2. Edit `dist\config.ini` — set `url` and `org_token` (same as standard deployment)
+3. Run the binary as Administrator:
+   ```
+   rmm_agent.exe
+   ```
+4. The device registers and appears in the Devices page within 60 seconds.
+
+> **NOTE:** The binary does not need Python, pip, or any other runtime. It is fully self-contained.
+
+> **TIP:** The binary can be added to Windows Task Scheduler for auto-start on reboot, using the same method described in Chapter 6, Step 6.
+
+### Platform limitations
+
+| Feature | Binary (Windows) | Binary (Linux/macOS) |
+|---------|-----------------|---------------------|
+| CPU/RAM/disk metrics | Full | Full |
+| Software inventory | Registry + winget | dpkg/rpm/brew |
+| Patch reporting | WUA | softwareupdate/apt/dnf |
+| Screenshot capture | Full (Pillow bundled) | Full (scrot required on Linux) |
+| DPAPI token encryption | Full | N/A (plaintext) |
+| Terminal worker | Full | Full |
+
+---
+
+## Chapter 53: Remote Screenshot Viewer
+
+### What it is
+
+Each agent-managed device automatically captures a screenshot of its current screen every 5 minutes and uploads it to the RMM server. This allows you to see what is happening on a device without starting a full remote desktop session.
+
+### Who can use it
+
+Technicians and administrators.
+
+### Viewing a screenshot
+
+**From the Streamlit dashboard:**
+
+1. Click **Devices** in the sidebar.
+2. Find the device under Windows, macOS, or Linux tab.
+3. Expand the device row.
+4. Click **View Screenshot** — the latest capture is displayed inline.
+5. The screenshot timestamp is shown below the image.
+
+**From the React frontend:**
+
+The device detail view shows the latest screenshot automatically if one is available.
+
+**Via API:**
+```
+GET /api/devices/<device_id>/screenshot
+Authorization: Bearer <access_token>
+```
+Returns the image as `image/jpeg`. Returns HTTP 404 if no screenshot has been captured yet.
+
+### Screenshot frequency
+
+The default capture interval is **5 minutes** (300 seconds). This can be changed per agent by editing `agent/config.ini`:
+```ini
+[agent]
+screenshot_interval = 300
+```
+Set to `0` to disable screenshot capture on a specific agent.
+
+### Privacy considerations
+
+Screenshots capture the entire screen of the managed device. On devices used by end users (not just servers), inform users that screen capture is active as part of your acceptable-use policy.
+
+Screenshots are stored server-side as `api/screenshots/<device_id>.jpg`. Only the most recent screenshot per device is retained — previous captures are overwritten automatically.
+
+> **NOTE:** Screenshot capture returns `None` silently on headless servers with no display attached. No error is logged at INFO level — the heartbeat loop continues normally.
+
+---
+
+## Chapter 54: IoT Sensor Monitoring
+
+### What it is
+
+The IoT Sensor Agent is a lightweight variant of the standard agent designed for Raspberry Pi and other Linux single-board computers. It reads from hardware sensor backends and sends readings to the RMM API for storage and display.
+
+### Who uses it
+
+Technicians and administrators managing physical environments alongside IT equipment (temperature monitoring, door sensors, motion detection, etc.).
+
+### Supported sensor types
+
+| Sensor | Hardware | Data reported |
+|--------|----------|--------------|
+| CPU/board temperature | `/sys/class/hwmon` (built-in, no deps) | Temperature in °C |
+| DHT11 / DHT22 | GPIO — `adafruit-dht` library | Temperature + humidity |
+| BME680 | I2C — `adafruit-circuitpython-bme680` | Temperature, humidity, pressure, gas |
+| PIR motion sensor | GPIO — `gpiozero` library | Motion detected (boolean) |
+| Door reed switch | GPIO — `gpiozero` library | Open/closed state |
+
+All sensor libraries are optional. Missing libraries are silently skipped — the agent reports only from available backends.
+
+### Deploying the IoT agent
+
+1. Copy the `agent/` folder to the Raspberry Pi.
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   # For DHT sensors: pip install adafruit-dht
+   # For BME680: pip install adafruit-circuitpython-bme680
+   # For GPIO sensors: pip install gpiozero
+   ```
+3. Register with the server:
+   ```bash
+   python setup_agent.py <server_ip> <org_token>
+   ```
+4. Edit `config.ini` — add the `[iot]` section:
+   ```ini
+   [iot]
+   interval = 60
+   dht_type = DHT22
+   dht_pin = 4
+   pir_pin = 17
+   door_pin = 27
+   ```
+5. Start the IoT agent:
+   ```bash
+   python iot_agent.py
+   ```
+
+### Viewing sensor data
+
+1. Click **IoT Sensors** in the sidebar (Admin/Tech access).
+2. Select a device from the dropdown.
+3. Time-series charts display each sensor type separately.
+4. The latest reading, unit, and channel are shown for each sensor.
+
+### MQTT ingestion (optional)
+
+If you already have an MQTT broker (Mosquitto, HiveMQ, etc.) receiving sensor data, the RMM can subscribe to it directly without deploying the IoT agent on each device. Set in `api/.env`:
+
+```
+MQTT_HOST=192.168.1.x
+MQTT_PORT=1883
+MQTT_TOPIC_PREFIX=rmm
+```
+
+Topic convention: `rmm/{device_id}/sensors/{sensor_type}`
+Payload: `{"value": 23.5, "unit": "°C", "channel": null}`
+
+The device must already be registered in the RMM (agent or agentless) for readings to be associated correctly.
+
+---
+
+*End of RMM System Complete Handbook — Version 7.0*
 
 *For support with this guide, contact your system administrator or development team.*
