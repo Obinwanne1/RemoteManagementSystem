@@ -21,7 +21,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (token && !user) {
       api.get('/auth/me').then((r) => setUser(r.data)).catch(() => logout());
     }
-  }, [token]);
+  }, [token, user, logout]);
 
   const _storeTokens = (access: string, refresh: string, userData: User) => {
     localStorage.setItem('access_token', access);
@@ -70,6 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// oxlint-disable-next-line react/only-export-components
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
