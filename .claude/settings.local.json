@@ -363,7 +363,9 @@
       "PowerShell(pip install *)",
       "PowerShell(python -m flake8 C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\api C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\agent C:\\\\Users\\\\rigwe\\\\Desktop\\\\RemoteManagementSystem\\\\dashboard --max-line-length=120 --extend-ignore=E501,W503,W504 2>&1 | Select-Object -First 120)",
       "PowerShell(python -m flake8 --version)",
-      "PowerShell(\\(Get-Command python\\).Source; python -m streamlit --version 2>&1)"
+      "PowerShell(\\(Get-Command python\\).Source; python -m streamlit --version 2>&1)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:5000/api/health\" -UseBasicParsing -TimeoutSec 5; $r.Content } catch { $_.Exception.Message })",
+      "PowerShell(python -c \"import site; print\\('\\\\n'.join\\(site.getsitepackages\\(\\)\\)\\); print\\(site.getusersitepackages\\(\\)\\)\")"
     ]
   }
 }
