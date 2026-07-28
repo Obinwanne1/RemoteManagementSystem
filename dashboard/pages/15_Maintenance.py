@@ -107,20 +107,20 @@ st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 # Row 1
 r1c1, r1c2, r1c3 = st.columns(3)
 with r1c1:
-    reboot_btn = st.button("Reboot", icon=":material/restart_alt:", use_container_width=True, key=f"reboot_{selected['id']}")
+    reboot_btn = st.button("Reboot", icon=":material/restart_alt:", width='stretch', key=f"reboot_{selected['id']}")
 with r1c2:
-    shutdown_btn = st.button("Shutdown", icon=":material/power_settings_new:", use_container_width=True, key=f"shut_{selected['id']}")
+    shutdown_btn = st.button("Shutdown", icon=":material/power_settings_new:", width='stretch', key=f"shut_{selected['id']}")
 with r1c3:
-    restore_btn = st.button("Create Restore Point", icon=":material/backup:", use_container_width=True, key=f"restore_{selected['id']}")
+    restore_btn = st.button("Create Restore Point", icon=":material/backup:", width='stretch', key=f"restore_{selected['id']}")
 
 # Row 2
 r2c1, r2c2, r2c3 = st.columns(3)
 with r2c1:
-    temp_btn = st.button("Delete Temp Files", icon=":material/delete_sweep:", use_container_width=True, key=f"temp_{selected['id']}")
+    temp_btn = st.button("Delete Temp Files", icon=":material/delete_sweep:", width='stretch', key=f"temp_{selected['id']}")
 with r2c2:
-    browser_btn = st.button("Clear Browser History", icon=":material/public:", use_container_width=True, key=f"browser_{selected['id']}")
+    browser_btn = st.button("Clear Browser History", icon=":material/public:", width='stretch', key=f"browser_{selected['id']}")
 with r2c3:
-    chkdsk_btn = st.button("Check Disk", icon=":material/health_and_safety:", use_container_width=True, key=f"chkdsk_{selected['id']}")
+    chkdsk_btn = st.button("Check Disk", icon=":material/health_and_safety:", width='stretch', key=f"chkdsk_{selected['id']}")
 
 # ── Action handlers ───────────────────────────────────────────────────────────
 if reboot_btn:

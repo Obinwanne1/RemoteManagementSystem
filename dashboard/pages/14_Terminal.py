@@ -74,7 +74,7 @@ with top_l:
 
 with top_r:
     if session_id:
-        if st.button("Disconnect", type="secondary", use_container_width=True):
+        if st.button("Disconnect", type="secondary", width='stretch'):
             client.close_terminal_session(session_id)
             st.session_state["_term_session_id"] = None
             st.session_state["_term_device_id"] = None
@@ -82,7 +82,7 @@ with top_r:
             st.session_state["_term_output_buf"] = []
             st.rerun()
     else:
-        if st.button("Connect", type="primary", use_container_width=True):
+        if st.button("Connect", type="primary", width='stretch'):
             device_id = dev_map[chosen_label]
             data, err = client.create_terminal_session(device_id)
             if err:
@@ -195,7 +195,7 @@ with cmd_col:
         label_visibility="collapsed",
     )
 with send_col:
-    send_clicked = st.button("Send ▶", type="primary", use_container_width=True)
+    send_clicked = st.button("Send ▶", type="primary", width='stretch')
 
 if send_clicked and command.strip():
     _, err = client.send_terminal_command(session_id, command.strip())

@@ -110,7 +110,7 @@ with st.expander("+ New Ticket", expanded=False):
         with fc4:
             st.write("")
             st.write("")
-            submitted = st.form_submit_button("Create Ticket", use_container_width=True)
+            submitted = st.form_submit_button("Create Ticket", width='stretch')
 
     if submitted:
         if not new_title or not cust_options:
@@ -198,7 +198,7 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
             st.download_button(
                 "Export CSV", data=_df.to_csv(index=False).encode("utf-8"),
                 file_name="tickets.csv", mime="text/csv",
-                use_container_width=True, key=f"export_{tab_key}",
+                width='stretch', key=f"export_{tab_key}",
             )
 
     if not tickets:
@@ -248,14 +248,14 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
                     label_visibility="collapsed", key=f"bulk_status_{tab_key}",
                 )
             with bb2:
-                apply_status_clicked = st.button("Apply Status", key=f"bulk_apply_{tab_key}", use_container_width=True)
+                apply_status_clicked = st.button("Apply Status", key=f"bulk_apply_{tab_key}", width='stretch')
             with bb3:
                 bulk_assign_lbl = st.selectbox(
                     "Assign to", list(user_opts_b.keys()),
                     label_visibility="collapsed", key=f"bulk_assign_lbl_{tab_key}",
                 )
             with bb4:
-                if st.button("Assign", key=f"bulk_assign_{tab_key}", use_container_width=True):
+                if st.button("Assign", key=f"bulk_assign_{tab_key}", width='stretch'):
                     uid = user_opts_b[bulk_assign_lbl]
                     for tid in selected_ids:
                         client.update_ticket(tid, {"assignee_id": uid})
@@ -263,9 +263,9 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
                     st.success(f"Assigned {n} ticket{'s' if n != 1 else ''}.")
                     st.rerun()
             with bb5:
-                close_all_clicked = st.button("Close All", key=f"bulk_close_{tab_key}", use_container_width=True, type="primary")
+                close_all_clicked = st.button("Close All", key=f"bulk_close_{tab_key}", width='stretch', type="primary")
             with bb6:
-                if st.button("Clear", key=f"bulk_clear_{tab_key}", use_container_width=True):
+                if st.button("Clear", key=f"bulk_clear_{tab_key}", width='stretch'):
                     _clear_selection(tab_key, ticket_ids)
                     st.rerun()
 
@@ -312,16 +312,16 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
                     label_visibility="collapsed", key=f"bulk_status_t_{tab_key}",
                 )
             with tb2:
-                apply_t_clicked = st.button("Apply Status", key=f"bulk_apply_t_{tab_key}", use_container_width=True)
+                apply_t_clicked = st.button("Apply Status", key=f"bulk_apply_t_{tab_key}", width='stretch')
             with tb3:
-                if st.button("Assign to Me", key=f"bulk_me_{tab_key}", use_container_width=True):
+                if st.button("Assign to Me", key=f"bulk_me_{tab_key}", width='stretch'):
                     for tid in selected_ids:
                         client.update_ticket(tid, {"assignee_id": my_id})
                     _clear_selection(tab_key, ticket_ids)
                     st.success(f"Assigned {n} ticket{'s' if n != 1 else ''} to you.")
                     st.rerun()
             with tb4:
-                if st.button("Clear", key=f"bulk_clear_t_{tab_key}", use_container_width=True):
+                if st.button("Clear", key=f"bulk_clear_t_{tab_key}", width='stretch'):
                     _clear_selection(tab_key, ticket_ids)
                     st.rerun()
 
@@ -445,7 +445,7 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
                 unsafe_allow_html=True,
             )
         with rcols[10]:
-            if st.button("→", key=f"view_{tab_key}_{tid}", use_container_width=True):
+            if st.button("→", key=f"view_{tab_key}_{tid}", width='stretch'):
                 st.session_state["_nav_ticket_id"] = tid
                 st.switch_page("pages/_ticket_detail.py")
 

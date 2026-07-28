@@ -196,7 +196,7 @@ else:
         with gr_c3:
             inv_notes = st.text_input("Notes (optional)", placeholder="e.g. Please reference invoice number when paying")
 
-        gen_submitted = st.form_submit_button("Generate Invoice", use_container_width=False)
+        gen_submitted = st.form_submit_button("Generate Invoice", width='content')
 
     if gen_submitted:
         if inv_end < inv_start:

@@ -123,7 +123,7 @@ if status_val in ("open", "in_progress"):
             "Reply", height=80, label_visibility="collapsed",
             placeholder="Type your reply here…",
         )
-        if st.form_submit_button("Send Reply", use_container_width=True):
+        if st.form_submit_button("Send Reply", width='stretch'):
             if not reply_body.strip():
                 st.warning("Reply cannot be empty.")
             else:

@@ -134,7 +134,7 @@ with col_left:
         cur_pw  = st.text_input("Current password", type="password")
         new_pw  = st.text_input("New password", type="password", placeholder="Min 8 characters")
         conf_pw = st.text_input("Confirm new password", type="password")
-        submitted = st.form_submit_button("Update Password", use_container_width=True)
+        submitted = st.form_submit_button("Update Password", width='stretch')
     st.markdown("</div>", unsafe_allow_html=True)
 
     if submitted:
@@ -173,7 +173,7 @@ with col_right:
         )
         with st.form("mfa_disable_form"):
             dis_pw = st.text_input("Current password", type="password", key="mfa_dis_pw")
-            dis_sub = st.form_submit_button("Disable MFA", use_container_width=True, type="primary")
+            dis_sub = st.form_submit_button("Disable MFA", width='stretch', type="primary")
 
         if dis_sub:
             if not dis_pw:
@@ -205,7 +205,7 @@ with col_right:
         step = st.session_state.get("_mfa_setup_step", 0)
 
         if step == 0:
-            if st.button("Enable MFA", use_container_width=True, type="primary", key="mfa_start"):
+            if st.button("Enable MFA", width='stretch', type="primary", key="mfa_start"):
                 with st.spinner("Generating secret…"):
                     data, err = client.mfa_setup()
                 if err:
@@ -247,9 +247,9 @@ with col_right:
                 code = st.text_input("Enter 6-digit code from app", placeholder="123456", max_chars=6)
                 col_a, col_b = st.columns(2)
                 with col_a:
-                    verify_sub = st.form_submit_button("Activate MFA", use_container_width=True, type="primary")
+                    verify_sub = st.form_submit_button("Activate MFA", width='stretch', type="primary")
                 with col_b:
-                    cancel_sub = st.form_submit_button("Cancel", use_container_width=True)
+                    cancel_sub = st.form_submit_button("Cancel", width='stretch')
 
             if cancel_sub:
                 for k in ("_mfa_setup_step", "_mfa_setup_secret", "_mfa_setup_uri"):

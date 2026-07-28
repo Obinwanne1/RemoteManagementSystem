@@ -30,7 +30,7 @@ sc1, sc2 = st.columns([4, 1])
 with sc1:
     search_q = st.text_input("search", placeholder="Search by name, email, or address…", label_visibility="collapsed")
 with sc2:
-    show_add = st.button("+ Add Customer", use_container_width=True)
+    show_add = st.button("+ Add Customer", width='stretch')
 
 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
@@ -151,7 +151,7 @@ else:
                     st.warning(f"**Delete '{name}'?** This removes all linked devices, tickets, and invoices. This cannot be undone.")
                     dc1, dc2 = st.columns(2)
                     with dc1:
-                        if st.button("Yes, delete permanently", key=f"del_yes_{cid}", type="primary", use_container_width=True):
+                        if st.button("Yes, delete permanently", key=f"del_yes_{cid}", type="primary", width='stretch'):
                             _, derr = client.delete_customer(cid)
                             if derr:
                                 st.error(f"Delete failed: {derr}")
@@ -160,11 +160,11 @@ else:
                                 st.success(f"Customer '{name}' deleted.")
                                 st.rerun()
                     with dc2:
-                        if st.button("Cancel", key=f"del_no_{cid}", use_container_width=True):
+                        if st.button("Cancel", key=f"del_no_{cid}", width='stretch'):
                             st.session_state.pop(confirm_key, None)
                             st.rerun()
                 else:
-                    if st.button("Delete Customer", key=f"del_btn_{cid}", use_container_width=True):
+                    if st.button("Delete Customer", key=f"del_btn_{cid}", width='stretch'):
                         st.session_state[confirm_key] = True
                         st.rerun()
 
@@ -186,7 +186,7 @@ with st.expander("+ Add New Customer", expanded=show_add):
         with ac2:
             add_tier = st.selectbox("Tier", ["standard", "premium", "enterprise"])
             add_notes = st.text_area("Notes", height=120)
-        submitted = st.form_submit_button("Create Customer", use_container_width=True)
+        submitted = st.form_submit_button("Create Customer", width='stretch')
 
     if submitted:
         if not add_name.strip():

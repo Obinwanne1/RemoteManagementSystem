@@ -126,7 +126,7 @@ if _filtered_all:
     } for d in _filtered_all])
     _export_placeholder.download_button(
         "Export CSV", data=_export_df.to_csv(index=False).encode("utf-8"),
-        file_name="devices.csv", mime="text/csv", use_container_width=True,
+        file_name="devices.csv", mime="text/csv", width='stretch',
     )
 
 # ── OS Tabs ───────────────────────────────────────────────────────────────────
@@ -233,11 +233,11 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
                     st.rerun()
         with ca3:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("Edit", icon=":material/edit:", key=f"edit_{tab_key}_{device['id']}", use_container_width=True):
+            if st.button("Edit", icon=":material/edit:", key=f"edit_{tab_key}_{device['id']}", width='stretch'):
                 st.session_state[f"ag_edit_{device['id']}"] = not st.session_state.get(f"ag_edit_{device['id']}", False)
         with ca4:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("Ping", icon=":material/wifi_tethering:", key=f"ping_{tab_key}_{device['id']}", use_container_width=True):
+            if st.button("Ping", icon=":material/wifi_tethering:", key=f"ping_{tab_key}_{device['id']}", width='stretch'):
                 result, e = client.ping_check_device(device["id"])
                 if e:
                     st.error(f"Ping failed: {e}")
@@ -255,16 +255,16 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
                 st.warning("Sure?")
                 cc1, cc2 = st.columns(2)
                 with cc1:
-                    if st.button("Yes", key=f"del_yes_{tab_key}_{device['id']}", use_container_width=True):
+                    if st.button("Yes", key=f"del_yes_{tab_key}_{device['id']}", width='stretch'):
                         st.session_state.pop(_confirm_key, None)
                         _, e = client.delete_device(device["id"])
                         st.error(f"Delete failed: {e}") if e else st.rerun()
                 with cc2:
-                    if st.button("No", key=f"del_no_{tab_key}_{device['id']}", use_container_width=True):
+                    if st.button("No", key=f"del_no_{tab_key}_{device['id']}", width='stretch'):
                         st.session_state.pop(_confirm_key, None)
                         st.rerun()
             else:
-                if st.button("", icon=":material/delete:", key=f"del_{tab_key}_{device['id']}", use_container_width=True):
+                if st.button("", icon=":material/delete:", key=f"del_{tab_key}_{device['id']}", width='stretch'):
                     st.session_state[_confirm_key] = True
                     st.rerun()
 
@@ -284,7 +284,7 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
                     new_platform = st.selectbox("Platform", PLATFORMS, index=p_idx)
                 with ef3:
                     new_dtype = st.selectbox("Device type", DEVICE_TYPES, index=d_idx)
-                if st.form_submit_button("Save device info", use_container_width=True):
+                if st.form_submit_button("Save device info", width='stretch'):
                     _, e = client.update_device(device["id"], {
                         "hostname": new_hostname,
                         "platform": new_platform,
@@ -406,7 +406,7 @@ def _render_agent_row(device: dict, tab_key: str = "", latest_version: str = "")
                 height=140, margin=dict(t=20, b=8, l=8, r=8),
                 paper_bgcolor="#FFF",
             )
-            st.plotly_chart(fig, use_container_width=True, key=f"gauge_{tab_key}_{device.get('id')}")
+            st.plotly_chart(fig, width='stretch', key=f"gauge_{tab_key}_{device.get('id')}")
 
         # Assign to customer
         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
@@ -490,7 +490,7 @@ def _render_agent_row(device: dict, tab_key: str = "", latest_version: str = "")
                         title=dict(text=title_text,
                                    font=dict(size=12, color="#6B7B6B")),
                     )
-                    st.plotly_chart(fig2, use_container_width=True, key=f"history_{tab_key}_{device.get('id')}")
+                    st.plotly_chart(fig2, width='stretch', key=f"history_{tab_key}_{device.get('id')}")
 
 
 # ── Render each tab ───────────────────────────────────────────────────────────
