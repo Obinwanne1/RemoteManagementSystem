@@ -58,7 +58,7 @@ status_color = STATUS_COLORS.get(status_raw, "#9CA3AF")
 back_col, spacer, action_cols = st.columns([1.5, 3, 4])
 
 with back_col:
-    if st.button("← Billing", use_container_width=True):
+    if st.button("← Billing", width='stretch'):
         st.switch_page("pages/09_Billing.py")
 
 with action_cols:
@@ -70,7 +70,7 @@ with action_cols:
         inv_num = inv.get("invoice_number") or inv_id[:8]
         if pdf_err:
             st.button("PDF", icon=":material/download:", disabled=True, help=f"PDF unavailable: {pdf_err}",
-                      use_container_width=True)
+                      width='stretch')
         else:
             st.download_button(
                 "PDF",
@@ -78,14 +78,14 @@ with action_cols:
                 data=pdf_bytes,
                 file_name=f"invoice-{inv_num}.pdf",
                 mime="application/pdf",
-                use_container_width=True,
+                width='stretch',
             )
 
     # Send email
     with a2:
         cust_email = customer.get("email") or ""
         email_label = "Email" if cust_email else "No Email"
-        if st.button(email_label, use_container_width=True,
+        if st.button(email_label, width='stretch',
                      disabled=not cust_email,
                      help=f"Send to {cust_email}" if cust_email else "Customer has no email"):
             with st.spinner("Sending..."):
@@ -98,23 +98,23 @@ with action_cols:
     # Status transitions
     with a3:
         if status_raw == "draft":
-            if st.button("Mark Sent", use_container_width=True):
+            if st.button("Mark Sent", width='stretch'):
                 _, e = client.update_invoice_status(inv_id, "sent")
                 st.rerun() if not e else st.error(e)
         elif status_raw in ("sent", "overdue"):
-            if st.button("Mark Paid", use_container_width=True, type="primary"):
+            if st.button("Mark Paid", width='stretch', type="primary"):
                 _, e = client.update_invoice_status(inv_id, "paid")
                 st.rerun() if not e else st.error(e)
 
     with a4:
         if status_raw == "sent":
-            if st.button("Overdue", use_container_width=True):
+            if st.button("Overdue", width='stretch'):
                 _, e = client.update_invoice_status(inv_id, "overdue")
                 st.rerun() if not e else st.error(e)
 
     # Delete
     with a5:
-        if st.button("Delete", icon=":material/delete:", use_container_width=True):
+        if st.button("Delete", icon=":material/delete:", width='stretch'):
             if st.session_state.get("_del_inv_confirm"):
                 _, e = client.delete_invoice(inv_id)
                 if not e:

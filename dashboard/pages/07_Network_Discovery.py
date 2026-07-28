@@ -92,7 +92,7 @@ if _can_scan:
 
     with ctrl3:
         st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-        run_scan = st.button("Scan Network", icon=":material/wifi_find:", use_container_width=True, type="primary")
+        run_scan = st.button("Scan Network", icon=":material/wifi_find:", width='stretch', type="primary")
 else:
     st.info("You have view-only access. Contact an admin or technician to run a network scan.")
     run_scan = False
@@ -217,7 +217,7 @@ if scan_result:
         # Save All button
         save_col, _ = st.columns([2, 5])
         with save_col:
-            if st.button("Save All to Devices", icon=":material/save:", type="primary", use_container_width=True):
+            if st.button("Save All to Devices", icon=":material/save:", type="primary", width='stretch'):
                 result, err = client.upsert_agentless_devices(
                     hosts=hosts,
                     customer_id=selected_cust_id,

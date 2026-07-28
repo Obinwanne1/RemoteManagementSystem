@@ -61,7 +61,7 @@ with tab_gen:
             with dr_col2:
                 date_end = st.date_input("To", value=date.today())
 
-            submitted = st.form_submit_button("Generate Report", use_container_width=True)
+            submitted = st.form_submit_button("Generate Report", width='stretch')
 
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -165,12 +165,12 @@ with tab_hist:
                             file_name=fname,
                             mime="application/octet-stream",
                             key=f"dl_{rpt.get('id', r_name)}",
-                            use_container_width=True,
+                            width='stretch',
                         )
                     except Exception:
-                        st.button("Download", icon=":material/download:", disabled=True, key=f"dl_dis_{rpt.get('id', r_name)}", use_container_width=True)
+                        st.button("Download", icon=":material/download:", disabled=True, key=f"dl_dis_{rpt.get('id', r_name)}", width='stretch')
                 else:
-                    st.button("Download", icon=":material/download:", disabled=True, key=f"dl_none_{rpt.get('id', r_name)}", use_container_width=True)
+                    st.button("Download", icon=":material/download:", disabled=True, key=f"dl_none_{rpt.get('id', r_name)}", width='stretch')
 
 render_ai_assistant("Reports", {
     "report_count": len(reports),

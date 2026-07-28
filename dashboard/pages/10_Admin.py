@@ -208,11 +208,11 @@ with tab_sysinfo:
             st.code(display_val, language=None)
         with btn_col:
             label = "Hide" if st.session_state[show_key] else "Reveal"
-            if st.button(label, key="toggle_org_token", use_container_width=True):
+            if st.button(label, key="toggle_org_token", width='stretch'):
                 st.session_state[show_key] = not st.session_state[show_key]
                 st.rerun()
         with copy_col:
-            st.button("Copy", key="copy_org_token", use_container_width=True,
+            st.button("Copy", key="copy_org_token", width='stretch',
                       help="Click Reveal first, then copy from the code block above.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -278,7 +278,7 @@ with tab_audit:
                 "Export CSV",
                 data=_audit_df.to_csv(index=False).encode("utf-8"),
                 file_name="audit_log.csv", mime="text/csv",
-                use_container_width=True,
+                width='stretch',
             )
 
         # ── Render as HTML table for performance ──
@@ -376,7 +376,7 @@ with tab_users:
                 "Require password change on first login",
                 value=True,
             )
-            submitted = st.form_submit_button("Create User", use_container_width=True)
+            submitted = st.form_submit_button("Create User", width='stretch')
             if submitted:
                 if not new_name or not new_email or not new_pass:
                     st.error("Name, email, and password are required.")
@@ -471,7 +471,7 @@ with tab_users:
                         )
                     elif not uactive:
                         # Inactive user — only show Reactivate
-                        if st.button("Reactivate", key=f"react_btn_{uid}", use_container_width=True, type="primary"):
+                        if st.button("Reactivate", key=f"react_btn_{uid}", width='stretch', type="primary"):
                             _, rerr = client.reactivate_user(uid)
                             if rerr:
                                 st.error(f"Reactivate failed: {rerr}")
@@ -480,7 +480,7 @@ with tab_users:
                                 st.rerun()
                     else:
                         if u_locked:
-                            if st.button("Unlock Account", key=f"unlock_btn_{uid}", use_container_width=True, type="primary"):
+                            if st.button("Unlock Account", key=f"unlock_btn_{uid}", width='stretch', type="primary"):
                                 _, uerr = client.unlock_user(uid)
                                 if uerr:
                                     st.error(f"Unlock failed: {uerr}")
@@ -489,15 +489,15 @@ with tab_users:
                                     st.rerun()
                         ea, da, dda = st.columns(3)
                         with ea:
-                            if st.button("Edit", key=f"edit_btn_{uid}", use_container_width=True):
+                            if st.button("Edit", key=f"edit_btn_{uid}", width='stretch'):
                                 st.session_state[f"edit_open_{uid}"] = not st.session_state.get(f"edit_open_{uid}", False)
                         with da:
                             if not is_self:
-                                if st.button("Deactivate", key=f"deact_btn_{uid}", use_container_width=True):
+                                if st.button("Deactivate", key=f"deact_btn_{uid}", width='stretch'):
                                     st.session_state[f"deact_confirm_{uid}"] = True
                         with dda:
                             if not is_self:
-                                if st.button("Delete", key=f"del_btn_{uid}", use_container_width=True):
+                                if st.button("Delete", key=f"del_btn_{uid}", width='stretch'):
                                     st.session_state[f"del_confirm_{uid}"] = True
 
                 # Deactivate confirmation
@@ -505,7 +505,7 @@ with tab_users:
                     st.warning(f"Deactivate **{uname}** ({uemail})? They won't be able to log in. Reversible.")
                     cy, cn = st.columns(2)
                     with cy:
-                        if st.button("Yes, deactivate", key=f"deact_yes_{uid}", use_container_width=True):
+                        if st.button("Yes, deactivate", key=f"deact_yes_{uid}", width='stretch'):
                             _, derr = client.deactivate_user(uid)
                             if derr:
                                 st.error(f"Failed: {derr}")
@@ -514,7 +514,7 @@ with tab_users:
                                 st.session_state.pop(f"deact_confirm_{uid}", None)
                                 st.rerun()
                     with cn:
-                        if st.button("Cancel", key=f"deact_no_{uid}", use_container_width=True):
+                        if st.button("Cancel", key=f"deact_no_{uid}", width='stretch'):
                             st.session_state.pop(f"deact_confirm_{uid}", None)
                             st.rerun()
 
@@ -523,7 +523,7 @@ with tab_users:
                     st.warning(f"Permanently delete **{uname}** ({uemail})? This cannot be undone.")
                     cy, cn = st.columns(2)
                     with cy:
-                        if st.button("Yes, delete", key=f"del_yes_{uid}", use_container_width=True):
+                        if st.button("Yes, delete", key=f"del_yes_{uid}", width='stretch'):
                             _, derr = client.delete_user(uid)
                             if derr:
                                 st.error(f"Failed: {derr}")
@@ -532,7 +532,7 @@ with tab_users:
                                 st.session_state.pop(f"del_confirm_{uid}", None)
                                 st.rerun()
                     with cn:
-                        if st.button("Cancel", key=f"del_no_{uid}", use_container_width=True):
+                        if st.button("Cancel", key=f"del_no_{uid}", width='stretch'):
                             st.session_state.pop(f"del_confirm_{uid}", None)
                             st.rerun()
 
@@ -562,7 +562,7 @@ with tab_users:
                             "Require password change on next login",
                             value=u.get("must_change_password", False),
                         )
-                        save = st.form_submit_button("Save Changes", use_container_width=True)
+                        save = st.form_submit_button("Save Changes", width='stretch')
                         if save:
                             payload = {
                                 "full_name": e_name,
@@ -597,7 +597,7 @@ with tab_depts:
                 nd_desc = st.text_input("Description (optional)")
             with d3:
                 nd_color = st.text_input("Color (hex)", value="#407E3C")
-            d_submit = st.form_submit_button("Create Department", use_container_width=True)
+            d_submit = st.form_submit_button("Create Department", width='stretch')
             if d_submit:
                 if not nd_name.strip():
                     st.error("Department name is required.")
@@ -654,7 +654,7 @@ with tab_depts:
                         e_ddesc = st.text_input("Description", value=ddesc)
                     with ed3:
                         e_dcolor = st.text_input("Color", value=dcolor)
-                    de_save = st.form_submit_button("Save", use_container_width=True)
+                    de_save = st.form_submit_button("Save", width='stretch')
                     if de_save:
                         upd = {"description": e_ddesc, "color": e_dcolor}
                         if not is_helpdesk:
@@ -683,7 +683,7 @@ with tab_depts:
                         add_label = st.selectbox("Add member", list(add_opts.keys()),
                                                  key=f"add_member_sel_{did}",
                                                  label_visibility="collapsed")
-                        if st.button("Add", key=f"add_member_btn_{did}", use_container_width=True):
+                        if st.button("Add", key=f"add_member_btn_{did}", width='stretch'):
                             _, me = client.set_department_member(did, add_opts[add_label], "add")
                             if me:
                                 st.error(f"Failed: {me}")
@@ -698,7 +698,7 @@ with tab_depts:
                         rm_label = st.selectbox("Remove member", list(rm_opts.keys()),
                                                 key=f"rm_member_sel_{did}",
                                                 label_visibility="collapsed")
-                        if st.button("Remove", key=f"rm_member_btn_{did}", use_container_width=True):
+                        if st.button("Remove", key=f"rm_member_btn_{did}", width='stretch'):
                             _, me = client.set_department_member(did, rm_opts[rm_label], "remove")
                             if me:
                                 st.error(f"Failed: {me}")
@@ -716,7 +716,7 @@ with tab_depts:
                         st.warning(f"Delete **{dname}**? Members will be unassigned.")
                         dc1, dc2 = st.columns(2)
                         with dc1:
-                            if st.button("Yes, delete", key=f"del_dept_yes_{did}", use_container_width=True):
+                            if st.button("Yes, delete", key=f"del_dept_yes_{did}", width='stretch'):
                                 _, de = client.delete_department(did)
                                 if de:
                                     st.error(f"Failed: {de}")
@@ -724,7 +724,7 @@ with tab_depts:
                                     st.session_state.pop(f"del_dept_confirm_{did}", None)
                                     st.rerun()
                         with dc2:
-                            if st.button("Cancel", key=f"del_dept_no_{did}", use_container_width=True):
+                            if st.button("Cancel", key=f"del_dept_no_{did}", width='stretch'):
                                 st.session_state.pop(f"del_dept_confirm_{did}", None)
                                 st.rerun()
 
@@ -773,7 +773,7 @@ with tab_org:
         org_footer  = st.text_input("Invoice Footer Message",
                                     value=org.get("footer_notes", "Thank you for your business!"))
 
-        save_org = st.form_submit_button("Save Settings", use_container_width=False)
+        save_org = st.form_submit_button("Save Settings", width='content')
 
     if save_org:
         payload = {
@@ -820,7 +820,7 @@ with tab_org:
                 f'Color Preview</div>',
                 unsafe_allow_html=True,
             )
-        save_brand = st.form_submit_button("Save Branding", use_container_width=False)
+        save_brand = st.form_submit_button("Save Branding", width='content')
 
     if save_brand:
         import re
@@ -877,7 +877,7 @@ with tab_org:
         )
         lu1, lu2 = st.columns(2)
         with lu1:
-            if st.button("Save Logo", use_container_width=True, disabled=logo_file is None):
+            if st.button("Save Logo", width='stretch', disabled=logo_file is None):
                 if logo_file:
                     with st.spinner("Uploading..."):
                         _, lerr = client.upload_org_logo(logo_file.read(), logo_file.type)
@@ -888,7 +888,7 @@ with tab_org:
                         st.rerun()
         with lu2:
             if logo_data:
-                if st.button("Remove Logo", use_container_width=True):
+                if st.button("Remove Logo", width='stretch'):
                     _, rerr = client.delete_org_logo()
                     if rerr:
                         st.error(f"Remove failed: {rerr}")
@@ -940,7 +940,7 @@ with tab_org:
                 help="Timestamps in alerts, audit log, and reports will display in this timezone.",
             )
 
-        save_regional = st.form_submit_button("Save Regional Settings", use_container_width=False)
+        save_regional = st.form_submit_button("Save Regional Settings", width='content')
 
     if save_regional:
         _, rerr = client.update_org_settings({"currency": sel_currency, "timezone": sel_timezone})

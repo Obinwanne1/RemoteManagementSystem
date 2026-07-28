@@ -64,7 +64,7 @@ def render_sidebar() -> None:
 
         # ── Admin shortcut (top, admin only) ─────────────────────────────────
         if role in ("admin", "superadmin"):
-            if st.button("Admin Panel", use_container_width=True, key="nav_admin", icon=":material/admin_panel_settings:"):
+            if st.button("Admin Panel", width='stretch', key="nav_admin", icon=":material/admin_panel_settings:"):
                 st.switch_page("pages/10_Admin.py")
             st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
 
@@ -115,5 +115,5 @@ def render_sidebar() -> None:
         st.page_link("pages/17_Profile.py", label="My Profile", icon=":material/person:")
 
         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-        if st.button("Sign Out", use_container_width=True, key="sidebar_signout", icon=":material/logout:"):
+        if st.button("Sign Out", width='stretch', key="sidebar_signout", icon=":material/logout:"):
             logout()

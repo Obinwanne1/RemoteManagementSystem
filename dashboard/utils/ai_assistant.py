@@ -53,7 +53,7 @@ def render_ai_assistant(page_name: str = "Overview", context: dict = None) -> No
             toggle_label = "🤖 Hide AI Assistant"
         else:
             toggle_label = "🤖 AI Assistant"
-        if st.button(toggle_label, use_container_width=True, key=f"ai_toggle_{page_key}"):
+        if st.button(toggle_label, width='stretch', key=f"ai_toggle_{page_key}"):
             st.session_state["_ai_open"] = not st.session_state["_ai_open"]
             st.rerun()
 
@@ -92,7 +92,7 @@ def render_ai_assistant(page_name: str = "Overview", context: dict = None) -> No
                 placeholder="Ask anything…",
                 key=f"ai_text_{page_key}",
             )
-            submitted = st.form_submit_button("Send →", use_container_width=True)
+            submitted = st.form_submit_button("Send →", width='stretch')
 
         if submitted and user_input.strip():
             _send_message(client, user_input.strip(), page_name, context)
@@ -109,14 +109,14 @@ def render_ai_assistant(page_name: str = "Overview", context: dict = None) -> No
                 if st.button(
                     action,
                     key=f"ai_sugg_{page_key}_{i}",
-                    use_container_width=True,
+                    width='stretch',
                 ):
                     st.session_state["_ai_suggested"] = []
                     _send_message(client, f"How do I: {action}?", page_name, context)
 
         # ── Clear button ───────────────────────────────────────────────────────
         if st.session_state["_ai_history"]:
-            if st.button("Clear chat", key=f"ai_clear_{page_key}", use_container_width=False):
+            if st.button("Clear chat", key=f"ai_clear_{page_key}", width='content'):
                 st.session_state["_ai_history"] = []
                 st.session_state["_ai_suggested"] = []
                 st.rerun()

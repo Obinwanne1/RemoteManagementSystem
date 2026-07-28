@@ -200,7 +200,7 @@ with tab_assign:
         )
         a1, a2 = st.columns(2)
         with a1:
-            if st.button("Assign", key="detail_assign_btn", use_container_width=True, type="primary"):
+            if st.button("Assign", key="detail_assign_btn", width='stretch', type="primary"):
                 new_uid = user_opts[new_assignee_label]
                 _, aerr = client.update_ticket(ticket_id, {"assignee_id": new_uid})
                 if aerr:
@@ -209,7 +209,7 @@ with tab_assign:
                     st.success("Assigned.")
                     st.rerun()
         with a2:
-            if st.button("Assign to Me", key="detail_assignme_btn", use_container_width=True):
+            if st.button("Assign to Me", key="detail_assignme_btn", width='stretch'):
                 _, aerr = client.update_ticket(ticket_id, {"assignee_id": my_id})
                 if aerr:
                     st.error(f"Assign failed: {aerr}")
@@ -243,7 +243,7 @@ with tab_assign:
             fwd_opts = {u.get("full_name") or u.get("email", u["id"]): u["id"] for u in others}
             fwd_label = st.selectbox("Forward to", list(fwd_opts.keys()),
                                      key="detail_fwd_sel", label_visibility="collapsed")
-            if st.button("Forward", key="detail_fwd_btn", use_container_width=True):
+            if st.button("Forward", key="detail_fwd_btn", width='stretch'):
                 _, ferr = client.update_ticket(ticket_id, {"assignee_id": fwd_opts[fwd_label]})
                 if ferr:
                     st.error(f"Forward failed: {ferr}")
@@ -299,7 +299,7 @@ with tab_comments:
         with cmt_c1:
             is_internal_new = st.checkbox("Internal note")
         with cmt_c2:
-            cmt_submit = st.form_submit_button("Post Comment", use_container_width=True)
+            cmt_submit = st.form_submit_button("Post Comment", width='stretch')
 
     if cmt_submit:
         if not comment_body.strip():

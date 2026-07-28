@@ -62,7 +62,7 @@ with st.expander("+ Submit New Ticket", expanded=False):
         nt_title    = st.text_input("Subject *", placeholder="Brief description of your issue")
         nt_priority = st.selectbox("Priority", ["low", "medium", "high", "critical"])
         nt_desc     = st.text_area("Details", placeholder="Please describe your issue in full…", height=120)
-        nt_submit   = st.form_submit_button("Submit Ticket", use_container_width=True)
+        nt_submit   = st.form_submit_button("Submit Ticket", width='stretch')
     if nt_submit:
         if not nt_title.strip():
             st.error("Subject is required.")
@@ -174,7 +174,7 @@ for t in tickets:
             unsafe_allow_html=True,
         )
     with rcols[5]:
-        if st.button("→", key=f"view_client_{tid}", use_container_width=True):
+        if st.button("→", key=f"view_client_{tid}", width='stretch'):
             st.session_state["_nav_ticket_id"] = tid
             st.switch_page("pages/_client_ticket_detail.py")
 

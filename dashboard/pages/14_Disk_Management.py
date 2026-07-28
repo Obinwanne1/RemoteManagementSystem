@@ -109,7 +109,7 @@ else:
                 'box-shadow:0 2px 8px rgba(0,0,0,0.05);padding:0.5rem 0.5rem 0">',
                 unsafe_allow_html=True
             )
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig, width='stretch', config={"displayModeBar": False})
             st.markdown(
                 f'<div style="padding:0 0.75rem 0.75rem;font-size:0.78rem;color:#6B7B6B;line-height:1.7">'
                 f'<div style="display:flex;justify-content:space-between"><span>Used</span><b style="color:#1A1A1A">{used_gb:.1f} GB</b></div>'
@@ -176,7 +176,7 @@ else:
 
     act1, act2, act3 = st.columns(3)
     with act1:
-        if st.button("Defragment", icon=":material/settings:", use_container_width=True):
+        if st.button("Defragment", icon=":material/settings:", width='stretch'):
             with st.spinner("Queuing defragment..."):
                 _, err = client.queue_device_task(selected_device["id"], "defrag", timeout=1800)
             if err:
@@ -184,7 +184,7 @@ else:
             else:
                 st.success("Defragment queued. Agent will execute on next poll.")
     with act2:
-        if st.button("Check Disk", icon=":material/health_and_safety:", use_container_width=True):
+        if st.button("Check Disk", icon=":material/health_and_safety:", width='stretch'):
             with st.spinner("Queuing chkdsk..."):
                 _, err = client.queue_device_task(selected_device["id"], "check_disk")
             if err:
@@ -192,7 +192,7 @@ else:
             else:
                 st.success("Check Disk (chkdsk) queued. Agent will execute on next poll.")
     with act3:
-        if st.button("Clean Temp Files", icon=":material/delete_sweep:", use_container_width=True):
+        if st.button("Clean Temp Files", icon=":material/delete_sweep:", width='stretch'):
             with st.spinner("Queuing cleanup..."):
                 _, err = client.queue_device_task(selected_device["id"], "clean_temp")
             if err:

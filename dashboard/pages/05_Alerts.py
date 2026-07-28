@@ -88,7 +88,7 @@ with tab_alerts:
             } for a in filtered_alerts])
             st.download_button(
                 "Export CSV", data=_df.to_csv(index=False).encode("utf-8"),
-                file_name="alerts.csv", mime="text/csv", use_container_width=True,
+                file_name="alerts.csv", mime="text/csv", width='stretch',
             )
 
     # ── Alert list ────────────────────────────────────────────────────────────
@@ -137,7 +137,7 @@ with tab_alerts:
                 # Action buttons
                 btn_col1, btn_col2, _ = st.columns([1, 1, 4])
                 with btn_col1:
-                    if st.button("Acknowledge", key=f"ack_{alert['id']}", use_container_width=True):
+                    if st.button("Acknowledge", key=f"ack_{alert['id']}", width='stretch'):
                         _, aerr = client.acknowledge_alert(alert["id"])
                         if aerr:
                             st.error(f"Failed: {aerr}")
@@ -145,7 +145,7 @@ with tab_alerts:
                             st.success("Alert acknowledged.")
                             st.rerun()
                 with btn_col2:
-                    if st.button("Resolve", key=f"res_{alert['id']}", use_container_width=True):
+                    if st.button("Resolve", key=f"res_{alert['id']}", width='stretch'):
                         _, rerr = client.resolve_alert(alert["id"])
                         if rerr:
                             st.error(f"Failed: {rerr}")
@@ -200,7 +200,7 @@ with tab_rules:
                 act_col1, act_col2, _ = st.columns([1, 1, 4])
                 with act_col1:
                     toggle_label = "Deactivate" if is_active else "Activate"
-                    if st.button(toggle_label, key=f"toggle_{rule['id']}", use_container_width=True):
+                    if st.button(toggle_label, key=f"toggle_{rule['id']}", width='stretch'):
                         _, uerr = client.update_alert_rule(rule["id"], {"is_active": not is_active})
                         if uerr:
                             st.error(f"Failed: {uerr}")
@@ -208,7 +208,7 @@ with tab_rules:
                             st.success(f"Rule {'deactivated' if is_active else 'activated'}.")
                             st.rerun()
                 with act_col2:
-                    if st.button("Delete", key=f"del_{rule['id']}", use_container_width=True):
+                    if st.button("Delete", key=f"del_{rule['id']}", width='stretch'):
                         _, derr = client.delete_alert_rule(rule["id"])
                         if derr:
                             st.error(f"Failed: {derr}")
@@ -243,7 +243,7 @@ with tab_rules:
             rule_cooldown = st.number_input("Cooldown (min)", min_value=1, max_value=1440, value=15)
 
         rule_auto_ticket = st.checkbox("Auto-create ticket on trigger")
-        rule_submitted = st.form_submit_button("Create Rule", use_container_width=False)
+        rule_submitted = st.form_submit_button("Create Rule", width='content')
 
     st.markdown('</div>', unsafe_allow_html=True)
 

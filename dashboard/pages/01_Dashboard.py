@@ -54,7 +54,7 @@ def _body():
         """, unsafe_allow_html=True)
     with _refresh_col:
         st.markdown("<div style='padding-top:0.6rem'></div>", unsafe_allow_html=True)
-        if st.button("Refresh", key="dash_refresh", type="primary", use_container_width=True, icon=":material/refresh:"):
+        if st.button("Refresh", key="dash_refresh", type="primary", width='stretch', icon=":material/refresh:"):
             st.cache_data.clear()
             st.rerun()
 
@@ -153,7 +153,7 @@ def _body():
                 legend=dict(orientation="h", yanchor="top", y=-0.05, xanchor="center", x=0.5, font=dict(size=10)),
                 margin=dict(t=8, b=30, l=8, r=8),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         else:
             st.info("No devices yet.")
 
@@ -214,7 +214,7 @@ def _body():
                         dot = "●" if online else "○"
                         label = f"{dot} **{hostname}**\n{status.upper()}"
                         if st.button(label, key=f"hm_{dev.get('id',f'{i}{j}')}",
-                                     use_container_width=True,
+                                     width='stretch',
                                      help="Click to view device in Devices page"):
                             st.session_state["_nav_device"] = str(dev.get("id", ""))
                             st.switch_page("pages/04_Devices.py")

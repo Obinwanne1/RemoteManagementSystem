@@ -87,7 +87,7 @@ with left_col:
 
     st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
 
-    if st.button("Check for Updates", icon=":material/refresh:", use_container_width=True):
+    if st.button("Check for Updates", icon=":material/refresh:", width='stretch'):
         st.info("Winget / Chocolatey integration — Phase 6. Update checking will be available once the patch engine is deployed.")
 
 with right_col:

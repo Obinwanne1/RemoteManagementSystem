@@ -177,11 +177,11 @@ def show_login():
             email    = st.text_input("Email address", placeholder="admin@company.com")
             password = st.text_input("Password", type="password", placeholder="••••••••")
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            submitted = st.form_submit_button("Sign In →", use_container_width=True)
+            submitted = st.form_submit_button("Sign In →", width='stretch')
 
         # Forgot password link
         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-        if st.button("Forgot your password?", use_container_width=True, key="forgot_pw_btn"):
+        if st.button("Forgot your password?", width='stretch', key="forgot_pw_btn"):
             st.session_state["show_forgot_pw"] = not st.session_state.get("show_forgot_pw", False)
             st.rerun()
 
@@ -190,7 +190,7 @@ def show_login():
             st.markdown("<p style='color:#6B7B6B;font-size:0.85rem;margin:0.75rem 0 0.5rem'>Enter your email and we'll send a reset link (valid 1 hour).</p>", unsafe_allow_html=True)
             with st.form("forgot_pw_form"):
                 reset_email = st.text_input("Email address", placeholder="your@email.com", key="reset_email_input")
-                sent = st.form_submit_button("Send Reset Link →", use_container_width=True)
+                sent = st.form_submit_button("Send Reset Link →", width='stretch')
 
             if sent:
                 if not reset_email:
@@ -285,7 +285,7 @@ def show_dashboard_home():
         role = user.get("role", "")
 
         if role in ("admin", "superadmin"):
-            if st.button("Admin Panel", use_container_width=True, key="nav_admin", icon=":material/admin_panel_settings:"):
+            if st.button("Admin Panel", width='stretch', key="nav_admin", icon=":material/admin_panel_settings:"):
                 st.switch_page("pages/10_Admin.py")
             st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
 
@@ -315,7 +315,7 @@ def show_dashboard_home():
             st.page_link("pages/09_Billing.py",       label="Billing",           icon=":material/payments:")
 
         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-        if st.button("Sign Out", use_container_width=True, key="home_signout", icon=":material/logout:"):
+        if st.button("Sign Out", width='stretch', key="home_signout", icon=":material/logout:"):
             logout()
 
     # Main
@@ -395,7 +395,7 @@ def show_mfa_step():
         with st.form("mfa_login_form"):
             code = st.text_input("Authenticator Code", placeholder="123456", max_chars=6)
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            submitted = st.form_submit_button("Verify →", use_container_width=True)
+            submitted = st.form_submit_button("Verify →", width='stretch')
 
         if st.button("← Back to login", key="mfa_back"):
             st.session_state.pop("mfa_pending_token", None)
@@ -449,7 +449,7 @@ def show_force_change_password():
             new_pw  = st.text_input("New Password", type="password", placeholder="Min 8 characters")
             conf_pw = st.text_input("Confirm Password", type="password", placeholder="Repeat password")
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            submitted = st.form_submit_button("Set Password →", use_container_width=True)
+            submitted = st.form_submit_button("Set Password →", width='stretch')
 
     if submitted:
         import re as _re
@@ -505,7 +505,7 @@ def show_reset_password_form(reset_token: str):
             new_pw  = st.text_input("New Password", type="password", placeholder="Min 8 characters")
             conf_pw = st.text_input("Confirm Password", type="password", placeholder="Repeat password")
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            submitted = st.form_submit_button("Set New Password →", use_container_width=True)
+            submitted = st.form_submit_button("Set New Password →", width='stretch')
 
     if submitted:
         import re as _re
