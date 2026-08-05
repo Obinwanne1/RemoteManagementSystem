@@ -61,6 +61,19 @@
 - [x] Script run audit logging (AuditLog emission)
 - [x] backup_tasks + billing_tasks registered in Celery beat + include list
 
+### Post-Ship (AI Assistant Modernization)
+- [x] Removed 🤖/👋 emojis from `dashboard/utils/ai_assistant.py`
+- [x] Toggle buttons use Material icons (auto_awesome / close)
+- [x] Send + Clear buttons use Material icons (send / delete_outline)
+- [x] CSS chat bubble styling injected into sidebar
+- [x] Message timestamps (HH:MM) on every bubble
+- [x] Empty-state dashed card, subtler disclaimer
+- [x] History cap 14→16, max_chars=800 on input
+- [x] max_tokens 600→900 in `api/routes/assistant.py`
+- [x] CAUTION prefix emoji stripped
+- [x] Platform icon fallback 💻→"—" in `04_Devices.py` + `07_Network_Discovery.py`
+- [x] HANDOVER_GUIDE.md, CLAUDE.md updated
+
 ### Documentation (updated to reflect Phase F)
 - [x] CLAUDE.md — post-ship bullets + Key Utilities updated
 - [x] SKILL.md — Phase F appended (F.1–F.10)
