@@ -1537,7 +1537,7 @@ Technicians and administrators.
 
 | Column | Description |
 |---|---|
-| Platform icon | Visual indicator (🪟 Windows, 🍎 Apple/iOS, 🐧 Linux, 🤖 Android, 💻 Unknown) |
+| Platform icon | Visual indicator (Font Awesome brand icons — Win/Mac/Lin/iOS/And/—) |
 | IP Address | The discovered host's IP |
 | MAC Address | Hardware MAC address from ARP table |
 | Vendor | OUI lookup result (e.g., "Apple, Inc.", "Samsung Electronics") |
@@ -3429,11 +3429,11 @@ The AI Assistant button appears at the bottom of the sidebar on every page, belo
 
 **To open it:**
 1. Scroll to the bottom of the sidebar.
-2. Click **🤖 AI Assistant**.
+2. Click **AI Assistant** (sparkle icon).
 3. The chat panel expands directly in the sidebar.
 
 **To close it:**
-1. Click **🤖 Hide AI Assistant** (the button label changes when the panel is open).
+1. Click **Close Assistant** (the button label changes when the panel is open).
 
 The panel stays open as you navigate between pages — your conversation history is preserved for the entire session. Refreshing the browser or logging out clears the history.
 
@@ -3451,7 +3451,7 @@ This welcome message appears once per session. It does not appear again until yo
 
 1. Click inside the text box labelled **Ask anything…**
 2. Type your question.
-3. Click **Send →** or press **Enter**.
+3. Click **Send** (or press **Enter**).
 4. The assistant replies in a few seconds.
 
 **Example questions you can ask:**
@@ -3479,7 +3479,7 @@ After each reply, the assistant shows up to three **Quick Action** buttons below
 
 If you want to start fresh:
 1. Open the AI Assistant panel.
-2. Click **Clear chat** (appears below the chat history when there are messages).
+2. Click **Clear** (appears below the chat history when there are messages).
 3. The history is cleared and the assistant is ready for a new conversation.
 
 ---
@@ -3562,7 +3562,7 @@ The AI Assistant requires an Anthropic API key. If it was not configured at init
    .\venv\Scripts\Activate.ps1
    python app.py
    ```
-6. Reload the dashboard — the **🤖 AI Assistant** button should now appear in the sidebar.
+6. Reload the dashboard — the **AI Assistant** button should now appear at the bottom of the sidebar.
 
 > **IMPORTANT:** Never commit the `.env` file to version control. The `ANTHROPIC_API_KEY` is a secret. Store it in `.env` only, which is listed in `.gitignore`.
 

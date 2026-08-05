@@ -279,7 +279,7 @@ def chat():
         model = os.getenv("AI_ASSISTANT_MODEL", "claude-haiku-4-5-20251001")
         resp = client.messages.create(
             model=model,
-            max_tokens=600,
+            max_tokens=900,
             system=system_prompt,
             messages=messages,
         )
@@ -300,7 +300,7 @@ def chat():
     contains_warning = any(p.search(reply) for p in _DANGER_PATTERNS)
     if contains_warning:
         reply = (
-            "⚠️ **CAUTION:** This response references a potentially destructive operation. "
+            "**CAUTION:** This response references a potentially destructive operation. "
             "Do not execute without supervisor review.\n\n" + reply
         )
 

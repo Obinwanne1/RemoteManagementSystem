@@ -24,7 +24,7 @@ All registered endpoints — agent-managed and agentless (WiFi discovered)</p>
 
 PLATFORM_ICON = {
     "windows": "Win", "mac": "Mac", "linux": "Lin",
-    "android": "And", "ios": "iOS", "unknown": "—",
+    "android": "And", "ios": "iOS", "unknown": "—", "agentless": "—",
 }
 
 PLATFORM_ICON_HTML = {
@@ -155,7 +155,7 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
     is_online = device.get("is_online", False)
     dot_color = "#22C55E" if is_online else "#8492A6"
     platform = device.get("platform", "unknown")
-    icon = PLATFORM_ICON.get(platform, "💻")
+    icon = PLATFORM_ICON.get(platform, "—")
     dev_type = device.get("device_type", "unknown")
 
     with st.expander(
@@ -312,7 +312,7 @@ def _render_agent_row(device: dict, tab_key: str = "", latest_version: str = "")
     is_online = device.get("is_online", False)
     dot_color = "#22C55E" if is_online else "#8492A6"
     platform = device.get("platform", "unknown")
-    icon = PLATFORM_ICON.get(platform, "💻")
+    icon = PLATFORM_ICON.get(platform, "—")
     metrics  = device.get("latest_metrics") or {}
     cpu  = metrics.get("cpu_pct",  0) or 0
     ram  = metrics.get("ram_pct",  0) or 0

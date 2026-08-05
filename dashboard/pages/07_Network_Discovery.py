@@ -249,7 +249,7 @@ if scan_result:
         for i, host in enumerate(hosts):
             bg = "#FFFFFF" if i % 2 == 0 else "#FAFCFA"
             platform = host.get("platform", "unknown")
-            icon = PLATFORM_ICON.get(platform, "💻")
+            icon = PLATFORM_ICON.get(platform, "—")
             status_raw = host.get("status", "up")
             status_color = BRAND["success"] if status_raw == "up" else BRAND["danger"]
             status_b = badge(status_raw, status_color)
