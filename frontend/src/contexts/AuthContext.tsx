@@ -16,12 +16,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('access_token'));
   const [user, setUser] = useState<User | null>(null);
 
-  // Load user profile when token exists
-  useEffect(() => {
-    if (token && !user) {
-      api.get('/auth/me').then((r) => setUser(r.data)).catch(() => logout());
-    }
-  }, [token, user, logout]);
+  const logout = useCallback(() => {
+    api.post('/auth/logout').catch(() => {});
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    setToken(null);
+    setUser(null);
+  }, []);
 
   const _storeTokens = (access: string, refresh: string, userData: User) => {
     localStorage.setItem('access_token', access);
@@ -29,6 +30,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(access);
     setUser(userData);
   };
+
+  // Load user profile when token exists
+  useEffect(() => {
+    if (token && !user) {
+      api.get('/auth/me').then((r) => setUser(r.data)).catch(() => logout());
+    }
+  }, [token, user, logout]);
 
   const login = useCallback(async (email: string, password: string) => {
     try {
@@ -53,14 +61,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       return { error: err.response?.data?.error || 'Invalid code' };
     }
-  }, []);
-
-  const logout = useCallback(() => {
-    api.post('/auth/logout').catch(() => {});
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    setToken(null);
-    setUser(null);
   }, []);
 
   return (
