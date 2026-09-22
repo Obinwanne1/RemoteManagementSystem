@@ -79,6 +79,7 @@ def create_app(config_name=None):
     with app.app_context():
         from models import user, device, customer, alert, ticket, patch, script, automation, report, billing, audit  # noqa
         from models import org_settings, user_session, department, terminal, sla_policy, psa_integration  # noqa
+        from models import mdm_integration  # noqa
         try:
             from utils.builtin_scripts import ensure_builtin_scripts
             ensure_builtin_scripts()
@@ -199,6 +200,7 @@ def create_app(config_name=None):
     from routes.sla_policies import sla_bp
     from routes.sensors import sensors_bp
     from routes.psa import psa_bp
+    from routes.mobile_mdm import mobile_mdm_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(agents_bp, url_prefix="/api/agents")
@@ -223,6 +225,7 @@ def create_app(config_name=None):
     app.register_blueprint(sla_bp, url_prefix="/api/sla-policies")
     app.register_blueprint(sensors_bp, url_prefix="/api/sensors")
     app.register_blueprint(psa_bp, url_prefix="/api/psa")
+    app.register_blueprint(mobile_mdm_bp, url_prefix="/api/mdm")
 
     import redis as redis_lib
     _redis_client = redis_lib.from_url(

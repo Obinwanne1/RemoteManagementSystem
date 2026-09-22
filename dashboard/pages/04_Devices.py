@@ -297,6 +297,100 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
                         st.rerun()
 
 
+# ── MDM-managed mobile device row (Android, real remote actions) ──────────────
+def _render_mobile_managed_row(device: dict, tab_key: str = ""):
+    is_online = device.get("is_online", False)
+    dot_color = "#22C55E" if is_online else "#8492A6"
+    platform = device.get("platform", "unknown")
+    icon = PLATFORM_ICON.get(platform, "—")
+    enrollment = device.get("mdm_enrollment") or {}
+    ownership = enrollment.get("ownership_type", "byod")
+    compliant = enrollment.get("policy_compliant")
+
+    with st.expander(
+        f'{icon}  {device.get("display_name") or device.get("hostname", "—")}   '
+        f'{"● Online" if is_online else "○ Offline"}  ·  '
+        f'{ownership.upper()}  ·  MANAGED',
+    ):
+        c1, c2 = st.columns(2)
+        with c1:
+            comp_txt = "Compliant" if compliant else ("Non-compliant" if compliant is False else "Unknown")
+            comp_color = "#22C55E" if compliant else ("#EF4444" if compliant is False else "#8492A6")
+            st.markdown(f"""
+<div style="background:#FAFCFA;border-radius:8px;padding:0.85rem 1rem;border:1px solid #E8EEE8">
+    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;
+                letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0.6rem">Managed Device</div>
+    <table style="width:100%;border-collapse:collapse;font-size:0.83rem">
+        <tr><td style="color:#6B7B6B;padding:2px 0;width:40%">Ownership</td>
+            <td style="color:#1A1A1A;text-transform:capitalize">{ownership}</td></tr>
+        <tr><td style="color:#6B7B6B;padding:2px 0">Compliance</td>
+            <td style="color:{comp_color};font-weight:600">{comp_txt}</td></tr>
+        <tr><td style="color:#6B7B6B;padding:2px 0">OS</td>
+            <td style="color:#1A1A1A">{device.get('os_name','—')} {device.get('os_version') or ''}</td></tr>
+        <tr><td style="color:#6B7B6B;padding:2px 0">Vendor</td>
+            <td style="color:#1A1A1A">{device.get('vendor') or 'Unknown'}</td></tr>
+        <tr><td style="color:#6B7B6B;padding:2px 0">Last seen</td>
+            <td style="color:#1A1A1A">{fmt_datetime(device.get('last_seen'))}</td></tr>
+    </table>
+</div>""", unsafe_allow_html=True)
+        with c2:
+            st.markdown(f"""
+<div style="background:#FAFCFA;border-radius:8px;padding:0.85rem 1rem;border:1px solid #E8EEE8;height:100%">
+    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;
+                letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0.6rem">Status</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.5rem">
+        <div style="width:10px;height:10px;border-radius:50%;background:{dot_color};
+                    box-shadow:0 0 5px {dot_color}88"></div>
+        <span style="font-size:0.88rem;font-weight:600;color:#1A1A1A">
+            {"Online" if is_online else "Offline"}</span>
+    </div>
+    <div style="font-size:0.78rem;color:#6B7B6B">
+        Managed via Android Management API — no custom agent installed.
+        Commands apply when the device next checks in.
+    </div>
+</div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        # Server enforces role/scope on every command below (mobile_mdm.py's
+        # _require_role + _mdm_scope_check) — buttons are shown to all viewers
+        # of this expander, the API call itself is what's actually gated.
+        b1, b2, b3, b4, b5 = st.columns(5)
+        with b1:
+            if st.button("Lock", icon=":material/lock:", key=f"mdm_lock_{tab_key}_{device['id']}", width='stretch'):
+                _, e = client.mdm_lock_device(device["id"])
+                st.error(f"Failed: {e}") if e else st.success("Lock command sent")
+        with b2:
+            if st.button("Lost Mode", icon=":material/error:", key=f"mdm_lost_{tab_key}_{device['id']}", width='stretch'):
+                _, e = client.mdm_start_lost_mode(device["id"])
+                st.error(f"Failed: {e}") if e else st.success("Lost Mode command sent")
+        with b3:
+            if st.button("Reboot", icon=":material/restart_alt:", key=f"mdm_reboot_{tab_key}_{device['id']}", width='stretch'):
+                _, e = client.mdm_reboot_device(device["id"])
+                st.error(f"Failed: {e}") if e else st.success("Reboot command sent")
+        with b4:
+            if st.button("Reset Passcode", icon=":material/key:", key=f"mdm_reset_{tab_key}_{device['id']}", width='stretch'):
+                _, e = client.mdm_reset_password_device(device["id"])
+                st.error(f"Failed: {e}") if e else st.success("Reset passcode command sent")
+        with b5:
+            _wipe_key = f"mdm_wipe_confirm_{tab_key}_{device['id']}"
+            if st.session_state.get(_wipe_key):
+                st.warning("Wipe is irreversible. Confirm?")
+                wc1, wc2 = st.columns(2)
+                with wc1:
+                    if st.button("Yes, wipe", key=f"mdm_wipe_yes_{tab_key}_{device['id']}", width='stretch'):
+                        st.session_state.pop(_wipe_key, None)
+                        _, e = client.mdm_wipe_device(device["id"])
+                        st.error(f"Failed: {e}") if e else st.success("Wipe command sent")
+                with wc2:
+                    if st.button("Cancel", key=f"mdm_wipe_no_{tab_key}_{device['id']}", width='stretch'):
+                        st.session_state.pop(_wipe_key, None)
+                        st.rerun()
+            else:
+                if st.button("Wipe", icon=":material/delete_forever:", key=f"mdm_wipe_{tab_key}_{device['id']}", width='stretch'):
+                    st.session_state[_wipe_key] = True
+                    st.rerun()
+
+
 # ── Version comparison helper ─────────────────────────────────────────────────
 def _ver_tuple(v: str) -> tuple:
     try:
@@ -529,7 +623,10 @@ for tab, name in zip(tabs, tab_names):
                 unsafe_allow_html=True,
             )
             for device in devices:
-                if device.get("is_agentless"):
+                _enrollment = device.get("mdm_enrollment")
+                if _enrollment and _enrollment.get("status") == "enrolled":
+                    _render_mobile_managed_row(device, tab_key=name)
+                elif device.get("is_agentless"):
                     _render_agentless_row(device, tab_key=name)
                 else:
                     _render_agent_row(device, tab_key=name, latest_version=_latest_agent_version)

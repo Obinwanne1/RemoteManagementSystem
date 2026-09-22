@@ -90,3 +90,9 @@ api/migrations/versions/*.pyc
 
 # TLS certificates (never commit private keys)
 nginx/certs/
+
+# MDM credentials (defense-in-depth — design stores these encrypted in the DB
+# via upload, never intentionally written to disk, but guard against it anyway)
+*.p12
+*.pem
+google-service-account*.json

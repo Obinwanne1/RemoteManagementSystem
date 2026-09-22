@@ -1,9 +1,21 @@
 """Client Ticket Portal — clients submit and track their own tickets (list view)."""
+import io
 import streamlit as st
 from utils.auth import require_auth, logout
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND
 from utils.formatters import fmt_datetime, PRIORITY_COLORS
+
+_MDM_CONSENT_TEXT = (
+    "By enrolling your phone, a lightweight management profile from Google (a \"Work Profile\") "
+    "is added to your device — no separate app is installed by us. We will be able to see: the "
+    "work profile's apps and compliance status. We will be able to act on: locking the device, "
+    "putting it in Lost Mode, and — only as a last resort, with your knowledge — wiping the work "
+    "profile if the device is lost or you leave. We cannot see or touch anything outside the work "
+    "profile: your personal messages, photos, browsing, or other apps. You can remove the work "
+    "profile at any time from your phone's Settings, or ask us to revoke it — either way your "
+    "personal data on the phone is never affected."
+)
 
 _TABLE_CSS = """
 <style>
@@ -77,6 +89,50 @@ with st.expander("+ Submit New Ticket", expanded=False):
             else:
                 st.success("Ticket submitted. Our team will review it shortly.")
                 st.rerun()
+
+# ── Enroll My Phone (BYOD, consent-gated) ──────────────────────────────────────
+with st.expander("+ Enroll My Phone", expanded=False):
+    available, _aerr = api.list_available_mdm_integrations()
+    available = available or []
+    if not available:
+        st.info("Your provider hasn't set up mobile device management yet.")
+    else:
+        st.markdown(
+            f"<div style='background:#F8FAF8;border:1px solid #DDE8DD;border-radius:8px;"
+            f"padding:0.75rem 1rem;font-size:0.82rem;color:#3A4A3A;margin-bottom:0.75rem'>"
+            f"{_MDM_CONSENT_TEXT}</div>",
+            unsafe_allow_html=True,
+        )
+        int_ids = [i["id"] for i in available]
+        int_labels = [i["name"] for i in available]
+        chosen = st.selectbox("Provider integration", range(len(int_ids)), format_func=lambda x: int_labels[x])
+        consent = st.checkbox("I understand and consent to enrolling my phone as described above.")
+
+        if st.button("Generate enrollment QR", icon=":material/qr_code:", disabled=not consent):
+            result, e = api.create_mdm_enrollment(
+                int_ids[chosen], ownership_type="byod", consent_acknowledged=True,
+            )
+            if e:
+                st.error(f"Could not start enrollment: {e}")
+            else:
+                st.session_state["_mdm_client_enrollment"] = result
+
+        pending = st.session_state.get("_mdm_client_enrollment")
+        if pending:
+            st.success("Scan this on your phone's setup screen, or tap the link below if you're viewing this on the phone.")
+            try:
+                import qrcode
+                qr = qrcode.QRCode(box_size=6, border=2)
+                qr.add_data(pending["qr_code_json"])
+                qr.make(fit=True)
+                img = qr.make_image(fill_color="#0F1B10", back_color="#FFFFFF")
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                buf.seek(0)
+                st.image(buf, width=220)
+            except Exception:
+                pass
+            st.link_button("Open enrollment link on this phone", pending.get("enrollment_link", ""))
 
 # ── Filter bar ────────────────────────────────────────────────────────────────
 st.markdown(

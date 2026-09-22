@@ -1,34 +1,8 @@
-import base64
-import hashlib
-import os
 import uuid
 from datetime import datetime, timezone
 
 from extensions import db
-
-
-def _fernet():
-    from cryptography.fernet import Fernet
-    key = base64.urlsafe_b64encode(hashlib.sha256(os.getenv("SECRET_KEY", "").encode()).digest())
-    return Fernet(key)
-
-
-def encrypt_cred(value: str) -> str:
-    if not value:
-        return ""
-    try:
-        return _fernet().encrypt(value.encode()).decode()
-    except Exception:
-        return value
-
-
-def decrypt_cred(value: str) -> str:
-    if not value:
-        return ""
-    try:
-        return _fernet().decrypt(value.encode()).decode()
-    except Exception:
-        return value
+from utils.crypto import encrypt_cred, decrypt_cred  # noqa: F401 (re-exported for existing importers)
 
 
 class PsaIntegration(db.Model):

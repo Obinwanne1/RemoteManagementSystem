@@ -105,6 +105,8 @@ def render_sidebar() -> None:
         st.page_link("pages/15_Maintenance.py",      label="Maintenance",       icon=":material/build:")
         st.page_link("pages/07_Network_Discovery.py",label="Network Discovery", icon=":material/wifi_find:")
         st.page_link("pages/18_IoT_Sensors.py",      label="IoT Sensors",       icon=":material/sensors:")
+        if role in ("admin", "superadmin", "technician"):
+            st.page_link("pages/19_Mobile_Enrollment.py", label="Mobile Enrollment", icon=":material/phone_iphone:")
 
         if role in ("admin", "superadmin", "technician"):
             nav_section("BUSINESS")

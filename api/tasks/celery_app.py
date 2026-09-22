@@ -34,6 +34,7 @@ def make_celery(app=None):
             "tasks.snmp_tasks",
             "tasks.anomaly_tasks",
             "tasks.psa_tasks",
+            "tasks.mdm_tasks",
         ],
     )
 
@@ -113,6 +114,10 @@ def make_celery(app=None):
             "psa-sync-every-15min": {
                 "task": "tasks.psa_tasks.sync_all_psa_integrations",
                 "schedule": 900.0,
+            },
+            "mdm-sync-every-5-min": {
+                "task": "tasks.mdm_tasks.sync_all_mdm_integrations",
+                "schedule": 300.0,
             },
         },
     )

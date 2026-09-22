@@ -518,6 +518,89 @@ class RMMClient:
     def delete_device(self, device_id: str):
         return self._delete(f"/api/devices/{device_id}")
 
+    # --- Mobile MDM ---
+    def list_mdm_integrations(self):
+        return self._get("/api/mdm/integrations")
+
+    def list_available_mdm_integrations(self):
+        """Client-safe, secret-free list — usable by any authenticated role."""
+        return self._get("/api/mdm/available_integrations")
+
+    def create_mdm_integration(self, name: str, project_id: str, customer_id: str = None, type_: str = "android"):
+        payload = {"name": name, "project_id": project_id, "type": type_}
+        if customer_id:
+            payload["customer_id"] = customer_id
+        return self._post("/api/mdm/integrations", payload)
+
+    def delete_mdm_integration(self, integration_id: str):
+        return self._delete(f"/api/mdm/integrations/{integration_id}")
+
+    def upload_mdm_credentials(self, integration_id: str, file_bytes: bytes) -> Tuple[Any, Optional[str]]:
+        """Upload the Google service-account JSON key. Bypasses JSON session headers for multipart."""
+        url = f"{self.base}/api/mdm/integrations/{integration_id}/credentials"
+        try:
+            resp = requests.post(
+                url,
+                files={"file": ("service_account.json", file_bytes, "application/json")},
+                headers={"Authorization": f"Bearer {self._token}"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json(), None
+        except requests.HTTPError as e:
+            return None, f"HTTP {e.response.status_code}: {e.response.text}"
+        except requests.RequestException as e:
+            return None, str(e)
+
+    def start_mdm_binding(self, integration_id: str, callback_base_url: str = None):
+        payload = {"callback_base_url": callback_base_url} if callback_base_url else {}
+        return self._post(f"/api/mdm/integrations/{integration_id}/bind", payload)
+
+    def update_mdm_policy(self, integration_id: str, policy_name: str, policy: dict):
+        return self._put(f"/api/mdm/integrations/{integration_id}/policy",
+                         {"policy_name": policy_name, "policy": policy})
+
+    def create_mdm_enrollment(self, mdm_integration_id: str, ownership_type: str = "corporate",
+                              customer_id: str = None, consent_acknowledged: bool = False):
+        payload = {
+            "mdm_integration_id": mdm_integration_id,
+            "ownership_type": ownership_type,
+            "consent_acknowledged": consent_acknowledged,
+        }
+        if customer_id:
+            payload["customer_id"] = customer_id
+        return self._post("/api/mdm/enrollments", payload)
+
+    def list_mdm_enrollments(self, customer_id: str = None):
+        params = {"customer_id": customer_id} if customer_id else None
+        return self._get("/api/mdm/enrollments", params=params)
+
+    def revoke_mdm_enrollment(self, enrollment_id: str):
+        return self._delete(f"/api/mdm/enrollments/{enrollment_id}")
+
+    def mdm_lock_device(self, device_id: str):
+        return self._post(f"/api/mdm/devices/{device_id}/lock")
+
+    def mdm_reboot_device(self, device_id: str):
+        return self._post(f"/api/mdm/devices/{device_id}/reboot")
+
+    def mdm_reset_password_device(self, device_id: str):
+        return self._post(f"/api/mdm/devices/{device_id}/reset_password")
+
+    def mdm_wipe_device(self, device_id: str):
+        return self._post(f"/api/mdm/devices/{device_id}/wipe")
+
+    def mdm_start_lost_mode(self, device_id: str, message: str = "", phone_number: str = ""):
+        payload = {}
+        if message:
+            payload["message"] = message
+        if phone_number:
+            payload["phone_number"] = phone_number
+        return self._post(f"/api/mdm/devices/{device_id}/start_lost_mode", payload)
+
+    def mdm_stop_lost_mode(self, device_id: str):
+        return self._post(f"/api/mdm/devices/{device_id}/stop_lost_mode")
+
     # --- IoT Sensors ---
     def get_sensor_data(self, device_id: str, sensor_type: str = None, hours: int = 24, limit: int = 5000):
         params = {"hours": hours, "limit": limit}

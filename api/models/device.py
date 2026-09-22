@@ -70,6 +70,15 @@ class Device(db.Model):
             "is_online": self.is_online,
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "mdm_enrollment": (
+                {
+                    "id": self.mdm_enrollment.id,
+                    "status": self.mdm_enrollment.status,
+                    "ownership_type": self.mdm_enrollment.ownership_type,
+                    "policy_compliant": self.mdm_enrollment.policy_compliant,
+                }
+                if getattr(self, "mdm_enrollment", None) else None
+            ),
         }
         if include_latest_metrics:
             if latest_metrics_data is not _MISSING:

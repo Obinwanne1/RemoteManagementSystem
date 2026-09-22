@@ -25,3 +25,4 @@ sentry-sdk[flask]>=2.0.0
 cryptography>=42.0.0
 paho-mqtt>=1.6.1
 pysnmp>=4.4.12
+google-auth>=2.30.0
