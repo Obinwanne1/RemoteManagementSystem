@@ -98,6 +98,15 @@ BUILTIN_SCRIPTS = [
         "file_type": "ps1",
         "content": "shutdown /s /t 30 /c \"RMM initiated shutdown\"\nWrite-Output \"Shutdown scheduled in 30 seconds.\"",
     },
+    {
+        "tag": "__builtin_software_rescan__",
+        "name": "Rescan Installed Software",
+        "description": "Immediately re-scan installed software/winget packages and report the updated list. "
+                       "Handled natively by the agent (agent/executor.py), not run as a shell script — "
+                       "file_type 'internal' signals this to the agent.",
+        "file_type": "internal",
+        "content": "# Handled natively by the agent's executor — see agent/executor.py::_handle_software_rescan",
+    },
 ]
 
 # Maps task_type string to script tag
@@ -109,6 +118,7 @@ TASK_TYPE_TO_TAG = {
     "clear_browser":   "__builtin_clear_browser__",
     "reboot":          "__builtin_reboot__",
     "shutdown":        "__builtin_shutdown__",
+    "software_rescan": "__builtin_software_rescan__",
 }
 
 

@@ -89,7 +89,17 @@ with left_col:
     st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
 
     if st.button("Check for Updates", icon=":material/refresh:", width='stretch'):
-        st.info("Winget / Chocolatey integration — Phase 6. Update checking will be available once the patch engine is deployed.")
+        if not selected_device:
+            st.warning("Select a device first.")
+        else:
+            _, qerr = client.queue_device_task(selected_device["id"], "software_rescan", timeout=120)
+            if qerr:
+                st.error(f"Could not queue rescan: {qerr}")
+            else:
+                st.success(
+                    "Rescan requested — the device will report its updated "
+                    "software list within a few seconds. Refresh to see results."
+                )
 
 with right_col:
     if selected_device:

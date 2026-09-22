@@ -37,7 +37,10 @@ def execute_task(task: dict, api_client) -> None:
 
         def _run():
             try:
-                result = _handle_script(payload)
+                if payload.get("file_type") == "internal":
+                    result = _handle_software_rescan(api_client)
+                else:
+                    result = _handle_script(payload)
                 ok = api_client.post_task_result(task_id, task_type, result)
                 if not ok:
                     _enqueue_result(task_id, task_type, result)
@@ -132,6 +135,22 @@ def _handle_script(payload: dict) -> dict:
     file_type = payload.get("file_type", "ps1")
     timeout = payload.get("timeout_seconds", 300)
     return run_script(content, file_type, timeout)
+
+
+def _handle_software_rescan(api_client) -> dict:
+    """Built-in tasks with file_type='internal' run natively in-process instead
+    of as a real subprocess script. Only one exists today: an on-demand
+    re-scan of installed software (winget/registry), reported the same way
+    the periodic sync in rmm_agent.py's main loop does."""
+    try:
+        from collector import get_installed_software
+        sw = get_installed_software()
+        ok = api_client.update_software(sw)
+        if ok:
+            return {"exit_code": 0, "stdout": f"Rescanned — {len(sw)} package(s) found and reported."}
+        return {"exit_code": 1, "stderr": "Rescan completed but the API rejected the updated software list."}
+    except Exception as e:
+        return {"exit_code": 1, "stderr": f"Rescan failed: {e}"}
 
 
 def _handle_reboot(payload: dict) -> dict:
