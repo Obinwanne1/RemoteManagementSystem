@@ -1,4 +1,6 @@
 @echo off
+:: Set RMM_SERVER_IP and RMM_ORG_TOKEN env vars beforehand to skip the prompts,
+:: e.g.: set RMM_SERVER_IP=192.168.1.100 & set RMM_ORG_TOKEN=... & install.bat
 echo ============================================
 echo  RMM Agent Installer
 echo ============================================
@@ -21,7 +23,9 @@ if errorlevel 1 (
 )
 
 echo [2/3] Configuring agent...
-python setup_agent.py ***REMOVED-LAN-IP*** ***REMOVED-ORG-TOKEN***
+if "%RMM_SERVER_IP%"=="" set /p RMM_SERVER_IP="RMM server IP (e.g. 192.168.1.100): "
+if "%RMM_ORG_TOKEN%"=="" set /p RMM_ORG_TOKEN="Org registration token (from Admin panel): "
+python setup_agent.py %RMM_SERVER_IP% %RMM_ORG_TOKEN%
 if errorlevel 1 (
     echo ERROR: Setup failed.
     pause

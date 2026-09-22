@@ -1,7 +1,17 @@
 # RMM Build State
 
 ## Current Phase
-**ALL PHASES COMPLETE — Commercial Audit (Phase F) done. Docs updated.**
+**ALL PHASES COMPLETE — Commercial Audit (Phase F) done. Docs updated. Production-readiness diagnostic done 2026-09-21.**
+
+## 2026-09-21 — Production-Readiness Diagnostic
+- Fixed: `FLASK_DEBUG` defaulted to on (`api/app.py`) — flipped default to off; `docker-compose.yml` now sets it explicitly and requires `DB_PASSWORD` instead of silently defaulting to `changeme`; Postgres/Redis compose ports bound to `127.0.0.1` only.
+- Fixed: real secrets were committed to git — `agent/config.ini` (live device_id + encrypted agent_token), and the real `ORG_REGISTRATION_TOKEN` hardcoded in `agent/install.bat` and this file. Scrubbed from current files; **still in git history on `origin/main`**.
+- DONE: rotated `ORG_REGISTRATION_TOKEN` in local `.env` (old value only usable for NEW agent enrollments, so already-registered devices are unaffected). DONE: Redis auth added — docker-compose Redis now requires `REDIS_PASSWORD` (new env var, docker-only, not needed for local dev).
+- STILL OPEN (requires your decision, not done): scrub the leaked token/device credentials from git history (`git filter-repo`/BFG + force-push) — the old token and `agent/config.ini` contents are still recoverable from past commits on `origin/main`.
+- Cleaned up: removed `chunk.txt`, `debug.txt`, `dump.rdb`, `redis.zip` + vendored `redis/` binaries (47MB), `patch_handover*.py`/`patch_technical*.py`, duplicate `generate_pdf.py`, `api/celerybeat-schedule-shm` from git tracking (kept locally, now gitignored).
+- Documented in CLAUDE.md: `billing.py` (Stripe), `psa.py` (ConnectWise/Autotask), `update.py` (agent auto-update), `org_settings.py`, `email_tasks.py` (support-inbox-to-ticket), `anomaly_tasks.py` — all existed in code but were missing from the changelog.
+- Corrected page counts: Streamlit has 22 pages (not 19). React frontend has 18 pages and is **not** at parity with Streamlit (missing App Center, Invoice Detail, IoT Sensors, Client Tickets) — flagged as a known gap, not built out in this pass.
+- Not done in this pass (flagged only): Redis has no `requirepass` set; TECHNICAL_GUIDE.pdf/HANDOVER_GUIDE.pdf regeneration (pre-existing TODO below); closing the React parity gap.
 
 ## Completed
 
@@ -95,8 +105,9 @@
 - Superadmin email: `SUPERADMIN_EMAIL` from `.env` (default: superadmin@rmm.local)
 - Superadmin password: `SUPERADMIN_PASSWORD` from `.env`
 
-## ORG_REGISTRATION_TOKEN (for agent config.ini)
-***REMOVED-ORG-TOKEN***
+## ORG_REGISTRATION_TOKEN
+Stored in `.env` only (not in this file — see 2026-09-21 diagnostic note below;
+the token that was previously written here was committed to git and must be rotated).
 
 ## PDF Regeneration (pending)
 Need one of: pandoc, weasyprint, or reportlab available on PATH.

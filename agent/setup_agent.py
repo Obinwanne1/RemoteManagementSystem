@@ -5,8 +5,8 @@ Usage:
     python setup_agent.py <server_ip> <org_token> [customer_id]
 
 Examples:
-    python setup_agent.py 192.168.1.100 ***REMOVED-ORG-TOKEN***
-    python setup_agent.py 192.168.1.100 ***REMOVED-ORG-TOKEN*** 3f2a1b4c-...
+    python setup_agent.py 192.168.1.100 your-org-registration-token
+    python setup_agent.py 192.168.1.100 your-org-registration-token 3f2a1b4c-...
 
 customer_id is the UUID from the RMM Admin panel. Required when enrolling into a specific
 customer. Omit only for single-customer setups.

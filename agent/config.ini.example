@@ -1,11 +1,11 @@
 [api]
 url = http://localhost:5000
-org_token = ***REMOVED-ORG-TOKEN***
-customer_id = 
+org_token = change-this-to-your-org-registration-token
+customer_id =
 
 [agent]
-device_id = ***REMOVED-DEVICE-ID***
-agent_token = ***REMOVED-DPAPI-TOKEN***
+device_id =
+agent_token =
 heartbeat_interval = 60
 software_interval = 21600
 version = 1.0.0
@@ -13,4 +13,3 @@ version = 1.0.0
 [logging]
 level = INFO
 file = rmm_agent.log
-

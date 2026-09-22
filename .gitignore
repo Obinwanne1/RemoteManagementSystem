@@ -42,12 +42,27 @@ logs/
 
 # Redis dump
 dump.rdb
+api/dump.rdb
+
+# Vendored Redis binaries (install Redis/Memurai separately; don't commit it)
+redis/
+redis.zip
+
+# One-off scratch/patch scripts (not part of the maintained toolchain)
+chunk.txt
+debug.txt
+patch_handover*.py
+patch_technical*.py
+generate_pdf.py
 
 # Reports / uploads
 reports/output/
 api/reports/
 uploads/
 scripts_library/custom/
+
+# Agent screenshots (runtime capture, may show a real device's screen)
+api/screenshots/
 
 # Celery beat schedule (runtime artifacts)
 api/celerybeat-schedule
@@ -61,6 +76,9 @@ agent/*.spec
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Agent runtime config — contains a live org token / device_id / encrypted agent_token
+agent/config.ini
 
 # Coverage
 .coverage

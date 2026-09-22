@@ -326,7 +326,8 @@ RemoteManagementSystem/
 ├── frontend/               # React/Vite/TypeScript frontend (alternative UI)
 │   ├── src/
 │   │   ├── App.tsx          # Router + auth context
-│   │   ├── pages/           # 19 pages matching all Streamlit pages
+│   │   ├── pages/           # 18 pages — not yet at parity with the 22-page Streamlit dashboard
+│   │   │                    #   (missing: App Center, Invoice Detail, IoT Sensors, Client Tickets)
 │   │   ├── components/      # Shared UI components
 │   │   ├── api/             # Axios API client
 │   │   ├── contexts/        # Auth context

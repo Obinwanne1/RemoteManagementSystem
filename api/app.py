@@ -324,7 +324,7 @@ if __name__ == "__main__":
     app = create_app()
     host = os.getenv("API_HOST", "0.0.0.0")
     port = int(os.getenv("API_PORT", 5000))
-    if os.getenv("FLASK_DEBUG", "1") == "1":
+    if os.getenv("FLASK_DEBUG", "0") == "1":
         app.run(host=host, port=port, debug=True, use_reloader=False)
     else:
         from waitress import serve
