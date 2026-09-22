@@ -7,6 +7,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes, fmt_currency, CURRENCY_SYMBOLS
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Billing — RMM", layout="wide")
 inject_css()
@@ -99,8 +100,8 @@ else:
         total        = fmt_currency(inv.get('total') or 0, _currency)
 
         c0,c1,c2,c3,c4,c5,c6,c7 = st.columns([1.5, 1.8, 1.1, 1.1, 0.7, 0.8, 0.9, 2.5])
-        c0.markdown(f"<div style='font-size:0.78rem;font-family:monospace;color:#407E3C;font-weight:600'>{inv_num}</div>", unsafe_allow_html=True)
-        c1.markdown(f"<div style='font-size:0.83rem;font-weight:600;color:#1A1A1A'>{cust_label}</div>", unsafe_allow_html=True)
+        c0.markdown(f"<div style='font-size:0.78rem;font-family:monospace;color:#407E3C;font-weight:600'>{esc(inv_num)}</div>", unsafe_allow_html=True)
+        c1.markdown(f"<div style='font-size:0.83rem;font-weight:600;color:#1A1A1A'>{esc(cust_label)}</div>", unsafe_allow_html=True)
         c2.markdown(f"<div style='font-size:0.8rem;color:#4A5A4A'>{period_start}</div>", unsafe_allow_html=True)
         c3.markdown(f"<div style='font-size:0.8rem;color:#4A5A4A'>{period_end}</div>", unsafe_allow_html=True)
         c4.markdown(f"<div style='font-size:0.83rem;color:#6B7B6B;text-align:right'>{dev_count}</div>", unsafe_allow_html=True)

@@ -1,7 +1,16 @@
 # RMM Build State
 
 ## Current Phase
-**ALL PHASES COMPLETE — Commercial Audit (Phase F) done. Docs updated. Production-readiness diagnostic done 2026-09-21.**
+**ALL PHASES COMPLETE — Commercial Audit (Phase F) done. Docs updated. Production-readiness diagnostic done 2026-09-21. Mobile Device Management (Android) added 2026-09-22.**
+
+## 2026-09-22 — Mobile Device Management (Android)
+- Real phone management (lock/wipe/lost-mode/compliance) via Google's Android Management API — no custom agent on the phone. `MdmIntegration`/`MobileEnrollment` models + migration `o6p7q8r9s0t1`; `api/routes/mobile_mdm.py` (`/api/mdm`); `api/tasks/mdm_tasks.py` (5-min beat sync); `api/utils/android_mgmt.py`; `api/utils/crypto.py` (promoted out of `psa_integration.py`, now shared).
+- Consent-gated enrollment: `role=client` server-forced to BYOD + requires `consent_acknowledged`; every consent event and issued command audit-logged.
+- Dashboard: new `19_Mobile_Enrollment.py` (admin/technician), "+ Enroll My Phone" on `21_Client_Tickets.py`, real action buttons on managed rows in `04_Devices.py`.
+- iOS deliberately not implemented — needs an Apple Business Manager or Fleet/MicroMDM decision outside this codebase; placeholder columns/dispatch stub reserved so it's additive later.
+- 10 new tests (`api/tests/test_mobile_mdm.py`); full suite 116/116 passing.
+- All 5 top-level docs updated with practical examples: `CLAUDE.md`, `README.md`, `TECHNICAL_GUIDE.md` (new Ch. 19), `HANDOVER_GUIDE.md` (new Ch. 55), `SKILL.md` (new Phase G).
+- The code itself was committed (`892e945`) separately, before this doc pass — this doc-update pass is NOT yet committed as of writing this note. The user's own `git push` of `892e945` also hit a cancelled GitHub device-code auth prompt in their terminal; confirm that resolved before assuming `origin/main` is current.
 
 ## 2026-09-21 — Production-Readiness Diagnostic
 - Fixed: `FLASK_DEBUG` defaulted to on (`api/app.py`) — flipped default to off; `docker-compose.yml` now sets it explicitly and requires `DB_PASSWORD` instead of silently defaulting to `changeme`; Postgres/Redis compose ports bound to `127.0.0.1` only.

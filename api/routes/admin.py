@@ -3,7 +3,7 @@ Admin routes — user management, department management, and system config (admi
 """
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from extensions import db
+from extensions import db, limiter
 from models.user import User
 from models.department import Department
 from models.audit import AuditLog
@@ -60,6 +60,7 @@ def list_users():
 
 @admin_bp.route("/users", methods=["POST"])
 @jwt_required()
+@limiter.limit("10 per minute")
 @validate_body(CreateUserSchema)
 def create_user():
     admin, err, code = _require_admin()
@@ -352,6 +353,7 @@ def get_org_token():
 
 @admin_bp.route("/users/<user_id>/gdpr-export", methods=["GET"])
 @jwt_required()
+@limiter.limit("5 per minute")
 def gdpr_export_user(user_id):
     """Export all personal data associated with a user account (GDPR Art. 20)."""
     admin, err, code = _require_admin()
@@ -381,6 +383,7 @@ def gdpr_export_user(user_id):
 
 @admin_bp.route("/users/<user_id>/gdpr-delete", methods=["DELETE"])
 @jwt_required()
+@limiter.limit("5 per minute")
 def gdpr_delete_user(user_id):
     """Anonymize all personal data for a user account (GDPR Art. 17 — right to erasure)."""
     admin, err, code = _require_admin()

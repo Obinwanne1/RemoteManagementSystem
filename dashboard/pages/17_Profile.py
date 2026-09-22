@@ -5,6 +5,7 @@ from utils.styles import inject_css, BRAND
 from utils.auth import require_auth, current_user
 from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Profile — RMM", layout="wide")
 inject_css()
@@ -112,11 +113,11 @@ with col_left:
     st.markdown(
         f"<div style='margin:0.75rem 0'>"
         f"<div style='font-size:0.82rem;color:#6B7B6B;margin-bottom:2px'>Full name</div>"
-        f"<div style='font-weight:600'>{full_name or '—'}</div>"
+        f"<div style='font-weight:600'>{esc(full_name) or '—'}</div>"
         f"</div>"
         f"<div style='margin:0.75rem 0'>"
         f"<div style='font-size:0.82rem;color:#6B7B6B;margin-bottom:2px'>Email</div>"
-        f"<div style='font-weight:600'>{user.get('email','')}</div>"
+        f"<div style='font-weight:600'>{esc(user.get('email',''))}</div>"
         f"</div>"
         f"<div style='margin:0.75rem 0'>"
         f"<div style='font-size:0.82rem;color:#6B7B6B;margin-bottom:2px'>Role</div>"

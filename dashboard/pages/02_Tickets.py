@@ -7,6 +7,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, STATUS_COLORS, section_header
 from utils.formatters import fmt_datetime, PRIORITY_COLORS
+from utils.sanitize import esc
 
 
 def _sla_text(ticket: dict) -> tuple[str, str]:
@@ -406,7 +407,7 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
         with rcols[2]:
             st.markdown(
                 f'<span style="font-size:0.84rem;color:#1A1A1A;font-weight:500">'
-                f'{t.get("title", "Untitled")}</span>',
+                f'{esc(t.get("title", "Untitled"))}</span>',
                 unsafe_allow_html=True,
             )
         with rcols[3]:
@@ -421,12 +422,12 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
             )
         with rcols[5]:
             st.markdown(
-                f'<span style="font-size:0.83rem;color:#1A1A1A">{customer_name}</span>',
+                f'<span style="font-size:0.83rem;color:#1A1A1A">{esc(customer_name)}</span>',
                 unsafe_allow_html=True,
             )
         with rcols[6]:
             st.markdown(
-                f'<span style="font-size:0.83rem;color:#6B7B6B">{assignee_name}</span>',
+                f'<span style="font-size:0.83rem;color:#6B7B6B">{esc(assignee_name)}</span>',
                 unsafe_allow_html=True,
             )
         with rcols[7]:

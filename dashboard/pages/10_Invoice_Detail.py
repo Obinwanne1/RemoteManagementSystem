@@ -7,6 +7,7 @@ from utils.auth import require_auth
 from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, BRAND
 from utils.formatters import fmt_currency
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Invoice — RMM", layout="wide")
 inject_css()
@@ -145,19 +146,19 @@ def _fmt_date(s):
 def _fmt_money(v):
     return fmt_currency(v, _currency)
 
-company_name    = org.get("company_name") or ""
-company_address = org.get("company_address") or ""
-company_email   = org.get("company_email") or ""
-company_phone   = org.get("company_phone") or ""
+company_name    = esc(org.get("company_name")) or ""
+company_address = esc(org.get("company_address")) or ""
+company_email   = esc(org.get("company_email")) or ""
+company_phone   = esc(org.get("company_phone")) or ""
 payment_terms   = org.get("payment_terms") or "Net 30"
 bank_details    = org.get("bank_details") or ""
-footer_notes    = org.get("footer_notes") or "Thank you for your business!"
+footer_notes    = esc(org.get("footer_notes")) or "Thank you for your business!"
 logo_data       = org.get("logo_data") or ""
 
-cust_name    = customer.get("name") or "—"
-cust_email   = customer.get("email") or ""
-cust_phone   = customer.get("phone") or ""
-cust_address = customer.get("address") or ""
+cust_name    = esc(customer.get("name")) or "—"
+cust_email   = esc(customer.get("email")) or ""
+cust_phone   = esc(customer.get("phone")) or ""
+cust_address = esc(customer.get("address")) or ""
 
 inv_num       = inv.get("invoice_number") or inv_id[:8].upper()
 issue_date    = _fmt_date(inv.get("created_at"))
@@ -196,7 +197,7 @@ line_rows_html = ""
 if line_items:
     for i, item in enumerate(line_items):
         bg = "#FAFCFA" if i % 2 == 0 else "#FFFFFF"
-        desc = item.get("description", "Service")
+        desc = esc(item.get("description", "Service"))
         qty  = item.get("quantity") or inv.get("device_count") or 1
         rate = item.get("rate") or inv.get("per_device_rate") or 0
         amount = item.get("amount") or 0
@@ -219,7 +220,7 @@ else:
 # Bank details block
 bank_html = ""
 if bank_details:
-    bank_lines = bank_details.replace("\n", "<br>")
+    bank_lines = esc(bank_details).replace("\n", "<br>")
     bank_html = f'''
     <div style="margin-bottom:16px">
       <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B;margin-bottom:6px">Payment Details</div>
@@ -228,7 +229,7 @@ if bank_details:
 
 notes_html = ""
 if notes:
-    notes_lines = notes.replace("\n", "<br>")
+    notes_lines = esc(notes).replace("\n", "<br>")
     notes_html = f'''
     <div style="margin-bottom:16px">
       <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6B7B6B;margin-bottom:6px">Notes</div>

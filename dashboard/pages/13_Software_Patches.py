@@ -18,6 +18,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Software Patches — RMM", layout="wide")
 inject_css()
@@ -73,8 +74,8 @@ with left_col:
     selected_device = device_map.get(chosen_hostname)
 
     if selected_device:
-        ip = selected_device.get("ip_address") or "—"
-        os_name = selected_device.get("os_name") or "—"
+        ip = esc(selected_device.get("ip_address")) or "—"
+        os_name = esc(selected_device.get("os_name")) or "—"
         st.markdown(
             f'<div style="margin-top:0.75rem;font-size:0.8rem;color:#6B7B6B;line-height:1.7">'
             f'<div><span style="color:#6B7B6B">IP: </span><b style="color:#1A1A1A">{ip}</b></div>'

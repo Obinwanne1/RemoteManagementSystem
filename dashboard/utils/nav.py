@@ -1,6 +1,7 @@
 """Shared sidebar navigation — call on every page after require_auth()."""
 import streamlit as st
 from utils.auth import current_user, logout
+from utils.sanitize import esc
 
 
 def render_sidebar() -> None:
@@ -21,13 +22,13 @@ def render_sidebar() -> None:
             except Exception:
                 st.markdown(
                     f'<div style="padding:0.9rem 1rem 0.5rem;font-weight:700;font-size:1rem;color:#E0F0E0">'
-                    f'{app_name}</div>',
+                    f'{esc(app_name)}</div>',
                     unsafe_allow_html=True,
                 )
         else:
             st.markdown(
                 f'<div style="padding:0.9rem 1rem 0.5rem;font-weight:700;font-size:1rem;color:#E0F0E0">'
-                f'{app_name}</div>',
+                f'{esc(app_name)}</div>',
                 unsafe_allow_html=True,
             )
 
@@ -53,7 +54,7 @@ def render_sidebar() -> None:
                 <div style="min-width:0">
                     <div style="color:#FFFFFF;font-weight:600;font-size:0.86rem;
                                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                        {name}</div>
+                        {esc(name)}</div>
                     <span style="background:{rb};color:{rc};padding:2px 8px;border-radius:20px;
                                  font-size:0.65rem;font-weight:700;display:inline-block;margin-top:2px">
                         {role.upper()}</span>

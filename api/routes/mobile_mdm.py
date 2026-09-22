@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 
-from extensions import db
+from extensions import db, limiter
 from models.mdm_integration import MdmIntegration, MobileEnrollment, encrypt_cred
 from models.device import Device
 from models.user import User
@@ -87,6 +87,7 @@ def list_integrations():
 
 @mobile_mdm_bp.route("/integrations", methods=["POST"])
 @jwt_required()
+@limiter.limit("10 per minute")
 def create_integration():
     err = _require_role("admin")
     if err:
@@ -120,6 +121,7 @@ def delete_integration(integration_id):
 
 @mobile_mdm_bp.route("/integrations/<integration_id>/credentials", methods=["POST"])
 @jwt_required()
+@limiter.limit("10 per minute")
 def upload_credentials(integration_id):
     """Multipart upload of the Google service-account JSON key. Never written to
     disk — straight into the encrypted DB column."""

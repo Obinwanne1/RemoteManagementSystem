@@ -5,6 +5,7 @@ from utils.formatters import fmt_datetime, SUPPORTED_CURRENCIES, SUPPORTED_TIMEZ
 from utils.auth import require_auth, current_user
 from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Admin — RMM", layout="wide")
 inject_css()
@@ -55,11 +56,11 @@ with tab_sysinfo:
         st.markdown(
             f'<div style="{CARD}">'
             f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#6B7B6B;margin-bottom:0.75rem">Current User</div>'
-            f'<div style="font-size:1.1rem;font-weight:700;color:#1A1A1A;margin-bottom:0.25rem">{user.get("full_name") or user.get("email","—")}</div>'
+            f'<div style="font-size:1.1rem;font-weight:700;color:#1A1A1A;margin-bottom:0.25rem">{esc(user.get("full_name") or user.get("email","—"))}</div>'
             f'<div style="margin-bottom:0.5rem">'
             + badge(user.get("role","unknown"), "#407E3C")
             + f'</div>'
-            f'<div style="display:flex;gap:6px;margin-bottom:0.3rem"><span style="font-size:0.8rem;color:#6B7B6B;min-width:48px">Email</span><span style="font-size:0.8rem;color:#1A1A1A">{user.get("email","—")}</span></div>'
+            f'<div style="display:flex;gap:6px;margin-bottom:0.3rem"><span style="font-size:0.8rem;color:#6B7B6B;min-width:48px">Email</span><span style="font-size:0.8rem;color:#1A1A1A">{esc(user.get("email","—"))}</span></div>'
             f'<div style="display:flex;gap:6px"><span style="font-size:0.8rem;color:#6B7B6B;min-width:48px">Role</span><span style="font-size:0.8rem;color:#1A1A1A;text-transform:capitalize">{user.get("role","—")}</span></div>'
             f'</div>',
             unsafe_allow_html=True,
@@ -294,21 +295,21 @@ with tab_audit:
             # Build user cell: "Full Name\nemail" or just email/dash
             if user_full_name and user_full_name != "—":
                 user_cell = (
-                    f'<span style="font-weight:600;color:#1A1A1A">{user_full_name}</span>'
-                    f'<br><span style="color:#6B7B6B;font-size:0.73rem">{user_email}</span>'
+                    f'<span style="font-weight:600;color:#1A1A1A">{esc(user_full_name)}</span>'
+                    f'<br><span style="color:#6B7B6B;font-size:0.73rem">{esc(user_email)}</span>'
                 )
             elif user_email and user_email != "—":
-                user_cell = f'<span style="color:#1A1A1A">{user_email}</span>'
+                user_cell = f'<span style="color:#1A1A1A">{esc(user_email)}</span>'
             else:
                 user_cell = '<span style="color:#6B7B6B">—</span>'
             color = ACTION_COLORS.get(action, "#6B7B6B")
-            resource_display = f"{resource_type}:{resource_id}" if resource_id else resource_type
+            resource_display = esc(f"{resource_type}:{resource_id}" if resource_id else resource_type)
             rows_html = (rows_html
                 + f'<tr>'
                 + f'<td style="padding:0.5rem 0.75rem;white-space:nowrap"><span style="background:{color}1A;color:{color};padding:2px 9px;border-radius:5px;font-size:0.7rem;font-weight:700;border:1px solid {color}33">{action}</span></td>'
                 + f'<td style="padding:0.5rem 0.75rem;font-size:0.82rem;color:#1A1A1A;font-weight:500">{resource_display}</td>'
                 + f'<td style="padding:0.5rem 0.75rem;font-size:0.78rem;color:#6B7B6B;white-space:nowrap">{ts}</td>'
-                + f'<td style="padding:0.5rem 0.75rem;font-size:0.78rem;color:#6B7B6B;font-family:monospace">{ip}</td>'
+                + f'<td style="padding:0.5rem 0.75rem;font-size:0.78rem;color:#6B7B6B;font-family:monospace">{esc(ip)}</td>'
                 + f'<td style="padding:0.5rem 0.75rem;font-size:0.82rem;line-height:1.4">{user_cell}</td>'
                 + f'</tr>'
             )
@@ -453,11 +454,11 @@ with tab_users:
                         f'<div style="background:#FFFFFF;border:1px solid {border_color};border-radius:10px;'
                         f'padding:0.75rem 1rem;margin-bottom:0.5rem">'
                         f'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
-                        f'<div style="font-weight:600;color:{"#9CA3AF" if not uactive else "#1A1A1A"};font-size:0.88rem">{uname}</div>'
+                        f'<div style="font-weight:600;color:{"#9CA3AF" if not uactive else "#1A1A1A"};font-size:0.88rem">{esc(uname)}</div>'
                         f'<span style="background:{rc}1A;color:{rc};padding:2px 8px;border-radius:5px;font-size:0.68rem;font-weight:700;border:1px solid {rc}33">{urole.upper()}</span>'
                         + extra_badges
                         + f'</div>'
-                        f'<div style="font-size:0.78rem;color:#6B7B6B;margin-top:2px">{uemail} · Created {created}</div>'
+                        f'<div style="font-size:0.78rem;color:#6B7B6B;margin-top:2px">{esc(uemail)} · Created {created}</div>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
@@ -639,7 +640,7 @@ with tab_depts:
                 st.markdown(
                     f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.75rem">'
                     f'<div style="width:14px;height:14px;border-radius:50%;background:{dcolor}"></div>'
-                    f'<span style="font-size:0.85rem;color:#6B7B6B">{ddesc or "No description"}</span>'
+                    f'<span style="font-size:0.85rem;color:#6B7B6B">{esc(ddesc) or "No description"}</span>'
                     + (f'<span style="background:#407E3C1A;color:#407E3C;padding:2px 8px;border-radius:5px;font-size:0.7rem;font-weight:700;border:1px solid #407E3C33">BUILT-IN</span>' if is_helpdesk else "")
                     + '</div>',
                     unsafe_allow_html=True,

@@ -13,6 +13,7 @@ A NinjaOne-style Remote Monitoring & Management platform built in-house. Monitor
 | **Monitoring** | Real-time CPU/RAM/disk metrics, device health map, 7-day history fallback, auto-refresh via `st.fragment` |
 | **Alerts** | Rule-based alerting (threshold + offline), auto-resolve on recovery, SMTP + Slack + Teams + custom webhook |
 | **Devices** | Agent-managed (Windows/macOS/Linux) + agentless WiFi devices (iOS/Android/IoT) + screenshot capture |
+| **Mobile Device Management** | Real Android management (lock/wipe/lost-mode/compliance) via Google's Android Management API — no custom agent on the phone, consent-gated BYOD + corporate enrollment via QR code |
 | **Tickets** | Full helpdesk ticketing with comments, priority, assignee, SLA due dates, status workflow |
 | **SLA Policies** | Configurable SLA resolution targets per priority, per-customer overrides, auto due-date calc |
 | **Patch Management** | OS patches via WUA (Windows), softwareupdate/brew (macOS), apt/dnf/yum/pacman (Linux), winget |
@@ -52,6 +53,14 @@ Agent (on each managed Windows/macOS/Linux machine)
 IoT Sensor Agent (Raspberry Pi / Linux SBC)
   └── sensor readings → POST /api/sensors/<device_id>/readings
   └── (optional) MQTT broker → Celery MQTT task → same endpoint
+
+Managed Android phones (no RMM agent installed)
+  └── owner scans enrollment QR → Google provisions its own
+      "Android Device Policy" app → phone checks in with Google directly
+  └── Flask API ↔ Android Management API (Google) — policy push, commands,
+      device list — via api/utils/android_mgmt.py
+  └── tasks.mdm_tasks.sync_all_mdm_integrations (5-min beat) reconciles
+      Google's device state into local Device/MobileEnrollment rows
 ```
 
 ---
@@ -250,7 +259,8 @@ After first startup the superadmin account is auto-seeded from your `.env`:
 | 16 | Scripts — run custom scripts remotely | Admin/Tech |
 | 17 | My Profile — password change, MFA setup | All |
 | 18 | IoT Sensors — sensor readings, charts, MQTT/SNMP status | Admin/Tech |
-| 20 | Client Portal — self-service ticket submission (client role only) | Client |
+| 19 | Mobile Enrollment — Android MDM integration setup, policy push, QR enrollment | Admin/Tech |
+| 20 | Client Portal — self-service ticket submission + "Enroll My Phone" (client role only) | Client |
 
 ---
 
@@ -289,6 +299,7 @@ All routes prefixed `/api/`. JWT required unless noted.
 - **Scripts:** `/scripts/`, `/scripts/<id>/run`
 - **Automation:** `/automation/profiles/`
 - **Network:** `/network/scan`, `/network/agentless_devices`
+- **Mobile MDM:** `/mdm/integrations`, `/mdm/enrollments`, `/mdm/devices/<id>/{lock,wipe,start_lost_mode,...}`
 - **Reports:** `/reports/`
 - **Billing:** `/billing/invoices/`
 - **SLA Policies:** `/sla-policies/`, `/sla-policies/<id>`
@@ -308,10 +319,10 @@ RemoteManagementSystem/
 ├── api/                    # Flask API
 │   ├── app.py              # Application factory (Sentry init, JWT cache, cache pre-warm)
 │   ├── config.py           # Environment configs (PgBouncer support)
-│   ├── models/             # SQLAlchemy models (incl. SLAPolicy, IoT SensorReading)
-│   ├── routes/             # Blueprint handlers (incl. assistant, docs, sla_policies, sensors, terminal)
-│   ├── tasks/              # Celery tasks (alert, patch, network, report, automation, backup, billing, mqtt, snmp)
-│   ├── utils/              # Helpers (superadmin, oui, cache, webhook, jwt_cache, tier_gates)
+│   ├── models/             # SQLAlchemy models (incl. SLAPolicy, IoT SensorReading, MdmIntegration/MobileEnrollment)
+│   ├── routes/             # Blueprint handlers (incl. assistant, docs, sla_policies, sensors, terminal, mobile_mdm)
+│   ├── tasks/              # Celery tasks (alert, patch, network, report, automation, backup, billing, mqtt, snmp, mdm)
+│   ├── utils/              # Helpers (superadmin, oui, cache, webhook, jwt_cache, tier_gates, crypto, android_mgmt)
 │   ├── migrations/         # Alembic migrations
 │   ├── screenshots/        # Latest screenshot per device (gitignored, .gitkeep present)
 │   ├── tests/              # pytest suite — 102 tests (agents, auth, alerts, tickets, devices, cache)

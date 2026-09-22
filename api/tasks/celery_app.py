@@ -12,6 +12,20 @@ if _api_dir not in sys.path:
 
 load_dotenv()
 
+# Sentry error tracking for the Celery worker/beat process — this module is the
+# entrypoint when running `celery -A tasks.celery_app worker/beat`, which does not
+# import api/app.py, so Sentry needs its own init here (no-op when SENTRY_DSN unset).
+_sentry_dsn = os.getenv("SENTRY_DSN", "")
+if _sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[CeleryIntegration()],
+        traces_sample_rate=0.05,
+        send_default_pii=False,
+    )
+
 
 def make_celery(app=None):
     celery = Celery(

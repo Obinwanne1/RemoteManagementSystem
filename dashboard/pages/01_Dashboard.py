@@ -16,6 +16,7 @@ from utils.styles import (
     plotly_layout, section_header, BRAND, STATUS_COLORS,
 )
 from utils.formatters import fmt_datetime
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Overview — RMM", layout="wide")
 inject_css()
@@ -312,17 +313,17 @@ def _body():
             icon, color = _EVENT_ICONS.get(ev_type, ("ℹ️", "#6B7B6B"))
 
             if ev_type == "device_online":
-                msg = f"{ev_data.get('hostname','?')} came online"
+                msg = f"{esc(ev_data.get('hostname','?'))} came online"
             elif ev_type == "device_offline":
-                msg = f"{ev_data.get('hostname','?')} went offline"
+                msg = f"{esc(ev_data.get('hostname','?'))} went offline"
             elif ev_type == "device_status":
-                msg = f"{ev_data.get('hostname','?')} status → {ev_data.get('status','?')}"
+                msg = f"{esc(ev_data.get('hostname','?'))} status → {esc(ev_data.get('status','?'))}"
             elif ev_type == "new_alert":
-                msg = f"Alert: {ev_data.get('rule','?')} on {ev_data.get('device','?')} [{ev_data.get('severity','?')}]"
+                msg = f"Alert: {esc(ev_data.get('rule','?'))} on {esc(ev_data.get('device','?'))} [{esc(ev_data.get('severity','?'))}]"
             elif ev_type == "new_ticket":
-                msg = f"Ticket: {ev_data.get('title','?')} [{ev_data.get('priority','?')}]"
+                msg = f"Ticket: {esc(ev_data.get('title','?'))} [{esc(ev_data.get('priority','?'))}]"
             else:
-                msg = ev_type
+                msg = esc(ev_type)
 
             ev_html.append(
                 f'<div style="display:flex;align-items:center;gap:10px;padding:0.35rem 0;'

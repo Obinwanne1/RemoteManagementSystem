@@ -4,6 +4,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.formatters import fmt_datetime
 from utils.styles import inject_css, badge, BRAND, stat_card
+from utils.sanitize import esc
 
 st.set_page_config(page_title="OS Patches — RMM", layout="wide")
 inject_css()
@@ -60,9 +61,9 @@ with tab1:
 
         selected_ids = []
         for patch in pending:
-            kb = patch.get("kb_id") or "—"
+            kb = esc(patch.get("kb_id")) or "—"
             ptype = patch.get("patch_type", "update")
-            device_label = patch.get("device_hostname") or patch.get("device_id", "")[:8]
+            device_label = esc(patch.get("device_hostname") or patch.get("device_id", "")[:8])
 
             col_chk, col_info = st.columns([0.5, 11])
             with col_chk:
@@ -70,7 +71,7 @@ with tab1:
             with col_info:
                 row_html = (
                     f'<div style="{CARD};padding:0.75rem 1.1rem;margin-bottom:0.4rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap">'
-                    f'<span style="font-weight:600;font-size:0.9rem;color:#1A1A1A;flex:1;min-width:200px">{patch["patch_name"]}</span>'
+                    f'<span style="font-weight:600;font-size:0.9rem;color:#1A1A1A;flex:1;min-width:200px">{esc(patch["patch_name"])}</span>'
                     f'{patch_type_badge(ptype)}'
                     f'<span style="font-size:0.8rem;color:#6B7B6B;white-space:nowrap">KB{kb}</span>'
                     f'<span style="font-size:0.8rem;color:#6B7B6B;white-space:nowrap">Device: <b style="color:#1A1A1A">{device_label}</b></span>'
@@ -113,13 +114,13 @@ with tab2:
                 ptype = p.get("patch_type", "update")
                 pstatus = p.get("status", "—")
                 status_color = {"deployed": BRAND["success"], "approved": BRAND["info"], "pending": BRAND["warning"], "failed": BRAND["danger"]}.get(pstatus.lower(), "#6B7B6B")
-                device_label = p.get("device_hostname") or p.get("device_id", "—")[:8]
+                device_label = esc(p.get("device_hostname") or p.get("device_id", "—")[:8])
                 date_val = fmt_datetime(p.get("deployed_at") or p.get("created_at"))
                 row_bg = "#FFFFFF" if i % 2 == 0 else "#FAFCFA"
                 cell_style = f"background:{row_bg};padding:0.6rem 1rem;font-size:0.83rem;border-bottom:1px solid #EEF2EE"
                 st.markdown(
                     f'<div style="display:grid;grid-template-columns:3fr 1.2fr 1fr 2fr 1.5fr;{cell_style}">'
-                    f'<span style="font-weight:500;color:#1A1A1A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{p["patch_name"]}</span>'
+                    f'<span style="font-weight:500;color:#1A1A1A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{esc(p["patch_name"])}</span>'
                     f'<span>{patch_type_badge(ptype)}</span>'
                     f'<span style="color:{status_color};font-weight:600;font-size:0.78rem">{pstatus.upper()}</span>'
                     f'<span style="color:#6B7B6B">{device_label}</span>'

@@ -6,6 +6,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, STATUS_COLORS, section_header
 from utils.formatters import fmt_datetime, PRIORITY_COLORS, SEVERITY_COLORS
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Alerts — RMM", layout="wide")
 inject_css()
@@ -119,7 +120,7 @@ with tab_alerts:
                     + f'<div style="width:4px;height:36px;border-radius:3px;background:{sev_color};flex-shrink:0"></div>'
                     + badge(sev, sev_color)
                     + badge(status_val, BRAND["warning"] if status_val == "acknowledged" else BRAND["danger"] if status_val == "open" else BRAND["success"])
-                    + f'<span style="color:#6B7B6B;font-size:0.82rem">Device: <b style="color:#1A1A1A">{hostname}</b></span>'
+                    + f'<span style="color:#6B7B6B;font-size:0.82rem">Device: <b style="color:#1A1A1A">{esc(hostname)}</b></span>'
                     + f'<span style="color:#6B7B6B;font-size:0.82rem">Triggered: {triggered}</span>'
                     + '</div>',
                     unsafe_allow_html=True,
@@ -129,7 +130,7 @@ with tab_alerts:
                 st.markdown(
                     '<div style="background:#F4F6F4;border-radius:8px;padding:0.75rem 1rem;'
                     'border:1px solid #DDE8DD;margin-bottom:0.75rem;font-size:0.88rem;color:#1A1A1A">'
-                    + msg
+                    + esc(msg).replace("\n", "<br>")
                     + '</div>',
                     unsafe_allow_html=True,
                 )

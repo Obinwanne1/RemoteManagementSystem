@@ -10,7 +10,7 @@ from email import encoders
 
 from flask import Blueprint, request, jsonify, Response
 from flask_jwt_extended import jwt_required, get_jwt
-from extensions import db
+from extensions import db, limiter
 from models.billing import Invoice
 from models.customer import Customer
 from models.device import Device
@@ -70,6 +70,7 @@ def list_invoices():
 
 @billing_bp.route("/invoices/generate", methods=["POST"])
 @jwt_required()
+@limiter.limit("10 per minute")
 @validate_body(GenerateInvoiceSchema)
 def generate_invoice():
     err = _require_role("admin")

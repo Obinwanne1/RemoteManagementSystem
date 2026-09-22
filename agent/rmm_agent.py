@@ -81,38 +81,81 @@ def save_config(config: configparser.ConfigParser) -> None:
 
 _IS_WINDOWS = platform.system() == "Windows"
 _DPAPI_PREFIX = "DPAPI:"
+_KEYRING_PREFIX = "KEYRING:"
+_KEYRING_SERVICE = "rmm_agent"
+_KEYRING_USERNAME = "agent_token"
 
 
 def _protect_token(plaintext: str) -> str:
-    """Encrypt token with Windows DPAPI. Non-Windows: returns plaintext unchanged."""
-    if not _IS_WINDOWS or not plaintext:
+    """Encrypt token with Windows DPAPI. Non-Windows: store in OS keyring (macOS
+    Keychain / Linux Secret Service) and write only a lookup sentinel to config.ini.
+    Falls back to plaintext (with a warning) if keyring is unavailable/unusable."""
+    if not plaintext:
         return plaintext
+    if _IS_WINDOWS:
+        try:
+            import win32crypt
+            blob = win32crypt.CryptProtectData(
+                plaintext.encode("utf-8"), "RMM Agent Token", None, None, None, 0,
+            )
+            return _DPAPI_PREFIX + base64.b64encode(blob).decode("ascii")
+        except Exception as exc:
+            logger.warning("DPAPI encrypt failed — storing plaintext: %s", exc)
+            return plaintext
+
+    # Non-Windows: try OS keyring
     try:
-        import win32crypt
-        blob = win32crypt.CryptProtectData(
-            plaintext.encode("utf-8"), "RMM Agent Token", None, None, None, 0,
+        import keyring
+        import keyring.errors
+        keyring.set_password(_KEYRING_SERVICE, _KEYRING_USERNAME, plaintext)
+        return _KEYRING_PREFIX + _KEYRING_USERNAME
+    except ImportError:
+        logger.warning(
+            "keyring package not installed — agent token will be stored in PLAINTEXT "
+            "in config.ini on this platform. Install 'keyring' to protect it."
         )
-        return _DPAPI_PREFIX + base64.b64encode(blob).decode("ascii")
+        return plaintext
     except Exception as exc:
-        logger.warning("DPAPI encrypt failed — storing plaintext: %s", exc)
+        logger.warning(
+            "OS keyring unavailable (%s) — agent token will be stored in PLAINTEXT "
+            "in config.ini on this platform.", exc
+        )
         return plaintext
 
 
 def _unprotect_token(stored: str) -> str:
-    """Decrypt DPAPI token. Plaintext values pass through unchanged (legacy migration)."""
-    if not stored.startswith(_DPAPI_PREFIX):
-        return stored
-    if not _IS_WINDOWS:
-        logger.error("DPAPI-encrypted token found but not running on Windows")
-        return ""
-    try:
-        import win32crypt
-        raw = base64.b64decode(stored[len(_DPAPI_PREFIX):])
-        _, plaintext = win32crypt.CryptUnprotectData(raw, None, None, None, 0)
-        return plaintext.decode("utf-8")
-    except Exception as exc:
-        logger.error("DPAPI decrypt failed: %s", exc)
-        return ""
+    """Decrypt DPAPI/keyring-stored token. Plaintext values pass through unchanged
+    (legacy migration)."""
+    if stored.startswith(_DPAPI_PREFIX):
+        if not _IS_WINDOWS:
+            logger.error("DPAPI-encrypted token found but not running on Windows")
+            return ""
+        try:
+            import win32crypt
+            raw = base64.b64decode(stored[len(_DPAPI_PREFIX):])
+            _, plaintext = win32crypt.CryptUnprotectData(raw, None, None, None, 0)
+            return plaintext.decode("utf-8")
+        except Exception as exc:
+            logger.error("DPAPI decrypt failed: %s", exc)
+            return ""
+
+    if stored.startswith(_KEYRING_PREFIX):
+        try:
+            import keyring
+            username = stored[len(_KEYRING_PREFIX):] or _KEYRING_USERNAME
+            plaintext = keyring.get_password(_KEYRING_SERVICE, username)
+            if plaintext is None:
+                logger.error("Keyring lookup returned no value for stored agent token")
+                return ""
+            return plaintext
+        except ImportError:
+            logger.error("Keyring-stored token found but 'keyring' package is not installed")
+            return ""
+        except Exception as exc:
+            logger.error("Keyring lookup failed: %s", exc)
+            return ""
+
+    return stored
 
 
 def register(config: configparser.ConfigParser) -> APIClient:
@@ -148,11 +191,18 @@ def main():
     device_id = config.get("agent", "device_id", fallback="").strip()
     _stored_token = config.get("agent", "agent_token", fallback="").strip()
     agent_token = _unprotect_token(_stored_token)
-    # Migrate legacy plaintext token to DPAPI-encrypted storage on first run
-    if agent_token and _IS_WINDOWS and not _stored_token.startswith(_DPAPI_PREFIX):
-        config.set("agent", "agent_token", _protect_token(agent_token))
-        save_config(config)
-        logger.info("Agent token migrated to DPAPI-encrypted storage")
+    # Migrate legacy plaintext token to DPAPI-encrypted (Windows) or OS-keyring
+    # (non-Windows) storage on first run
+    _already_protected = _stored_token.startswith(_DPAPI_PREFIX) or _stored_token.startswith(_KEYRING_PREFIX)
+    if agent_token and not _already_protected:
+        protected = _protect_token(agent_token)
+        if protected != agent_token:
+            config.set("agent", "agent_token", protected)
+            save_config(config)
+            logger.info(
+                "Agent token migrated to %s storage",
+                "DPAPI-encrypted" if _IS_WINDOWS else "OS-keyring-backed",
+            )
     heartbeat_interval = config.getint("agent", "heartbeat_interval", fallback=60)
     software_interval = config.getint("agent", "software_interval", fallback=21600)
 

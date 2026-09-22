@@ -22,6 +22,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    mem_limit: 1g
+    cpus: 1.0
 
   redis:
     image: redis:7-alpine
@@ -36,6 +38,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    mem_limit: 512m
+    cpus: 0.5
 
   nginx:
     build:
@@ -51,6 +55,8 @@ services:
       - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - api
+    mem_limit: 256m
+    cpus: 0.5
 
   api:
     build:
@@ -67,6 +73,7 @@ services:
       FLASK_DEBUG: "0"
       API_HOST: 0.0.0.0
       API_PORT: "5000"
+      BACKUP_DIR: /app/backups
     # Port 5000 intentionally NOT exposed externally — nginx proxies all traffic
     expose:
       - "5000"
@@ -77,6 +84,8 @@ services:
         condition: service_healthy
     command: >
       sh -c "flask --app app:create_app db upgrade && python app.py"
+    mem_limit: 1g
+    cpus: 1.0
 
   celery_worker:
     build:
@@ -89,12 +98,21 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in your environment or .env before running docker-compose}@redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?}@redis:6379/0
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?}@redis:6379/1
+      BACKUP_DIR: /app/backups
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: celery -A tasks.celery_app worker --pool=prefork --concurrency=4 -l info
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A tasks.celery_app inspect ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    mem_limit: 1g
+    cpus: 1.0
 
   celery_beat:
     build:
@@ -107,12 +125,37 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in your environment or .env before running docker-compose}@redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?}@redis:6379/0
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?}@redis:6379/1
+      BACKUP_DIR: /app/backups
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: celery -A tasks.celery_app beat -l info
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    mem_limit: 256m
+    cpus: 0.25
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      API_BASE_URL: http://api:5000
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 1g
+    cpus: 1.0
 
 volumes:
   postgres_data:

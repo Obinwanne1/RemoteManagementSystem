@@ -1549,3 +1549,118 @@ BACKUP_RETAIN_DAYS=7
 
 # Billing (per customer via API — not global)
 ```
+
+---
+
+## Phase G — Mobile Device Management (Android Management API)
+
+Real phone management (lock/wipe/lost-mode/compliance) with no custom agent installed on the device. Android runs Google's own signed "Android Device Policy" app, provisioned via a device-owner-initiated QR/link enrollment (never silent — required by Google and by consent law for BYOD). iOS is not implemented — see G.7.
+
+### G.1 Database Migration
+
+Migration file: `api/migrations/versions/o6p7q8r9s0t1_mdm_integrations.py`
+Chains after: `n5o6p7q8r9s0`
+
+New tables:
+
+```python
+class MdmIntegration(db.Model):        # mdm_integrations
+    type = db.Column(db.String(20))     # "android" now, "apple" reserved for later — no migration needed then
+    customer_id = db.Column(db.String(36), nullable=True)   # null = staff-wide
+    project_id, enterprise_id           # Google Cloud project + bound enterprise resource name
+    service_account_json_enc            # Fernet-encrypted, never written to disk
+    apple_push_cert_enc, apple_topic    # unused placeholders for a future iOS phase
+
+class MobileEnrollment(db.Model):      # mobile_enrollments — one-to-zero-or-one with Device
+    device_id = db.Column(db.String(36), unique=True, nullable=True)
+    ownership_type = db.Column(db.String(20))  # byod | corporate → allowPersonalUsage
+    status = db.Column(db.String(20))          # pending | enrolled | revoked | wiped | expired
+    consent_given_by_user_id, consent_given_at, consent_text_version, consent_ip_address
+    #   real columns, not a JSON blob — this IS the legal consent record
+```
+
+`Device` gets zero new columns — `Device.mdm_enrollment` is a relationship. `Device.is_agentless` stays `True` for managed phones (still no RMM agent runs); real action buttons gate on `device.mdm_enrollment.status == "enrolled"` instead.
+
+Run migration:
+```bash
+cd api
+flask db upgrade
+```
+
+### G.2 `api/utils/crypto.py`
+
+Promoted out of `api/models/psa_integration.py` so both `PsaIntegration` and `MdmIntegration` share one Fernet implementation instead of duplicating it.
+
+```python
+def encrypt_cred(value: str) -> str: ...   # Fernet, key = SHA-256(SECRET_KEY)
+def decrypt_cred(value: str) -> str: ...
+```
+
+### G.3 `api/utils/android_mgmt.py`
+
+Thin REST client over Google's Android Management API. New dependency: `google-auth>=2.30.0` in `api/requirements.txt`.
+
+| Function | Description |
+|----------|-------------|
+| `create_signup_url(callback_url)` | Step 1 of enterprise binding. Callback must be a real HTTPS URL — Google rejects `localhost`. |
+| `create_enterprise(signup_url_name, enterprise_token, display_name)` | Step 2, called from the `bind_callback` route once Google redirects back. |
+| `patch_policy(policy_name, policy)` | Pushes a policy JSON to `enterprises/{id}/policies/{name}`. |
+| `create_enrollment_token(policy_name, ttl_hours, allow_personal_usage)` | Returns `{value, qrCode, expirationTimestamp}` — `qrCode` is a JSON string meant to be rendered as a QR image. |
+| `list_devices()` | `enterprises.devices.list` — used by the sync task. |
+| `issue_command(device_name, command_type, **extra)` | `LOCK \| RESET_PASSWORD \| REBOOT \| WIPE \| START_LOST_MODE \| STOP_LOST_MODE \| RELINQUISH_OWNERSHIP`. Returns immediately — applies on next device check-in. |
+| `delete_device(device_name, wipe_data_flags=None)` | Removes a device from the enterprise. |
+
+### G.4 `api/routes/mobile_mdm.py` — New API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/mdm/integrations` | Create integration stub (admin) |
+| POST | `/api/mdm/integrations/<id>/credentials` | Multipart upload of service-account JSON (admin) |
+| POST | `/api/mdm/integrations/<id>/bind` | Returns `{signup_url}` (admin) |
+| GET | `/api/mdm/integrations/<id>/bind_callback` | Google's redirect target, validated via a cached state nonce, not JWT |
+| PUT | `/api/mdm/integrations/<id>/policy` | Push policy JSON (admin, technician) |
+| GET | `/api/mdm/available_integrations` | Secret-free list scoped to caller's customer — feeds the Client Portal enrollment dropdown |
+| POST | `/api/mdm/enrollments` | Create enrollment token. `role=client` forced to `ownership_type=byod`, requires `consent_acknowledged=true`, 404s on a foreign-customer integration |
+| DELETE | `/api/mdm/enrollments/<id>` | Revoke — `RELINQUISH_OWNERSHIP` (BYOD) or full removal (corporate) |
+| POST | `/api/mdm/devices/<id>/lock` \| `/reboot` \| `/reset_password` \| `/wipe` \| `/start_lost_mode` \| `/stop_lost_mode` | Issues the matching command. `wipe` is admin-only. `lock`/`start_lost_mode`/`stop_lost_mode` are the only ones a `role=client` may call, on their own device only. |
+
+Every mutating route calls `_mdm_scope_check()` — same pattern as `devices.py`'s `_client_scope_check()` from the earlier cross-tenant-leak fix.
+
+### G.5 `api/tasks/mdm_tasks.py`
+
+| Function | Description |
+|----------|-------------|
+| `sync_all_mdm_integrations()` | Beat task (300s). Fans out `.delay()` per active, bound `MdmIntegration`. |
+| `sync_mdm_integration(mdm_integration_id)` | Calls `enterprises.devices.list`, matches new devices to pending `MobileEnrollment`s, creates the `Device` row on first sight, updates `policy_compliant`/hardware fields every pass. Same shape as `tasks.psa_tasks.sync_all_psa_integrations`. |
+
+Registered in `celery_app.py`: `include=[..., "tasks.mdm_tasks"]`, `beat_schedule["mdm-sync-every-5-min"] = {"task": "tasks.mdm_tasks.sync_all_mdm_integrations", "schedule": 300.0}`.
+
+### G.6 Updated Dashboard Pages
+
+**`dashboard/pages/19_Mobile_Enrollment.py`** — new page (admin/technician):
+- Android tab: integration list (upload credentials, start binding, push policy JSON), "Add integration" form, enrollment generator (QR rendered with the `qrcode` package — same approach as MFA setup in `17_Profile.py`), enrollments list with Revoke
+- iOS tab: static explainer of why it's not implemented (Apple Business Manager / Fleet-MicroMDM decision required)
+
+**`dashboard/pages/04_Devices.py`** — dispatch updated:
+- New `_render_mobile_managed_row(device, tab_key)`: Lock / Lost Mode / Reboot / Reset Passcode / Wipe (2-step confirm) buttons
+- Render loop checks `device.mdm_enrollment.status == "enrolled"` **before** the existing `is_agentless` check, so managed phones get the new row instead of the old "no agent" notice
+
+**`dashboard/pages/21_Client_Tickets.py`** — new "+ Enroll My Phone" expander:
+- Plain-language consent disclosure text, checkbox gates QR generation
+- Calls `GET /api/mdm/available_integrations` (client-safe) then `POST /api/mdm/enrollments` with `ownership_type="byod"`
+
+**`dashboard/utils/nav.py`** — new sidebar link under Tools, admin/technician only: `pages/19_Mobile_Enrollment.py`
+
+### G.7 iOS status
+
+Not implemented. Real Apple MDM needs an APNs push certificate, which Apple only counter-signs for Apple Business Manager-enrolled orgs or already vendor-signed MDM servers (Fleet, MicroMDM/NanoMDM) — a business/account decision outside this codebase, not a code gap. `MdmIntegration.type` already accepts `"apple"`; `apple_push_cert_enc`/`apple_topic` columns already exist (G.1); `MdmIntegration.get_client()` has an `elif self.type == "apple": raise NotImplementedError(...)` stub. Whichever path is chosen later needs only that one branch filled in — no new migration, no route/table rearchitecture.
+
+### G.8 New Environment Variables
+
+Add to `.env.example` (see full comment block there — real credentials are uploaded via dashboard into the encrypted DB column, never here):
+```
+# === Mobile Device Management (Android) ===
+# No secrets go here — Google service-account JSON is uploaded via
+# Admin -> Mobile Enrollment and stored encrypted in the DB.
+# Requires: google-auth>=2.30.0 in api/requirements.txt
+```

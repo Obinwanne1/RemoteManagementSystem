@@ -7,6 +7,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Reports — RMM", layout="wide")
 inject_css()
@@ -143,11 +144,11 @@ with tab_hist:
                     f'<div style="background:#FFFFFF;border-radius:10px;padding:0.9rem 1.2rem;'
                     f'border:1px solid #DDE8DD;box-shadow:0 1px 4px rgba(0,0,0,0.04)">'
                     f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">'
-                    f'<span style="font-weight:600;color:#1A1A1A;font-size:0.9rem">{r_name}</span>'
+                    f'<span style="font-weight:600;color:#1A1A1A;font-size:0.9rem">{esc(r_name)}</span>'
                     f'{badge(r_type, BRAND["primary"])}'
                     f'</div>'
                     f'<div style="font-size:0.78rem;color:#6B7B6B">'
-                    f'Customer: <b style="color:#4A5A4A">{cust_name}</b>'
+                    f'Customer: <b style="color:#4A5A4A">{esc(cust_name)}</b>'
                     f' &nbsp;·&nbsp; Generated: <b style="color:#4A5A4A">{r_gen_at}</b>'
                     f'</div></div>',
                     unsafe_allow_html=True

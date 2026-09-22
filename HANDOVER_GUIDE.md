@@ -130,6 +130,7 @@ This document is written in plain language. Technical jargon is explained when f
 - Chapter 52: Agent Binary Deployment (No Python Required)
 - Chapter 53: Remote Screenshot Viewer
 - Chapter 54: IoT Sensor Monitoring
+- Chapter 55: Mobile Device Management — Managing Phones Without an Agent
 
 **Appendix A: Glossary**
 **Appendix B: Quick Reference Cards**
@@ -5532,6 +5533,81 @@ The device must already be registered in the RMM (agent or agentless) for readin
 
 ---
 
-*End of RMM System Complete Handbook — Version 7.0*
+## Chapter 55: Mobile Device Management — Managing Phones Without an Agent
+
+### What it is
+
+Real management of phones on the WiFi network — lock, wipe, "lost mode," and compliance status — without writing or installing a custom agent app. Android phones run Google's own signed "Android Device Policy" app instead, which is provisioned automatically the moment the phone's owner scans a QR code or opens an enrollment link. Nothing happens on the phone silently — that step is always required, both because Google's platform demands it and because managing someone's personal phone without their agreement is not something this system will do.
+
+### Who uses it
+
+Admins/technicians enrolling company-owned phones for full management, and customers enrolling their own personal phone (BYOD) through the self-service Client Portal, with an explicit on-screen consent step first.
+
+### The two ownership modes
+
+| Mode | Who sets it up | What it covers | What it can never touch |
+|------|-----------------|-----------------|--------------------------|
+| **Company-owned (corporate)** | Admin/Technician, via Mobile Enrollment page | The entire device | — |
+| **Personal (BYOD)** | The customer themselves, via the Client Portal | Only a separate "work profile" container on the phone | Personal apps, photos, messages, and browsing outside the work profile |
+
+BYOD enrollment can always be undone from either side — the customer can remove the work profile from their phone's own Settings at any time, or a technician can revoke it, and either way the personal side of the phone is untouched.
+
+### One-time setup (before any phone can be enrolled)
+
+This part happens outside the RMM, in Google's own systems, and only needs to be done once per organization:
+
+1. Create (or pick) a project at [console.cloud.google.com](https://console.cloud.google.com) and enable the **Android Management API**.
+2. Under **IAM & Admin → Service Accounts**, create a service account and download its JSON key file. Keep this file safe — treat it like a password.
+3. Have a real, working **HTTPS** address for this RMM server reachable from a browser (a tunnel tool like ngrok is fine for testing — Google will not accept `localhost`).
+
+### Setting up an integration (Admin/Technician)
+
+1. Click **Mobile Enrollment** in the sidebar → **Android** tab.
+2. Under **Add integration**, enter a name (e.g. "Acme Corp Android Fleet"), your Google Cloud project ID, and whether this integration is staff-wide or scoped to one customer. Click **Create integration**.
+3. Open the new integration's entry, upload the service-account JSON key file downloaded above.
+4. Enter your public HTTPS base URL and click **Start binding**. A link appears — open it in a browser and complete Google's own hosted business sign-up page. When it redirects back, the integration shows **Bound**.
+5. (Optional) Paste a policy JSON in the box provided and click **Push policy** to set passcode requirements, allowed apps, etc. for every phone enrolled under this integration.
+
+### Enrolling a company-owned phone
+
+1. On the **Mobile Enrollment** page, under **Enroll a phone**, pick the integration, choose **Company-owned**, and click **Generate enrollment QR**.
+2. A QR code and a plain link both appear.
+3. On a factory-reset (or freshly wiped) Android phone, at the very first setup screen, scan the QR code — or open the link if you're setting the phone up in front of you.
+4. The phone silently installs Google's Device Policy app and finishes provisioning itself. No further action is needed.
+5. Within 5 minutes (the automatic sync interval), the phone appears in **Devices → Android** with working Lock / Lost Mode / Reboot / Reset Passcode / Wipe buttons.
+
+### Enrolling a personal phone (BYOD, customer self-service)
+
+1. The customer logs into their **Client Portal** (Support Portal) and opens **+ Enroll My Phone**.
+2. They read the consent notice — it explains in plain language exactly what will and won't be visible or controllable, and they must tick the consent box before anything is generated.
+3. They click **Generate enrollment QR**. If they're viewing the portal on a computer, they scan the QR with their phone's camera; if they're already on the phone, they tap the **Open enrollment link on this phone** button instead.
+4. Android creates a separate **work profile** on their phone (shown with a small briefcase badge on its apps) — their personal side of the phone is never touched.
+5. The device then shows up for that customer with self-service Lock and Lost Mode buttons — Wipe and other administrative actions stay with staff.
+
+### Using the remote actions
+
+From **Devices → Android** (or, for a customer, their own device in the Client Portal), each managed phone has:
+
+| Button | What it does | Who can use it |
+|--------|---------------|------------------|
+| **Lock** | Locks the phone immediately | Admin, Technician, or the customer on their own enrolled phone |
+| **Lost Mode** | Puts a message and contact number on the lock screen for whoever finds it | Admin, Technician, or the customer on their own enrolled phone |
+| **Reboot** | Restarts the phone | Admin, Technician |
+| **Reset Passcode** | Forces a new device passcode | Admin, Technician |
+| **Wipe** | Erases the device (or, for BYOD, just the work profile) — asks for a second confirmation click first | Admin only |
+
+> **NOTE:** Commands are not instant. They're delivered the next time the phone checks in with Google, which is usually within a few minutes. The button confirms the command was *sent*, not that it has *finished*.
+
+### Removing a phone from management
+
+From the **Enrollments** list on the Mobile Enrollment page (or from the customer's own portal for their own BYOD device), click **Revoke**. For a personal (BYOD) phone this removes only the work profile — the owner's personal data, apps, and photos are never affected. For a company-owned phone this removes it from management entirely.
+
+### iOS (iPhone) status
+
+Not available yet, and this is a business decision rather than something that can simply be built: Apple only issues the certificate this kind of management requires (an APNs push certificate) to organizations enrolled in **Apple Business Manager**, or to already-approved MDM vendors. iPhones continue to show up under **Devices → iOS** the same way they always have — discovered on the network, but without remote lock/wipe/lost-mode actions — until a decision is made to either enroll in Apple Business Manager or connect an existing vendor-signed MDM server (such as Fleet or MicroMDM) to this system.
+
+---
+
+*End of RMM System Complete Handbook — Version 8.0*
 
 *For support with this guide, contact your system administrator or development team.*

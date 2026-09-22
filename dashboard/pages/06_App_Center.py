@@ -6,6 +6,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes
+from utils.sanitize import esc
 
 st.set_page_config(page_title="App Center — RMM", layout="wide")
 inject_css()
@@ -101,9 +102,9 @@ if selected_device:
             src_color = SOURCE_COLORS.get(src_raw.lower(), BRAND["muted"])
             src_badge = badge(src_raw, src_color)
             last_seen = fmt_datetime(sw.get("last_seen") or "")
-            name = sw.get("name") or "—"
-            version = sw.get("version") or "—"
-            publisher = sw.get("publisher") or "—"
+            name = esc(sw.get("name")) or "—"
+            version = esc(sw.get("version")) or "—"
+            publisher = esc(sw.get("publisher")) or "—"
             rows_html += (
                 f'<div style="display:grid;grid-template-columns:2.5fr 1.2fr 1.8fr 1fr 1.2fr;gap:8px;'
                 f'padding:0.5rem 1rem;background:{bg};border-bottom:1px solid #EEF2EE;'
@@ -120,7 +121,7 @@ if selected_device:
 
         st.markdown(
             f'<div style="font-size:0.78rem;color:#6B7B6B;margin-top:0.5rem;padding:0 0.25rem">'
-            f'Showing {len(sw_list)} package{"s" if len(sw_list) != 1 else ""} on <b>{chosen_hostname}</b>'
+            f'Showing {len(sw_list)} package{"s" if len(sw_list) != 1 else ""} on <b>{esc(chosen_hostname)}</b>'
             f'</div>',
             unsafe_allow_html=True
         )

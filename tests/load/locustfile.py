@@ -12,14 +12,18 @@ Recommended scenarios:
   - 500 AgentUser / 50 DashboardUser: stress test
   - ramp-up: 10 users/sec spawn rate
 """
+import os
 import uuid
 import random
 from locust import HttpUser, task, between, events
 
 
-ORG_TOKEN = "change-this-to-match-your-env-ORG_REGISTRATION_TOKEN"
-ADMIN_EMAIL = "superadmin@rmm.local"
-ADMIN_PASSWORD = "SuperAdmin@RMM1"
+# Read from environment so real secrets are never committed to this file:
+#   LOAD_TEST_ORG_TOKEN=... LOAD_TEST_ADMIN_EMAIL=... LOAD_TEST_ADMIN_PASSWORD=... \
+#   locust -f tests/load/locustfile.py --host http://localhost:5000
+ORG_TOKEN = os.environ.get("LOAD_TEST_ORG_TOKEN", "change-this-to-match-your-env-ORG_REGISTRATION_TOKEN")
+ADMIN_EMAIL = os.environ.get("LOAD_TEST_ADMIN_EMAIL", "superadmin@rmm.local")
+ADMIN_PASSWORD = os.environ.get("LOAD_TEST_ADMIN_PASSWORD", "SuperAdmin@RMM1")
 
 
 class AgentUser(HttpUser):

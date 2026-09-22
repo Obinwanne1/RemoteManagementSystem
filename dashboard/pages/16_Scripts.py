@@ -4,6 +4,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.formatters import fmt_datetime
 from utils.styles import inject_css, badge, BRAND, stat_card
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Scripts — RMM", layout="wide")
 inject_css()
@@ -64,13 +65,13 @@ with tab1:
                     meta_html = (
                         f'<div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.75rem">'
                         f'{ft_badge_html}'
-                        f'<span style="font-size:0.82rem;color:#6B7B6B">OS: <b style="color:#1A1A1A">{script.get("os_target","—")}</b></span>'
+                        f'<span style="font-size:0.82rem;color:#6B7B6B">OS: <b style="color:#1A1A1A">{esc(script.get("os_target","—"))}</b></span>'
                         f'<span style="font-size:0.82rem;color:#6B7B6B">Created: <b style="color:#1A1A1A">{fmt_datetime(script.get("created_at",""))}</b></span>'
                         f'</div>'
                     )
                     st.markdown(meta_html, unsafe_allow_html=True)
 
-                    desc = script.get("description") or "—"
+                    desc = esc(script.get("description")).replace("\n", "<br>") or "—"
                     st.markdown(f'<div style="font-size:0.88rem;color:#1A1A1A;margin-bottom:0.75rem"><b>Description:</b> {desc}</div>', unsafe_allow_html=True)
 
                     # Device selector + run controls
@@ -188,7 +189,7 @@ with tab3:
                     summary_html = (
                         f'<div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:0.75rem">'
                         f'<span style="font-size:0.82rem;color:#6B7B6B">Status: <b style="color:{status_color}">{status.upper()}</b></span>'
-                        f'<span style="font-size:0.82rem;color:#6B7B6B">Device: <b style="color:#1A1A1A">{hostname}</b></span>'
+                        f'<span style="font-size:0.82rem;color:#6B7B6B">Device: <b style="color:#1A1A1A">{esc(hostname)}</b></span>'
                         f'<span style="font-size:0.82rem;color:#6B7B6B">Duration: <b style="color:#1A1A1A">{duration}</b></span>'
                         f'<span style="font-size:0.82rem;color:#6B7B6B">Exit code: <b style="color:#1A1A1A">{run.get("exit_code", "—")}</b></span>'
                         f'<span style="font-size:0.82rem;color:#6B7B6B">Started: <b style="color:#1A1A1A">{fmt_datetime(started)}</b></span>'

@@ -7,6 +7,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Disk Management — RMM", layout="wide")
 inject_css()
@@ -155,7 +156,7 @@ else:
             f'<div style="display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr 1fr 1fr;gap:8px;'
             f'padding:0.5rem 1rem;background:{bg};border-bottom:1px solid #EEF2EE;'
             f'font-size:0.83rem;align-items:center">'
-            f'<div style="font-weight:600;color:#1A1A1A">{mountpoint}</div>'
+            f'<div style="font-weight:600;color:#1A1A1A">{esc(mountpoint)}</div>'
             f'<div style="color:#4A5A4A;text-align:right">{total_gb:.1f} GB</div>'
             f'<div style="color:#4A5A4A;text-align:right">{used_gb:.1f} GB</div>'
             f'<div style="color:#22C55E;text-align:right;font-weight:500">{free_gb:.1f} GB</div>'

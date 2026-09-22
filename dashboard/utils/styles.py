@@ -3,6 +3,8 @@ import hashlib
 import pathlib
 import streamlit as st
 
+from utils.sanitize import esc
+
 _STATIC_DIR = pathlib.Path(__file__).parent.parent / "static"
 _FA_LINK = '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>'
 
@@ -421,11 +423,11 @@ def device_mini_card(device: dict) -> str:
         f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
         f'<div style="display:flex;align-items:center;gap:7px">'
         f'<div style="width:7px;height:7px;border-radius:50%;background:{dot};box-shadow:0 0 5px {dot}88;flex-shrink:0"></div>'
-        f'<span style="font-weight:600;color:#1A1A1A;font-size:0.83rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px">{device.get("hostname","—")}</span>'
+        f'<span style="font-weight:600;color:#1A1A1A;font-size:0.83rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px">{esc(device.get("hostname","—")) or "—"}</span>'
         f'</div>'
         f'<span style="background:{color}15;color:{color};padding:2px 7px;border-radius:20px;font-size:0.65rem;font-weight:700">{status.upper()}</span>'
         f'</div>'
-        f'<div style="color:#6B7B6B;font-size:0.72rem;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{device.get("ip_address","—")}</div>'
+        f'<div style="color:#6B7B6B;font-size:0.72rem;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{esc(device.get("ip_address","—")) or "—"}</div>'
         f'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;font-size:0.7rem;color:#6B7B6B">'
         f'<div>CPU {cpu:.0f}%{bar(cpu)}</div>'
         f'<div>RAM {ram:.0f}%{bar(ram)}</div>'
@@ -442,9 +444,9 @@ def alert_row(alert: dict) -> str:
     status = alert.get("status", "")
     s_color = "#22C55E" if status == "resolved" else "#EF4444"
     hostname = alert.get("device_hostname", "")
-    host_part = f' · <b style="color:#1A1A1A">{hostname}</b>' if hostname else ""
+    host_part = f' · <b style="color:#1A1A1A">{esc(hostname)}</b>' if hostname else ""
     ts = fmt_datetime(alert.get("triggered_at", ""))
-    msg = alert.get("message", "—")
+    msg = esc(alert.get("message", "—")) or "—"
     return (
         f'<div style="display:flex;align-items:flex-start;gap:10px;padding:0.65rem 0.85rem;'
         f'border-radius:8px;margin-bottom:0.35rem;background:#FAFCFA;border:1px solid #E8EEE8">'
@@ -466,11 +468,11 @@ def activity_row(item: dict) -> str:
     ip = item.get("ip_address", "")
     color = {"CREATE": "#22C55E", "UPDATE": "#3B82F6", "DELETE": "#EF4444", "LOGIN": "#8B5CF6"}.get(action.upper(), "#6B7B6B")
     ts = fmt_datetime(item.get("created_at", ""))
-    suffix = f" · {ip}" if ip else ""
+    suffix = f" · {esc(ip)}" if ip else ""
     return (
         f'<div style="display:flex;align-items:center;gap:10px;padding:0.55rem 0;border-bottom:1px solid #EEF2EE">'
-        f'<span style="background:{color}15;color:{color};padding:2px 8px;border-radius:5px;font-size:0.7rem;font-weight:700;min-width:56px;text-align:center;flex-shrink:0">{action}</span>'
-        f'<span style="flex:1;font-size:0.83rem;color:#1A1A1A;font-weight:500;min-width:0">{resource}</span>'
+        f'<span style="background:{color}15;color:{color};padding:2px 8px;border-radius:5px;font-size:0.7rem;font-weight:700;min-width:56px;text-align:center;flex-shrink:0">{esc(action)}</span>'
+        f'<span style="flex:1;font-size:0.83rem;color:#1A1A1A;font-weight:500;min-width:0">{esc(resource)}</span>'
         f'<span style="font-size:0.72rem;color:#6B7B6B;white-space:nowrap;flex-shrink:0">{ts}{suffix}</span>'
         f'</div>'
     )

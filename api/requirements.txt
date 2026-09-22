@@ -23,6 +23,15 @@ anthropic>=0.40.0
 cachetools>=5.0.0
 sentry-sdk[flask]>=2.0.0
 cryptography>=42.0.0
-paho-mqtt>=1.6.1
-pysnmp>=4.4.12
+# tasks/mqtt_tasks.py uses the 1.x callback signatures (on_connect(client, userdata,
+# flags, rc), mqtt.Client() with no CallbackAPIVersion) — paho-mqtt 2.0 changed both.
+paho-mqtt>=1.6.1,<2.0.0
+# tasks/snmp_tasks.py imports the classic synchronous pysnmp.hlapi API
+# (getCmd/SnmpEngine/CommunityData/...). That module was removed starting with
+# pysnmp 5.x (lextudio fork, asyncio-first rewrite) — confirmed by import error
+# against the installed 7.1.29. pyasn1 is pinned alongside it: a fresh pysnmp==4.4.12
+# install otherwise pulls latest pyasn1 (0.6.x), which dropped the pyasn1.compat
+# module pysnmp 4.4.x's hlapi imports at load time.
+pysnmp>=4.4.12,<5.0.0
+pyasn1<0.5.0
 google-auth>=2.30.0

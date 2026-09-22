@@ -62,7 +62,30 @@ jobs:
 
       - name: Install dependencies
         working-directory: api
-        run: pip install -r requirements.txt pytest pytest-flask pytest-cov
+        run: pip install -r requirements.txt pytest pytest-flask pytest-cov ruff pip-audit
+
+      - name: Lint (ruff)
+        working-directory: api
+        # Baseline rule set only (see api/ruff.toml) — E4/E7/E9/F. A real run still
+        # surfaces ~122 pre-existing findings across the codebase (mostly unused
+        # imports and E402 module-import-not-at-top), which is out of scope to fix
+        # in an infra-focused pass. continue-on-error so this doesn't block the
+        # pipeline yet; tighten/fix incrementally and remove this once clean.
+        run: ruff check .
+        continue-on-error: true
+
+      - name: Dependency vulnerability scan (pip-audit)
+        # A real run currently finds 49 known vulnerabilities in api/requirements.txt
+        # (flask, flask-cors, marshmallow, python-dotenv, requests, pillow, pyasn1)
+        # plus more in agent/ and dashboard/ requirements — upgrading those is a
+        # separate compatibility-testing effort, not a quick fix here.
+        # continue-on-error so this doesn't block the pipeline yet; it's still
+        # useful as a visible, tracked signal going forward.
+        run: |
+          pip-audit -r api/requirements.txt
+          pip-audit -r agent/requirements.txt
+          pip-audit -r dashboard/requirements.txt
+        continue-on-error: true
 
       - name: Run database migrations
         working-directory: api
@@ -104,6 +127,15 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Dependency vulnerability scan (npm audit)
+        working-directory: frontend
+        # A real run currently finds 6 pre-existing vulnerabilities (4 high: browserslist,
+        # nanoid, react-router/react-router-dom; 2 moderate) in transitive deps.
+        # Upgrading react-router in particular is a real compat-testing task, not a
+        # quick fix here. continue-on-error so this doesn't block the pipeline yet.
+        run: npm audit --audit-level=high
+        continue-on-error: true
 
       - name: Type check
         working-directory: frontend

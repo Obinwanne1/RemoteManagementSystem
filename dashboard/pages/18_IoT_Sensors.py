@@ -6,6 +6,7 @@ from utils.auth import require_auth
 from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, BRAND
+from utils.sanitize import esc
 
 st.set_page_config(page_title="IoT Sensors — RMM", layout="wide")
 inject_css()
@@ -149,7 +150,7 @@ for tab_obj, (tab_name, sensor_types) in zip(tab_objects, SENSOR_TABS):
 
             st.markdown(
                 f'<div style="font-size:0.82rem;font-weight:600;color:#407E3C;margin:0.8rem 0 0.2rem">'
-                f'{icon} {label} {f"({unit})" if unit else ""}</div>',
+                f'{icon} {esc(label)} {f"({esc(unit)})" if unit else ""}</div>',
                 unsafe_allow_html=True,
             )
 

@@ -1,0 +1,14 @@
+# Minimal baseline for CI. Scoped to pyflakes (F) + a small set of pycodestyle
+# error categories (E4 import errors, E7 statement/comparison errors, E9 syntax
+# errors) — this is ruff's long-documented "sane default" selection.
+#
+# Deliberately NOT enabling the full E/W pycodestyle set (esp. E501 line-too-long,
+# which alone accounts for 784 pre-existing hits in this codebase) or any of the
+# opt-in plugins (bugbear, bandit, simplify, pylint, tryceratops, isort, ...) that
+# this ruff version's own bare `ruff check .` enables without a config file — a
+# real run of that produced 411 pre-existing findings, not something to fight in
+# an unrelated infra pass. Tighten this incrementally in future PRs.
+line-length = 120
+
+[lint]
+select = ["E4", "E7", "E9", "F"]

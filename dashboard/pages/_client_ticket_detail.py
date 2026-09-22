@@ -3,6 +3,7 @@ import streamlit as st
 from utils.auth import require_auth, logout
 from utils.styles import inject_css, badge, BRAND
 from utils.formatters import fmt_datetime, PRIORITY_COLORS
+from utils.sanitize import esc
 
 STATUS_BADGE_COLORS = {
     "open":        BRAND["danger"],
@@ -58,7 +59,7 @@ st.markdown(
 )
 
 st.markdown(
-    f'<h2 style="margin:0 0 0.3rem">#{ticket_id} — {ticket.get("title", "Untitled")}</h2>',
+    f'<h2 style="margin:0 0 0.3rem">#{ticket_id} — {esc(ticket.get("title", "Untitled"))}</h2>',
     unsafe_allow_html=True,
 )
 
@@ -72,7 +73,7 @@ st.markdown(
 )
 
 # ── Description ───────────────────────────────────────────────────────────────
-desc = ticket.get("description") or "No description provided."
+desc = esc(ticket.get("description") or "No description provided.").replace("\n", "<br>")
 st.markdown(
     '<div style="background:#F4F6F4;border-radius:8px;padding:0.85rem 1.1rem;'
     'border:1px solid #DDE8DD;border-left:4px solid #407E3C;'
@@ -96,11 +97,12 @@ if public_comments:
     )
     for c in public_comments:
         c_time = fmt_datetime(c.get("created_at", ""))
+        body_html = esc(c.get("body") or "").replace("\n", "<br>")
         st.markdown(
             f'<div style="background:#F9FBF9;border-left:3px solid #407E3C;'
             f'padding:0.55rem 0.85rem;border-radius:0 6px 6px 0;margin-bottom:0.5rem">'
             f'<div style="font-size:0.72rem;color:#9CA3AF;margin-bottom:3px">{c_time}</div>'
-            f'<div style="font-size:0.85rem;color:#1A1A1A">{c["body"]}</div>'
+            f'<div style="font-size:0.85rem;color:#1A1A1A">{body_html}</div>'
             f"</div>",
             unsafe_allow_html=True,
         )

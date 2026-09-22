@@ -9,6 +9,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, plotly_layout, BRAND, STATUS_COLORS
 from utils.formatters import fmt_datetime, fmt_uptime, pct_color
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Devices — RMM", layout="wide")
 inject_css()
@@ -173,11 +174,11 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
                 letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0.6rem">Network</div>
     <table style="width:100%;border-collapse:collapse;font-size:0.83rem">
         <tr><td style="color:#6B7B6B;padding:2px 0;width:40%">IP</td>
-            <td style="color:#1A1A1A;font-family:monospace;font-weight:600">{device.get('ip_address','—')}</td></tr>
+            <td style="color:#1A1A1A;font-family:monospace;font-weight:600">{esc(device.get('ip_address','—'))}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">MAC</td>
-            <td style="color:#1A1A1A;font-family:monospace;font-size:0.8rem">{device.get('mac_address','—')}</td></tr>
+            <td style="color:#1A1A1A;font-family:monospace;font-size:0.8rem">{esc(device.get('mac_address','—'))}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Vendor</td>
-            <td style="color:#1A1A1A">{device.get('vendor','Unknown')}</td></tr>
+            <td style="color:#1A1A1A">{esc(device.get('vendor','Unknown'))}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Platform</td>
             <td style="color:#1A1A1A">{PLATFORM_ICON_HTML.get(platform, "")} {platform}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Device type</td>
@@ -326,9 +327,9 @@ def _render_mobile_managed_row(device: dict, tab_key: str = ""):
         <tr><td style="color:#6B7B6B;padding:2px 0">Compliance</td>
             <td style="color:{comp_color};font-weight:600">{comp_txt}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">OS</td>
-            <td style="color:#1A1A1A">{device.get('os_name','—')} {device.get('os_version') or ''}</td></tr>
+            <td style="color:#1A1A1A">{esc(device.get('os_name','—'))} {esc(device.get('os_version') or '')}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Vendor</td>
-            <td style="color:#1A1A1A">{device.get('vendor') or 'Unknown'}</td></tr>
+            <td style="color:#1A1A1A">{esc(device.get('vendor') or 'Unknown')}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Last seen</td>
             <td style="color:#1A1A1A">{fmt_datetime(device.get('last_seen'))}</td></tr>
     </table>

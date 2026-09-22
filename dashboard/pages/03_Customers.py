@@ -4,6 +4,7 @@ from utils.formatters import fmt_datetime
 from utils.auth import require_auth, current_user
 from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Customers — RMM", layout="wide")
 inject_css()
@@ -87,10 +88,10 @@ else:
                 st.markdown(
                     f'<div style="{CARD}">'
                     f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#6B7B6B;margin-bottom:0.6rem">Contact Details</div>'
-                    f'<div style="display:flex;gap:6px;margin-bottom:0.4rem"><span style="font-size:0.82rem;color:#6B7B6B;min-width:52px">Email</span><span style="font-size:0.82rem;color:#1A1A1A;font-weight:500">{cust.get("email") or "—"}</span></div>'
-                    f'<div style="display:flex;gap:6px;margin-bottom:0.4rem"><span style="font-size:0.82rem;color:#6B7B6B;min-width:52px">Phone</span><span style="font-size:0.82rem;color:#1A1A1A;font-weight:500">{cust.get("phone") or "—"}</span></div>'
-                    f'<div style="display:flex;gap:6px;margin-bottom:0.4rem"><span style="font-size:0.82rem;color:#6B7B6B;min-width:52px">Address</span><span style="font-size:0.82rem;color:#1A1A1A;font-weight:500">{cust.get("address") or "—"}</span></div>'
-                    f'<div style="display:flex;gap:6px"><span style="font-size:0.82rem;color:#6B7B6B;min-width:52px">Notes</span><span style="font-size:0.82rem;color:#1A1A1A">{cust.get("notes") or "—"}</span></div>'
+                    f'<div style="display:flex;gap:6px;margin-bottom:0.4rem"><span style="font-size:0.82rem;color:#6B7B6B;min-width:52px">Email</span><span style="font-size:0.82rem;color:#1A1A1A;font-weight:500">{esc(cust.get("email")) or "—"}</span></div>'
+                    f'<div style="display:flex;gap:6px;margin-bottom:0.4rem"><span style="font-size:0.82rem;color:#6B7B6B;min-width:52px">Phone</span><span style="font-size:0.82rem;color:#1A1A1A;font-weight:500">{esc(cust.get("phone")) or "—"}</span></div>'
+                    f'<div style="display:flex;gap:6px;margin-bottom:0.4rem"><span style="font-size:0.82rem;color:#6B7B6B;min-width:52px">Address</span><span style="font-size:0.82rem;color:#1A1A1A;font-weight:500">{esc(cust.get("address")) or "—"}</span></div>'
+                    f'<div style="display:flex;gap:6px"><span style="font-size:0.82rem;color:#6B7B6B;min-width:52px">Notes</span><span style="font-size:0.82rem;color:#1A1A1A">{esc(cust.get("notes")) or "—"}</span></div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )

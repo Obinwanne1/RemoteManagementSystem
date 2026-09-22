@@ -6,6 +6,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, stat_card
 from utils.formatters import fmt_datetime, fmt_bytes
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Maintenance — RMM", layout="wide")
 inject_css()
@@ -64,19 +65,19 @@ def _fmt_uptime(seconds):
     if m: parts.append(f"{m}m")
     return " ".join(parts) or "< 1m"
 
-os_str = f"{selected.get('os_name') or '—'} {selected.get('os_version') or ''}".strip()
+os_str = esc(f"{selected.get('os_name') or '—'} {selected.get('os_version') or ''}".strip())
 
 st.markdown(
     f'<div style="background:#FFFFFF;border-radius:12px;padding:1.1rem 1.5rem;'
     f'border:1px solid #DDE8DD;box-shadow:0 2px 8px rgba(0,0,0,0.05);margin-bottom:1.25rem">'
     f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:0.6rem">'
     f'<div style="width:10px;height:10px;border-radius:50%;background:#22C55E;box-shadow:0 0 6px #22C55E88;flex-shrink:0"></div>'
-    f'<span style="font-size:1rem;font-weight:700;color:#1A1A1A">{selected.get("hostname","—")}</span>'
-    f'<span style="font-size:0.8rem;color:#6B7B6B">{selected.get("ip_address","—")}</span>'
+    f'<span style="font-size:1rem;font-weight:700;color:#1A1A1A">{esc(selected.get("hostname","—"))}</span>'
+    f'<span style="font-size:0.8rem;color:#6B7B6B">{esc(selected.get("ip_address","—"))}</span>'
     f'</div>'
     f'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;font-size:0.82rem">'
     f'<div><span style="color:#6B7B6B">OS</span><br><b style="color:#1A1A1A">{os_str or "—"}</b></div>'
-    f'<div><span style="color:#6B7B6B">Platform</span><br><b style="color:#1A1A1A">{selected.get("platform","—")}</b></div>'
+    f'<div><span style="color:#6B7B6B">Platform</span><br><b style="color:#1A1A1A">{esc(selected.get("platform","—"))}</b></div>'
     f'<div><span style="color:#6B7B6B">Last Seen</span><br><b style="color:#1A1A1A">{fmt_datetime(selected.get("last_seen",""))}</b></div>'
     f'<div><span style="color:#6B7B6B">Uptime</span><br><b style="color:#1A1A1A">{_fmt_uptime(uptime_sec)}</b></div>'
     f'</div></div>',
@@ -233,8 +234,8 @@ else:
         for i, run in enumerate(runs[:50]):
             status_raw = (run.get("status") or "unknown").lower()
             run_color  = STATUS_COLORS_RUN.get(status_raw, BRAND["muted"])
-            profile_name = run.get("profile_name") or run.get("profile_id", "")[:8] or "—"
-            device_name  = run.get("device_hostname") or run.get("device_id", "")[:8] or "—"
+            profile_name = esc(run.get("profile_name") or run.get("profile_id", "")[:8] or "—")
+            device_name  = esc(run.get("device_hostname") or run.get("device_id", "")[:8] or "—")
             started  = fmt_datetime(run.get("started_at") or "")
             finished = fmt_datetime(run.get("finished_at") or "")
 

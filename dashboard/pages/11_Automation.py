@@ -9,6 +9,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.formatters import fmt_datetime
 from utils.styles import inject_css, badge, BRAND, stat_card
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Automation — RMM", layout="wide")
 inject_css()
@@ -42,7 +43,7 @@ with tab1:
                 f'<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">'
                 f'<div style="display:flex;align-items:center;gap:0.6rem">'
                 f'{status_dot}'
-                f'<span style="font-weight:700;font-size:1rem;color:#1A1A1A">{profile["name"]}</span>'
+                f'<span style="font-weight:700;font-size:1rem;color:#1A1A1A">{esc(profile["name"])}</span>'
                 f'<span style="background:{status_color}1A;color:{status_color};padding:2px 9px;border-radius:20px;font-size:0.72rem;font-weight:700;border:1px solid {status_color}33">{status_label.upper()}</span>'
                 f'</div>'
                 f'<div style="display:flex;align-items:center;gap:1.5rem">'

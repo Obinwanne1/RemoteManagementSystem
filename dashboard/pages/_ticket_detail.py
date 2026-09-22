@@ -6,6 +6,7 @@ from utils.auth import require_auth
 from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, BRAND, section_header
 from utils.formatters import fmt_datetime, PRIORITY_COLORS
+from utils.sanitize import esc
 
 
 def _sla_badge(ticket: dict) -> str:
@@ -91,7 +92,7 @@ updated         = fmt_datetime(ticket.get("updated_at", ""))
 
 # ── Ticket header ─────────────────────────────────────────────────────────────
 st.markdown(
-    f'<h2 style="margin:0.5rem 0 0.25rem">#{ticket_id} — {ticket.get("title", "Untitled")}</h2>',
+    f'<h2 style="margin:0.5rem 0 0.25rem">#{ticket_id} — {esc(ticket.get("title", "Untitled"))}</h2>',
     unsafe_allow_html=True,
 )
 
@@ -103,9 +104,9 @@ badge_row = (
       f'display:inline-block;border-radius:10px;padding:2px 8px;font-size:0.68rem;font-weight:700">{src_label}</span>'
 )
 
-meta_parts = [f"<b>Customer:</b> {customer_name}"]
+meta_parts = [f"<b>Customer:</b> {esc(customer_name)}"]
 if requester_email:
-    meta_parts.append(f"<b>Requester:</b> {requester_email}")
+    meta_parts.append(f"<b>Requester:</b> {esc(requester_email)}")
 meta_parts.append(f"<b>Opened:</b> {created}")
 if updated != created:
     meta_parts.append(f"<b>Updated:</b> {updated}")
@@ -119,7 +120,7 @@ st.markdown(
 )
 
 # ── Description ───────────────────────────────────────────────────────────────
-desc_text = ticket.get("description") or "No description provided."
+desc_text = esc(ticket.get("description") or "No description provided.").replace("\n", "<br>")
 st.markdown(
     '<div style="background:#F4F6F4;border-radius:8px;padding:0.85rem 1.1rem;'
     'border:1px solid #DDE8DD;margin-bottom:1.25rem;font-size:0.88rem;color:#1A1A1A;'
@@ -273,12 +274,13 @@ with tab_comments:
                 if is_internal else ""
             )
             author = c.get("author_name") or c.get("author_email") or "Staff"
+            body_html = esc(c.get("body") or "").replace("\n", "<br>")
             st.markdown(
                 f'<div style="background:#F9FBF9;border-left:3px solid {border_color};'
                 f'padding:0.55rem 0.85rem;border-radius:0 6px 6px 0;margin-bottom:0.5rem">'
                 f'<div style="font-size:0.78rem;color:#6B7B6B;margin-bottom:3px">'
-                f'<b style="color:#1A1A1A">{author}</b>{tag} &nbsp;·&nbsp; {c_time}</div>'
-                f'<div style="font-size:0.85rem;color:#1A1A1A">{c["body"]}</div>'
+                f'<b style="color:#1A1A1A">{esc(author)}</b>{tag} &nbsp;·&nbsp; {c_time}</div>'
+                f'<div style="font-size:0.85rem;color:#1A1A1A">{body_html}</div>'
                 f"</div>",
                 unsafe_allow_html=True,
             )

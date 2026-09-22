@@ -5,6 +5,7 @@ from utils.auth import require_auth, logout
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND
 from utils.formatters import fmt_datetime, PRIORITY_COLORS
+from utils.sanitize import esc
 
 _MDM_CONSENT_TEXT = (
     "By enrolling your phone, a lightweight management profile from Google (a \"Work Profile\") "
@@ -60,7 +61,7 @@ with hdr_c:
         '<span style="font-size:1.4rem;font-weight:800;color:#407E3C">Support Portal</span>'
         '<span style="font-size:0.8rem;color:#6B7B6B">Submit and track your tickets</span>'
         f'<span style="font-size:0.8rem;color:#9CA3AF;margin-left:auto">'
-        f'Logged in as <b style="color:#1A1A1A">{my_name}</b></span>'
+        f'Logged in as <b style="color:#1A1A1A">{esc(my_name)}</b></span>'
         "</div>",
         unsafe_allow_html=True,
     )
@@ -211,7 +212,7 @@ for t in tickets:
     with rcols[1]:
         st.markdown(
             f'<span style="font-size:0.84rem;color:#1A1A1A;font-weight:500">'
-            f'{t.get("title", "Untitled")}</span>',
+            f'{esc(t.get("title", "Untitled"))}</span>',
             unsafe_allow_html=True,
         )
     with rcols[2]:

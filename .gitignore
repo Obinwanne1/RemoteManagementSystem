@@ -36,6 +36,9 @@ desktop.ini
 *.log
 logs/
 
+# Locust load-test run output (scratch — see tests/load/locustfile.py)
+.claude/loadtest_*.csv
+
 # Database
 *.db
 *.sqlite3

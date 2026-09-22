@@ -2,7 +2,7 @@
 
 **Audience:** Developers, system architects, and advanced administrators  
 **Stack:** Flask 3 · SQLAlchemy 2 · Celery 5 · Streamlit 1.58 · React 19/Vite 8/TypeScript · PostgreSQL 15 · Redis/Memurai  
-**Version:** 1.3 (React frontend, cross-platform agent, screenshot pipeline, IoT/MQTT, performance hardening)
+**Version:** 1.4 (React frontend, cross-platform agent, screenshot pipeline, IoT/MQTT, performance hardening, Android MDM)
 
 ---
 
@@ -26,6 +26,7 @@
 16. [Screenshot Capture Pipeline](#16-screenshot-capture-pipeline)
 17. [IoT / MQTT / SNMP](#17-iot--mqtt--snmp)
 18. [Test Suite](#18-test-suite)
+19. [Mobile Device Management](#19-mobile-device-management)
 
 ---
 
@@ -1426,6 +1427,13 @@ COLLECTORS = {
 - [ ] Set `CORS_ORIGINS` to dashboard URL (replaces wildcard `origins="*"`)
 - [ ] Set `SUPERADMIN_PASSWORD` in `.env` (now required -- API will not start without it)
 
+### Known Residual Risks (audited 2026-09-22, not fully fixed)
+
+Two token-storage findings from the 2026-09-22 security audit are flagged here rather than claimed as fixed — both need an architecture change, not a contained patch:
+
+- **Dashboard tokens in the URL.** `dashboard/utils/auth.py`'s `require_auth()` re-stamps `?tok=`/`?rtok=` into the URL on every page load (not just once after login) so Streamlit survives full-page reloads without losing the session. This means the JWT lives in the browser's address bar continuously during normal use — it lands in browser history and any server/proxy access log that records query strings. Mitigation applied: `Referrer-Policy: no-referrer` (see `api/app.py`'s `_log_request` after_request hook) stops the token leaking via the `Referer` header on outbound links. **Not fixed**: browser history and access-log exposure remain. A real fix means redesigning how Streamlit persists auth across reloads (e.g. a server-side session keyed by a short opaque ID instead of the JWT itself in the URL) — sized as its own follow-up, not a quick patch.
+- **React frontend stores the JWT in `localStorage`** (`frontend/src/contexts/AuthContext.tsx`, `frontend/src/api/client.ts`) — exfiltrable by any successful XSS on that page. **Not fixed this pass.** The correct fix is httpOnly-cookie-issued JWTs with CSRF token handling, which changes how `api/routes/auth.py` issues tokens for every client (Streamlit dashboard included) — a cross-cutting auth redesign, tracked here as a named follow-up rather than attempted piecemeal.
+
 ---
 
 ## 12. Environment Variables Reference
@@ -1997,3 +2005,121 @@ Requires a running PostgreSQL + Redis (or the CI services defined in `.github/wo
 - `pytest` with coverage upload to Codecov
 - TypeScript type-check (`tsc --noEmit`) on `frontend/`
 - Docker build gate on `main` branch pushes
+
+---
+
+## 19. Mobile Device Management
+
+### Overview
+
+Real management (lock, wipe, lost-mode, compliance reporting) for phones that cannot run the RMM's Python agent. No custom agent binary is written or shipped — Android devices run Google's own signed "Android Device Policy" app, provisioned during a device-owner-initiated enrollment (QR code or link, never silent). The API talks to Google's Android Management API server-side; the phone never talks to this RMM directly. iOS is not implemented — see [iOS status](#ios-status) below.
+
+Key files: `api/models/mdm_integration.py`, `api/utils/android_mgmt.py`, `api/routes/mobile_mdm.py`, `api/tasks/mdm_tasks.py`, `api/utils/crypto.py`, `dashboard/pages/19_Mobile_Enrollment.py`.
+
+### Data model
+
+**`MdmIntegration`** (`mdm_integrations`) — one row per bound Android Enterprise:
+
+| Field | Notes |
+|-------|-------|
+| `customer_id` | Nullable — null means staff-wide, set means a dedicated per-customer binding |
+| `project_id` / `enterprise_id` | Google Cloud project + `enterprises/{id}` resource name (set once binding completes) |
+| `service_account_json_enc` | Fernet-encrypted (`api/utils/crypto.py`), never written to disk |
+| `apple_push_cert_enc` / `apple_topic` | Reserved placeholders for a future iOS phase — unused today |
+
+**`MobileEnrollment`** (`mobile_enrollments`) — one-to-zero-or-one with `Device`:
+
+| Field | Notes |
+|-------|-------|
+| `device_id` | Nullable until Google confirms enrollment, unique |
+| `ownership_type` | `byod` \| `corporate` — maps to Android's `allowPersonalUsage` |
+| `status` | `pending` \| `enrolled` \| `revoked` \| `wiped` \| `expired` |
+| `consent_given_by_user_id`, `consent_given_at`, `consent_text_version`, `consent_ip_address` | Real columns, not a JSON blob — this is the legal consent record |
+
+`Device.is_agentless` stays `True` for managed phones — they still run no RMM agent. Real action buttons in the dashboard gate on `device.mdm_enrollment.status == "enrolled"`, not `is_agentless`.
+
+### API: `/api/mdm` (`api/routes/mobile_mdm.py`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/mdm/integrations` | admin | Create integration stub |
+| POST | `/api/mdm/integrations/<id>/credentials` | admin | Multipart upload of the Google service-account JSON |
+| POST | `/api/mdm/integrations/<id>/bind` | admin | Step 1 of enterprise binding — returns `{signup_url}` |
+| GET | `/api/mdm/integrations/<id>/bind_callback` | none (state-nonce validated) | Google's browser redirect target |
+| PUT | `/api/mdm/integrations/<id>/policy` | admin, technician | Push a policy JSON to the bound enterprise |
+| GET | `/api/mdm/available_integrations` | any authenticated role | Secret-free list scoped to the caller's customer — powers the Client Portal's self-enrollment dropdown |
+| POST | `/api/mdm/enrollments` | admin, technician, client | Create an enrollment token; `role=client` is server-forced to `ownership_type=byod` and requires `consent_acknowledged=true` |
+| DELETE | `/api/mdm/enrollments/<id>` | scope-checked | Revoke — `RELINQUISH_OWNERSHIP` for BYOD, full removal for corporate |
+| POST | `/api/mdm/devices/<id>/{lock,reboot,reset_password,wipe,start_lost_mode,stop_lost_mode}` | scope-checked, per-command role | Issues an `issueCommand` — applies on the device's next check-in, not instantly |
+
+`wipe` is `admin`-only. `lock`/`start_lost_mode`/`stop_lost_mode` are the only commands a `role=client` may issue, and only on their own scoped device.
+
+### Practical example: enroll and lock a company phone
+
+```bash
+# 1. Create the integration (once, per Google Cloud project)
+curl -X POST http://localhost:5000/api/mdm/integrations \
+  -H "Authorization: Bearer $ADMIN_JWT" -H "Content-Type: application/json" \
+  -d '{"name": "Acme Fleet", "project_id": "acme-rmm-mdm"}'
+# → {"id": "e1f2...", "type": "android", "bound": false, ...}
+
+# 2. Upload the service-account JSON, then bind (opens Google's own signup page)
+curl -X POST http://localhost:5000/api/mdm/integrations/e1f2.../credentials \
+  -H "Authorization: Bearer $ADMIN_JWT" -F "file=@service-account.json"
+curl -X POST http://localhost:5000/api/mdm/integrations/e1f2.../bind \
+  -H "Authorization: Bearer $ADMIN_JWT" -H "Content-Type: application/json" \
+  -d '{"callback_base_url": "https://your-tunnel.example.com"}'
+# → {"signup_url": "https://enterprise.google.com/signup/android/...&state=..."}
+# Admin opens signup_url in a browser, completes Google's hosted flow,
+# Google redirects to bind_callback — integration.enterprise_id is now set.
+
+# 3. Create a corporate enrollment and get the QR/link
+curl -X POST http://localhost:5000/api/mdm/enrollments \
+  -H "Authorization: Bearer $ADMIN_JWT" -H "Content-Type: application/json" \
+  -d '{"mdm_integration_id": "e1f2...", "ownership_type": "corporate"}'
+# → {
+#     "enrollment_id": "9a8b...",
+#     "qr_code_json": "{...}",   # render with the `qrcode` package
+#     "enrollment_link": "https://enterprise.google.com/android/enroll?et=ABC123",
+#     "expires_at": "2026-09-22T16:30:00+00:00"
+#   }
+# Technician scans this at a factory-reset phone's welcome screen.
+# The next 5-minute beat tick (tasks.mdm_tasks.sync_all_mdm_integrations)
+# links the enrollment to a new Device row automatically.
+
+# 4. Once enrolled, issue a real command
+curl -X POST http://localhost:5000/api/mdm/devices/<device_id>/lock \
+  -H "Authorization: Bearer $ADMIN_JWT"
+# → 202 {"message": "Command sent — applies when the device next checks in."}
+```
+
+### Practical example: minimal policy JSON
+
+Pushed via `PUT /api/mdm/integrations/<id>/policy`, stored as `MdmIntegration.default_policy_name` and applied to every device enrolled under it:
+
+```json
+{
+  "policy_name": "default",
+  "policy": {
+    "passwordRequirements": { "passwordMinimumLength": 6 },
+    "cameraDisabled": false,
+    "applications": [
+      { "packageName": "com.slack", "installType": "FORCE_INSTALLED" }
+    ]
+  }
+}
+```
+
+App push/removal, kiosk mode, and per-app VPN are all additional fields on this same `policy` object — no new endpoint or table needed to extend it (see Google's Android Management API `policies` reference for the full schema, which evolves — re-verify field names before relying on any not shown here).
+
+### Celery sync (`tasks.mdm_tasks`)
+
+`sync_all_mdm_integrations` runs every 5 minutes (`celery_app.py` beat schedule), fanning out `sync_mdm_integration.delay(id)` per active, bound integration. Each sync call: lists devices via `enterprises.devices.list`, matches new devices to still-pending `MobileEnrollment` rows, creates the corresponding `Device` row on first sight, and updates `policy_compliant`/hardware fields on every pass — the same shape as `tasks.psa_tasks.sync_all_psa_integrations`.
+
+### Consent enforcement
+
+Enrollment consent is checked server-side, not just hidden in the UI: `create_enrollment` in `mobile_mdm.py` forces `ownership_type="byod"` for any `role=client` caller regardless of the request body, requires `consent_acknowledged=true` for BYOD, and 404s if a client tries to enroll into an integration scoped to a different customer's `customer_id`. Every consent event and every issued command writes an `AuditLog` row (`resource_type="mobile_device"`).
+
+### iOS status
+
+Not implemented. Real Apple MDM requires an APNs push certificate, which Apple only counter-signs for organizations enrolled in Apple Business Manager or for already vendor-signed MDM servers (Fleet, MicroMDM/NanoMDM) — a business/account decision outside this codebase. `MdmIntegration.type` already accepts `"apple"` and the `apple_push_cert_enc`/`apple_topic` columns exist, so this phase needs no schema migration when the decision is made — only a new branch in `MdmIntegration.get_client()`, which currently raises `NotImplementedError` for `type="apple"`.

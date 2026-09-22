@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
 
-from extensions import db
+from extensions import db, limiter
 from models.psa_integration import PsaIntegration, PsaCompanyMap, PsaTicketMap, encrypt_cred
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ def list_integrations():
 
 @psa_bp.route("/integrations", methods=["POST"])
 @jwt_required()
+@limiter.limit("10 per minute")
 def create_integration():
     err = _require_role("admin")
     if err:

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from extensions import db
+from extensions import db, limiter
 from models.ticket import Ticket, TicketComment
 from models.user import User
 from models.customer import Customer
@@ -134,6 +134,7 @@ def list_tickets():
 
 @tickets_bp.route("/", methods=["POST"])
 @jwt_required()
+@limiter.limit("20 per minute")
 @validate_body(TicketCreateSchema)
 def create_ticket():
     claims = _current_claims()

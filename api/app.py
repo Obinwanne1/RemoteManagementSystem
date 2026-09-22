@@ -14,9 +14,10 @@ _sentry_dsn = os.getenv("SENTRY_DSN", "")
 if _sentry_dsn:
     import sentry_sdk
     from sentry_sdk.integrations.flask import FlaskIntegration
+    from sentry_sdk.integrations.celery import CeleryIntegration
     sentry_sdk.init(
         dsn=_sentry_dsn,
-        integrations=[FlaskIntegration()],
+        integrations=[FlaskIntegration(), CeleryIntegration()],
         traces_sample_rate=0.05,
         send_default_pii=False,
     )
@@ -267,6 +268,11 @@ def create_app(config_name=None):
             rid, request.method, request.path, response.status_code, duration_ms,
         )
         response.headers["X-Request-ID"] = rid
+        # Dashboard tokens ride in the URL (?tok=/&rtok=) to survive Streamlit
+        # page reloads — see TECHNICAL_GUIDE.md Security Model. This stops them
+        # leaking via the Referer header on any outbound link; it does not stop
+        # them landing in browser history or server access logs.
+        response.headers["Referrer-Policy"] = "no-referrer"
         return response
 
     _register_error_handlers(app)

@@ -5,6 +5,7 @@ from utils.auth import require_auth
 from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, BRAND
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Terminal — RMM", layout="wide")
 inject_css()
@@ -65,7 +66,7 @@ with top_l:
         st.markdown(
             f'<div style="display:flex;align-items:center;gap:10px;padding:0.5rem 0">'
             f'<span style="width:10px;height:10px;border-radius:50%;background:#22C55E;display:inline-block"></span>'
-            f'<span style="font-weight:600;color:#1A1A1A">Connected to {connected_hostname}</span>'
+            f'<span style="font-weight:600;color:#1A1A1A">Connected to {esc(connected_hostname)}</span>'
             f'</div>',
             unsafe_allow_html=True,
         )

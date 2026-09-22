@@ -7,6 +7,7 @@ from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND
 from utils.formatters import fmt_datetime
+from utils.sanitize import esc
 
 st.set_page_config(page_title="Network Discovery — RMM", layout="wide")
 inject_css()
@@ -259,9 +260,9 @@ if scan_result:
                 f'gap:8px;padding:0.5rem 1rem;background:{bg};border-bottom:1px solid #EEF2EE;'
                 f'font-size:0.83rem;align-items:center">'
                 f'<div style="font-size:1.2rem;text-align:center">{icon}</div>'
-                f'<div style="font-weight:600;color:#1A1A1A;font-family:monospace;font-size:0.8rem">{host.get("ip","—")}</div>'
-                f'<div style="color:#6B7B6B;font-family:monospace;font-size:0.78rem">{host.get("mac") or "—"}</div>'
-                f'<div style="color:#4A5A4A;font-size:0.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{host.get("vendor","Unknown")}</div>'
+                f'<div style="font-weight:600;color:#1A1A1A;font-family:monospace;font-size:0.8rem">{esc(host.get("ip","—")) or "—"}</div>'
+                f'<div style="color:#6B7B6B;font-family:monospace;font-size:0.78rem">{esc(host.get("mac")) or "—"}</div>'
+                f'<div style="color:#4A5A4A;font-size:0.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{esc(host.get("vendor","Unknown")) or "Unknown"}</div>'
                 f'<div>{plat_b}</div>'
                 f'<div>{status_b}</div>'
                 f'<div style="font-size:0.75rem;color:#407E3C">auto-saved</div>'
@@ -298,7 +299,7 @@ elif not st.session_state["nd_polling"]:
                 f'padding:0.6rem 1rem;margin-bottom:0.4rem;display:flex;align-items:center;gap:1rem;'
                 f'font-size:0.82rem;color:#1A1A1A">'
                 f'<span style="color:{color};font-weight:700">{status.upper()}</span>'
-                f'<span>{s.get("scan_range","—")}</span>'
+                f'<span>{esc(s.get("scan_range","—")) or "—"}</span>'
                 f'<span style="color:#6B7B6B">{fmt_datetime(s.get("started_at",""))}</span>'
                 f'<span style="margin-left:auto;color:#6B7B6B">{hosts_count} host{"s" if hosts_count != 1 else ""} · {s.get("new_devices_count",0)} new</span>'
                 f'</div>',
