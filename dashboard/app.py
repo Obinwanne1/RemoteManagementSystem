@@ -413,12 +413,9 @@ def show_mfa_step():
                 st.error("Invalid code or session expired. Try again.")
             else:
                 st.session_state.pop("mfa_pending_token", None)
-                st.session_state["access_token"] = data["access_token"]
-                st.session_state["refresh_token"] = data.get("refresh_token", "")
+                from utils.auth import establish_session
+                establish_session(data["access_token"], data.get("refresh_token", ""))
                 st.session_state["user"] = data["user"]
-                st.query_params["tok"] = data["access_token"]
-                if data.get("refresh_token"):
-                    st.query_params["rtok"] = data["refresh_token"]
                 st.rerun()
 
 
@@ -528,14 +525,27 @@ def show_reset_password_form(reset_token: str):
 
 
 # ── Route ─────────────────────────────────────────────────────────────────────
-# Restore token from ?tok= URL param before checking session state.
-# Without this, browser reload always wipes the session and shows login.
-tok = st.query_params.get("tok", "")
-if tok and "access_token" not in st.session_state:
-    st.session_state["access_token"] = tok
-rtok = st.query_params.get("rtok", "")
-if rtok and "refresh_token" not in st.session_state:
-    st.session_state["refresh_token"] = rtok
+# Restore session before checking session state — without this, browser
+# reload always wipes st.session_state and shows the login page. Prefers
+# the opaque ?sid= session-store lookup; falls back to legacy raw
+# ?tok=/&rtok= params (pre-session-store tabs, or Redis was unavailable
+# when the session was created).
+if "access_token" not in st.session_state:
+    _sid = st.query_params.get("sid", "")
+    if _sid:
+        from utils.session_store import get_session as _get_session
+        _at, _rt = _get_session(_sid)
+        if _at:
+            st.session_state["access_token"] = _at
+            st.session_state["refresh_token"] = _rt
+            st.session_state["_dash_session_id"] = _sid
+    if "access_token" not in st.session_state:
+        tok = st.query_params.get("tok", "")
+        if tok:
+            st.session_state["access_token"] = tok
+        rtok = st.query_params.get("rtok", "")
+        if rtok:
+            st.session_state["refresh_token"] = rtok
 
 reset_token_param = st.query_params.get("reset_token", "")
 

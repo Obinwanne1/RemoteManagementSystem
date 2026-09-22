@@ -54,6 +54,10 @@ class RMMClient:
                     self._token = new_token
                     self.session.headers["Authorization"] = f"Bearer {new_token}"
                     st.session_state["access_token"] = new_token
+                    sid = st.session_state.get("_dash_session_id", "")
+                    if sid:
+                        from utils.session_store import update_session
+                        update_session(sid, new_token, self._refresh_token)
                     return True
         except Exception:
             pass

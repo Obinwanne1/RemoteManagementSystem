@@ -1427,12 +1427,18 @@ COLLECTORS = {
 - [ ] Set `CORS_ORIGINS` to dashboard URL (replaces wildcard `origins="*"`)
 - [ ] Set `SUPERADMIN_PASSWORD` in `.env` (now required -- API will not start without it)
 
-### Known Residual Risks (audited 2026-09-22, not fully fixed)
+### Dashboard Session Storage (fixed 2026-09-22)
 
-Two token-storage findings from the 2026-09-22 security audit are flagged here rather than claimed as fixed — both need an architecture change, not a contained patch:
+The 2026-09-22 security audit flagged that dashboard tokens rode continuously in the URL (`?tok=`/`&rtok=`) to survive Streamlit page reloads — landing in browser history and any server/proxy access log that records query strings. This is now fixed properly rather than just mitigated:
 
-- **Dashboard tokens in the URL.** `dashboard/utils/auth.py`'s `require_auth()` re-stamps `?tok=`/`?rtok=` into the URL on every page load (not just once after login) so Streamlit survives full-page reloads without losing the session. This means the JWT lives in the browser's address bar continuously during normal use — it lands in browser history and any server/proxy access log that records query strings. Mitigation applied: `Referrer-Policy: no-referrer` (see `api/app.py`'s `_log_request` after_request hook) stops the token leaking via the `Referer` header on outbound links. **Not fixed**: browser history and access-log exposure remain. A real fix means redesigning how Streamlit persists auth across reloads (e.g. a server-side session keyed by a short opaque ID instead of the JWT itself in the URL) — sized as its own follow-up, not a quick patch.
-- **React frontend stores the JWT in `localStorage`** (`frontend/src/contexts/AuthContext.tsx`, `frontend/src/api/client.ts`) — exfiltrable by any successful XSS on that page. **Not fixed this pass.** The correct fix is httpOnly-cookie-issued JWTs with CSRF token handling, which changes how `api/routes/auth.py` issues tokens for every client (Streamlit dashboard included) — a cross-cutting auth redesign, tracked here as a named follow-up rather than attempted piecemeal.
+- New `dashboard/utils/session_store.py` — the real access/refresh tokens live server-side in Redis (`dash:session:<id>`, TTL matching `JWT_REFRESH_TOKEN_EXPIRES`), keyed by a random opaque session id (`secrets.token_urlsafe(32)`). Only that id goes in the URL (`?sid=`) — a leaked/logged URL is now useless on its own.
+- `dashboard/utils/auth.py::establish_session()` is the single entry point every login flow (password, MFA) calls to create a session and stamp `?sid=`. `require_auth()` keeps it in sync on reload; `api_client.py`'s silent token-refresh path updates the stored tokens in place so a rotated access token survives the next reload too.
+- Degrades gracefully if Redis is unreachable: falls back to the old raw-token-in-URL scheme (logged as a warning) rather than breaking login. Legacy `?tok=`/`&rtok=` links (already-open tabs from before this change) are still accepted and migrated to a session on next load.
+- Requires the dashboard process to reach the same Redis instance as the API (`REDIS_URL` env var, same convention as `api/utils/cache.py`) — new `redis==5.2.1` dependency in `dashboard/requirements.txt`.
+
+### Known Residual Risk (audited 2026-09-22, not fixed)
+
+- **React frontend stores the JWT in `localStorage`** (`frontend/src/contexts/AuthContext.tsx`, `frontend/src/api/client.ts`) — exfiltrable by any successful XSS on that page. **Not fixed.** The correct fix is httpOnly-cookie-issued JWTs with CSRF token handling, which changes how `api/routes/auth.py` issues tokens for every client (Streamlit dashboard included) — a cross-cutting auth redesign, tracked here as a named follow-up rather than attempted piecemeal.
 
 ---
 

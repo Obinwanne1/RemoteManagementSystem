@@ -1,6 +1,7 @@
 """Streamlit session state auth helpers."""
 import streamlit as st
 from utils.api_client import RMMClient
+from utils.session_store import create_session, get_session, delete_session
 
 
 def get_client() -> RMMClient | None:
@@ -14,20 +15,51 @@ def get_client() -> RMMClient | None:
     )
 
 
+def establish_session(access_token: str, refresh_token: str = "") -> None:
+    """Store tokens in session_state and the server-side session store, then
+    stamp only an opaque session id — never the raw tokens — into the URL.
+
+    Call this everywhere a login flow (password, MFA) obtains fresh tokens.
+    """
+    st.session_state["access_token"] = access_token
+    st.session_state["refresh_token"] = refresh_token
+    sid = create_session(access_token, refresh_token)
+    if sid:
+        st.session_state["_dash_session_id"] = sid
+        st.query_params["sid"] = sid
+        st.query_params.pop("tok", None)
+        st.query_params.pop("rtok", None)
+    else:
+        # Redis unavailable — fall back to the old, less-safe URL scheme
+        # rather than breaking login entirely.
+        st.query_params["tok"] = access_token
+        if refresh_token:
+            st.query_params["rtok"] = refresh_token
+
+
 def _restore_from_query_params() -> None:
-    """Restore access + refresh tokens from URL params, then remove them from URL."""
+    """Restore access + refresh tokens for this browser tab after a reload.
+
+    Prefers the opaque ?sid= session-store lookup (real tokens never touch
+    the URL). Falls back to legacy raw ?tok=/&rtok= params — for tabs opened
+    before this change, or if Redis was unavailable when the session was
+    created — and clears them from the URL once restored into session_state.
+    """
+    if "access_token" in st.session_state:
+        return
+    sid = st.query_params.get("sid", "")
+    if sid:
+        access_token, refresh_token = get_session(sid)
+        if access_token:
+            st.session_state["access_token"] = access_token
+            st.session_state["refresh_token"] = refresh_token
+            st.session_state["_dash_session_id"] = sid
+            return
     tok = st.query_params.get("tok", "")
     rtok = st.query_params.get("rtok", "")
-    restored = False
     if tok:
         st.session_state["access_token"] = tok
-        restored = True
-    if rtok:
         st.session_state["refresh_token"] = rtok
-        restored = True
-    if restored:
-        # Remove tokens from URL so they don't persist in browser history or server logs.
-        # Session state carries the tokens from this point forward.
         st.query_params.pop("tok", None)
         st.query_params.pop("rtok", None)
 
@@ -44,10 +76,10 @@ def _redirect_to_login() -> None:
 def require_auth() -> RMMClient:
     """Halt page if not authenticated. Redirects to login. Returns client.
 
-    Tokens are restored from URL params on every load (F5-safe). The URL
-    params are the only cross-reload persistence in Streamlit — they must
-    be kept in sync with session state so that browser reload never logs
-    the user out.
+    Session is restored from an opaque ?sid= URL param on every load
+    (F5-safe) — the real tokens live server-side (utils/session_store.py),
+    never in the URL. The session id is the only cross-reload persistence
+    Streamlit has, so it's kept in sync with session state on every call.
     """
     _restore_from_query_params()
     client = get_client()
@@ -66,25 +98,33 @@ def require_auth() -> RMMClient:
         _org, _ = client.get_org_settings()
         if _org:
             st.session_state["_org_settings"] = _org
-    # Re-stamp tokens to URL so F5 / browser reload restores the session.
-    # Streamlit wipes session state on every full reload — URL params are
-    # the only way to survive it.
-    tok = st.session_state.get("access_token", "")
-    rtok = st.session_state.get("refresh_token", "")
-    if tok:
-        st.query_params["tok"] = tok
-    if rtok:
-        st.query_params["rtok"] = rtok
+    # Keep the URL's session pointer in sync so F5 / browser reload survives.
+    # Prefer the opaque ?sid= (the id itself is stable — no need to rewrite
+    # it every render, but it's idempotent and cheap to ensure). Only fall
+    # back to raw tokens in the URL if this session was established without
+    # a working session store (Redis was down at establish_session() time).
+    sid = st.session_state.get("_dash_session_id", "")
+    if sid:
+        st.query_params["sid"] = sid
+        st.query_params.pop("tok", None)
+        st.query_params.pop("rtok", None)
+    else:
+        tok = st.session_state.get("access_token", "")
+        rtok = st.session_state.get("refresh_token", "")
+        if tok:
+            st.query_params["tok"] = tok
+        if rtok:
+            st.query_params["rtok"] = rtok
     return client
 
 
 def login(email: str, password: str) -> str:
     """Attempt login. Returns 'ok', 'mfa_required', 'locked', or 'error'.
 
-    On success tokens are stored in session state and written to URL once for
-    F5 handoff. On MFA required, mfa_pending_token is stored in session state.
-    On account locked, login_locked_until is stored in session state.
-    require_auth() strips URL tokens after the first successful restore."""
+    On success, establish_session() stores tokens server-side and stamps an
+    opaque session id into the URL. On MFA required, mfa_pending_token is
+    stored in session state. On account locked, login_locked_until is stored
+    in session state."""
     data, err = RMMClient.login(email, password)
     if err:
         return "error"
@@ -96,19 +136,16 @@ def login(email: str, password: str) -> str:
         st.session_state.pop("login_locked_until", None)
         return "mfa_required"
     st.session_state.pop("login_locked_until", None)
-    st.session_state["access_token"] = data["access_token"]
-    st.session_state["refresh_token"] = data.get("refresh_token", "")
+    establish_session(data["access_token"], data.get("refresh_token", ""))
     st.session_state["user"] = data["user"]
-    # Write once to URL for the initial page-reload handoff only.
-    # require_auth() will clear these params after the first successful restore.
-    st.query_params["tok"] = data["access_token"]
-    if data.get("refresh_token"):
-        st.query_params["rtok"] = data["refresh_token"]
     return "ok"
 
 
 def logout():
-    for key in ["access_token", "refresh_token", "user"]:
+    sid = st.session_state.get("_dash_session_id", "")
+    if sid:
+        delete_session(sid)
+    for key in ["access_token", "refresh_token", "user", "_dash_session_id"]:
         st.session_state.pop(key, None)
     st.query_params.clear()
     st.rerun()
