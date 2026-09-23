@@ -227,6 +227,7 @@ def _upsert_agentless_host(ip: str, mac: str | None, vendor: str,
         existing.ip_address = ip
         existing.last_seen = now
         existing.is_online = True
+        existing.status = "healthy"
         if vendor and vendor != "Unknown":
             existing.vendor = vendor
         # Upgrade platform/device_type if we now have better detection
@@ -246,7 +247,7 @@ def _upsert_agentless_host(ip: str, mac: str | None, vendor: str,
         vendor=vendor,
         is_agentless=True,
         is_online=True,
-        status="unknown",
+        status="healthy",
         last_seen=now,
         customer_id=customer_id,
     )
@@ -393,6 +394,7 @@ def ping_agentless_devices(self):
                 device = ip_to_device[ip]
                 if alive:
                     device.is_online = True
+                    device.status = "healthy"
                     device.last_seen = now
                 else:
                     if device.last_seen:
@@ -401,6 +403,7 @@ def ping_agentless_devices(self):
                                        else (now - device.last_seen)).total_seconds()
                         if age_seconds > 600:
                             device.is_online = False
+                            device.status = "offline"
                     else:
                         device.is_online = False
 
