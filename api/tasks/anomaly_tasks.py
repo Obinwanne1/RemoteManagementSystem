@@ -47,37 +47,41 @@ def _zscore_anomalies(values: list[float]) -> list[bool]:
 
 
 def _fire_anomaly_alert(app, device, metric: str, value: float, z: float):
-    """Create or update an open Alert for the detected anomaly."""
+    """Create or update an open Alert for the detected anomaly.
+
+    Anomaly alerts have no corresponding AlertRule (they're detected dynamically,
+    not admin-configured), so rule_id stays unset. Dedup is keyed off the message
+    prefix instead of a "rule_name" column — Alert has no such column, only
+    rule_id/device_id/severity/status/message (see models/alert.py).
+    """
     with app.app_context():
         from extensions import db
         from models.alert import Alert
         from utils.events import publish_event
 
-        existing = Alert.query.filter_by(
-            device_id=device.id,
-            rule_name=f"anomaly:{metric}",
-            status="open",
+        message_prefix = f"Anomaly: {metric} ="
+        new_message = (
+            f"Anomaly: {metric} = {value:.1f}% "
+            f"({z:.1f}σ above 24h baseline)"
+        )
+
+        existing = Alert.query.filter(
+            Alert.device_id == device.id,
+            Alert.status == "open",
+            Alert.message.like(f"{message_prefix}%"),
         ).first()
 
         if existing:
             existing.triggered_at = datetime.now(timezone.utc)
-            existing.message = (
-                f"Anomaly: {metric} = {value:.1f}% "
-                f"({z:.1f}σ above 24h baseline)"
-            )
+            existing.message = new_message
             db.session.commit()
             return
 
         alert = Alert(
             device_id=device.id,
-            customer_id=device.customer_id,
-            rule_name=f"anomaly:{metric}",
             severity="warning",
             status="open",
-            message=(
-                f"Anomaly: {metric} = {value:.1f}% "
-                f"({z:.1f}σ above 24h baseline)"
-            ),
+            message=new_message,
             triggered_at=datetime.now(timezone.utc),
         )
         db.session.add(alert)
