@@ -139,34 +139,40 @@ class NumberedCanvas:
     """Added to doc via onLaterPages / canvasMaker pattern."""
     pass
 
-def _footer(canvas, doc):
-    canvas.saveState()
-    canvas.setFont("Helvetica", 8)
-    canvas.setFillColor(MUTED)
-    # Thin rule above footer text
-    canvas.setStrokeColor(BORDER)
-    canvas.setLineWidth(0.5)
-    canvas.line(MARGIN, 15 * mm, W - MARGIN, 15 * mm)
-    # Left: guide title  (6 mm below rule)
-    canvas.drawString(MARGIN, 9 * mm, "Faiyke RMM System — Handover & User Guide")
-    # Right: page number
-    page_text = f"Page {doc.page}"
-    canvas.drawRightString(W - MARGIN, 9 * mm, page_text)
-    canvas.restoreState()
+def make_footer(footer_title: str):
+    """Factory so the same footer callback can label different documents."""
+    def _footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(MUTED)
+        # Thin rule above footer text
+        canvas.setStrokeColor(BORDER)
+        canvas.setLineWidth(0.5)
+        canvas.line(MARGIN, 15 * mm, W - MARGIN, 15 * mm)
+        # Left: guide title  (6 mm below rule)
+        canvas.drawString(MARGIN, 9 * mm, footer_title)
+        # Right: page number
+        page_text = f"Page {doc.page}"
+        canvas.drawRightString(W - MARGIN, 9 * mm, page_text)
+        canvas.restoreState()
+    return _footer
 
-def _first_page(canvas, doc):
-    # Cover page — no footer
-    canvas.saveState()
-    # Green header band
-    canvas.setFillColor(GREEN_DARK)
-    canvas.rect(0, H - 55 * mm, W, 55 * mm, fill=1, stroke=0)
-    # Green bottom band
-    canvas.setFillColor(GREEN)
-    canvas.rect(0, 0, W, 18 * mm, fill=1, stroke=0)
-    canvas.setFont("Helvetica", 9)
-    canvas.setFillColor(colors.white)
-    canvas.drawCentredString(W / 2, 7 * mm, "Prepared for Faiyke-AI Agency · Confidential · v1.0")
-    canvas.restoreState()
+def make_first_page(band_text: str):
+    """Factory so the same cover-band callback can label different documents."""
+    def _first_page(canvas, doc):
+        # Cover page — no footer
+        canvas.saveState()
+        # Green header band
+        canvas.setFillColor(GREEN_DARK)
+        canvas.rect(0, H - 55 * mm, W, 55 * mm, fill=1, stroke=0)
+        # Green bottom band
+        canvas.setFillColor(GREEN)
+        canvas.rect(0, 0, W, 18 * mm, fill=1, stroke=0)
+        canvas.setFont("Helvetica", 9)
+        canvas.setFillColor(colors.white)
+        canvas.drawCentredString(W / 2, 7 * mm, band_text)
+        canvas.restoreState()
+    return _first_page
 
 # ── Markdown → Flowable parser ────────────────────────────────────────────────
 
@@ -178,8 +184,11 @@ def escape_xml(text: str) -> str:
             .replace(">", "&gt;"))
 
 def inline_fmt(text: str) -> str:
-    """Convert inline markdown (**bold**, `code`, *italic*) to ReportLab XML."""
+    """Convert inline markdown (**bold**, `code`, *italic*, [text](url)) to ReportLab XML."""
     text = escape_xml(text)
+    # Markdown links [text](url) -> just the text (no in-PDF navigation, but readable —
+    # used by TECHNICAL_GUIDE.md's Table of Contents)
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
     # Bold+italic ***...***
     text = re.sub(r'\*\*\*(.+?)\*\*\*', r'<b><i>\1</i></b>', text)
     # Bold **...**
@@ -520,33 +529,39 @@ def md_to_flowables(md_text: str) -> list:
 
 # ── Cover page flowables ───────────────────────────────────────────────────────
 
-def cover_page() -> list:
-    return [
+def cover_page(title: str, subtitle: str, tagline: str, version_line: str,
+               prepared_for: str | None = "Faiyke-AI Agency") -> list:
+    items = [
         Spacer(1, 62 * mm),   # below green header band
-        Paragraph("Faiyke RMM System", styles["cover_title"]),
-        Paragraph("Handover &amp; User Guide", styles["cover_sub"]),
+        Paragraph(title, styles["cover_title"]),
+        Paragraph(subtitle, styles["cover_sub"]),
         Spacer(1, 4 * mm),
         HRFlowable(width="50%", thickness=2, color=GREEN,
                    hAlign='CENTER', spaceAfter=6),
         Spacer(1, 4 * mm),
-        Paragraph("Complete reference for all staff — from first login to advanced automation",
-                  styles["cover_sub"]),
+        Paragraph(tagline, styles["cover_sub"]),
         Spacer(1, 6 * mm),
-        Paragraph("Version 4.0 · June 2026", styles["cover_ver"]),
-        Spacer(1, 8 * mm),
-        HRFlowable(width="30%", thickness=0.5, color=MUTED,
-                   hAlign='CENTER', spaceAfter=4),
-        Spacer(1, 4 * mm),
-        Paragraph("Prepared for", styles["cover_ver"]),
-        Spacer(1, 2 * mm),
-        Paragraph("Faiyke-AI Agency", styles["cover_client"]),
-        PageBreak(),
+        Paragraph(version_line, styles["cover_ver"]),
     ]
+    if prepared_for:
+        items += [
+            Spacer(1, 8 * mm),
+            HRFlowable(width="30%", thickness=0.5, color=MUTED,
+                       hAlign='CENTER', spaceAfter=4),
+            Spacer(1, 4 * mm),
+            Paragraph("Prepared for", styles["cover_ver"]),
+            Spacer(1, 2 * mm),
+            Paragraph(prepared_for, styles["cover_client"]),
+        ]
+    items.append(PageBreak())
+    return items
 
 
 # ── Build PDF ─────────────────────────────────────────────────────────────────
 
-def build(src: Path, dst: Path):
+def build(src: Path, dst: Path, *, title: str, subtitle: str, tagline: str, version_line: str,
+          pdf_title: str, pdf_subject: str, footer_title: str, band_text: str,
+          prepared_for: str | None = "Faiyke-AI Agency"):
     print(f"Reading {src} …")
     md = src.read_text(encoding="utf-8")
 
@@ -560,22 +575,41 @@ def build(src: Path, dst: Path):
         rightMargin=MARGIN,
         topMargin=MARGIN,
         bottomMargin=22 * mm,   # leave room for footer
-        title="Faiyke RMM System — Handover & User Guide",
+        title=pdf_title,
         author="Faiyke-AI Agency",
-        subject="Faiyke RMM System — Staff handover and user guide",
+        subject=pdf_subject,
     )
 
-    story = cover_page()
+    story = cover_page(title, subtitle, tagline, version_line, prepared_for)
     story += md_to_flowables(md)
 
     print("Building PDF …")
-    doc.build(story, onFirstPage=_first_page, onLaterPages=_footer)
+    doc.build(story, onFirstPage=make_first_page(band_text), onLaterPages=make_footer(footer_title))
     print(f"Saved: {dst}")
     print(f"Pages: check the PDF")
 
 
 if __name__ == "__main__":
     base = Path(r"C:\Users\rigwe\Desktop\RemoteManagementSystem")
-    src  = base / "HANDOVER_GUIDE.md"
-    dst  = base / "HANDOVER_GUIDE.pdf"
-    build(src, dst)
+
+    build(
+        base / "HANDOVER_GUIDE.md", base / "HANDOVER_GUIDE.pdf",
+        title="Faiyke RMM System", subtitle="Handover &amp; User Guide",
+        tagline="Complete reference for all staff — from first login to advanced automation",
+        version_line="Version 9.0 · September 2026",
+        pdf_title="Faiyke RMM System — Handover & User Guide",
+        pdf_subject="Faiyke RMM System — Staff handover and user guide",
+        footer_title="Faiyke RMM System — Handover & User Guide",
+        band_text="Prepared for Faiyke-AI Agency · Confidential · v9.0",
+    )
+
+    build(
+        base / "TECHNICAL_GUIDE.md", base / "TECHNICAL_GUIDE.pdf",
+        title="Faiyke RMM System", subtitle="Technical Guide",
+        tagline="Architecture, data models, API reference, and extension guide",
+        version_line="Version 1.5 · September 2026",
+        pdf_title="Faiyke RMM System — Technical Guide",
+        pdf_subject="Faiyke RMM System — Developer and architect reference",
+        footer_title="Faiyke RMM System — Technical Guide",
+        band_text="Prepared for Faiyke-AI Agency · Confidential · v1.5",
+    )
