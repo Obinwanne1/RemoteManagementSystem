@@ -8,6 +8,7 @@ from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, BRAND
 from utils.formatters import fmt_currency
 from utils.sanitize import esc
+from utils.ai_assistant import render_ai_assistant
 
 st.set_page_config(page_title="Invoice — RMM", layout="wide")
 inject_css()
@@ -333,3 +334,8 @@ invoice_html = f"""
 
 import streamlit.components.v1 as components
 components.html(invoice_html, height=950, scrolling=True)
+
+render_ai_assistant("Billing", {
+    "invoice_number": inv.get("invoice_number"), "status": inv.get("status"),
+    "total": inv.get("total"),
+})

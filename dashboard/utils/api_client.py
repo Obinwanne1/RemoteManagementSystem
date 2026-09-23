@@ -618,6 +618,22 @@ class RMMClient:
     def delete_customer(self, customer_id: str):
         return self._delete(f"/api/customers/{customer_id}")
 
+    # --- AI Assistant ---
+    def assistant_chat(self, message: str, page: str, context: dict = None):
+        return self._post("/api/assistant/chat", {"message": message, "page": page, "context": context or {}})
+
+    def assistant_get_conversation(self):
+        return self._get("/api/assistant/conversation")
+
+    def assistant_clear_conversation(self):
+        return self._delete("/api/assistant/conversation")
+
+    def assistant_confirm_action(self, action_id: str):
+        return self._post(f"/api/assistant/actions/{action_id}/confirm")
+
+    def assistant_deny_action(self, action_id: str):
+        return self._post(f"/api/assistant/actions/{action_id}/deny")
+
     # --- Terminal ---
     def create_terminal_session(self, device_id: str):
         return self._post("/api/terminal/sessions", {"device_id": device_id})

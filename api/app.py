@@ -80,7 +80,7 @@ def create_app(config_name=None):
     with app.app_context():
         from models import user, device, customer, alert, ticket, patch, script, automation, report, billing, audit  # noqa
         from models import org_settings, user_session, department, terminal, sla_policy, psa_integration  # noqa
-        from models import mdm_integration  # noqa
+        from models import mdm_integration, ai_conversation  # noqa
         try:
             from utils.builtin_scripts import ensure_builtin_scripts
             ensure_builtin_scripts()

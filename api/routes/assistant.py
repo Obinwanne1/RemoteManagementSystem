@@ -1,239 +1,110 @@
-"""AI Assistant — context-aware chat endpoint for dashboard guidance."""
+"""AI Assistant — agentic chat endpoint for dashboard guidance + fleet actions.
+
+Phase 1 refactor: prompt/tool logic moved to services/ai_prompt.py + services/ai_tools.py;
+conversation persistence added (AiConversation/AiMessage); mutating tool calls are staged
+via AiPendingAction and require an explicit confirm/deny call — never auto-executed.
+"""
 import os
-import re
+import json
 import logging
+from datetime import datetime, timezone
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
+from flask_limiter.util import get_remote_address
 
 from extensions import db, limiter
 from models.audit import AuditLog
+from models.ai_conversation import AiConversation, AiMessage, AiPendingAction
+from models.user import User
+from services.ai_prompt import (
+    build_system_prompt, _RESTRICTED_PAGES, _CODE_BLOCK_RE, _DANGER_PATTERNS,
+    _PAGE_ACTIONS, _PAGE_ALLOWED_ROLES,
+)
+from services.ai_tools import ToolCtx, READ_TOOLS, tools_for_page, execute_read_tool, stage_mutating_tool, execute_pending_action
 
 log = logging.getLogger(__name__)
 
 assistant_bp = Blueprint("assistant", __name__)
 
-# ── High-risk pages: AI restricted to navigation guidance only ────────────────
-_RESTRICTED_PAGES = {"Remote Terminal", "Scripts"}
-
-# ── Patterns that flag a response as potentially destructive ──────────────────
-_DANGER_PATTERNS = [
-    re.compile(r'\brm\s+-rf?\b', re.IGNORECASE),
-    re.compile(r'\bdrop\s+(?:table|database|schema)\b', re.IGNORECASE),
-    re.compile(r'\bformat\s+[a-z]:\\', re.IGNORECASE),
-    re.compile(r'--force\b', re.IGNORECASE),
-    re.compile(r'\bkill\s+-9\b', re.IGNORECASE),
-    re.compile(r'\bshutdown\s+(?:/s|/r|now|-h|-r)\b', re.IGNORECASE),
-    re.compile(r'\btruncate\s+table\b', re.IGNORECASE),
-    re.compile(r'\brd\s+/s\b', re.IGNORECASE),
-    re.compile(r'\bdel\s+/[fqs]\b', re.IGNORECASE),
-    re.compile(r'Remove-Item\s+-Recurse\s+-Force\b', re.IGNORECASE),
-    re.compile(r'\bwipe\s+(?:disk|drive|all|data)\b', re.IGNORECASE),
-]
-
-_CODE_BLOCK_RE = re.compile(r'```[\s\S]*?```', re.MULTILINE)
-
-# ── Page descriptions (injected into system prompt) ───────────────────────────
-_PAGE_INFO = {
-    "Overview": (
-        "Live dashboard showing overall system health: device counts (total/online/offline/critical/warning), "
-        "open alerts, open tickets, recent activity, and a device health map. "
-        "This is the first page users see after login."
-    ),
-    "Tickets": (
-        "Helpdesk ticket management. Create, view, update, and close support tickets. "
-        "Filter by status (open/in-progress/resolved/closed), priority (low/medium/high/critical), "
-        "and customer. Assign tickets to technicians. Add comments."
-    ),
-    "Customers": (
-        "Customer organisation management. Add new customers, search existing ones, "
-        "view associated devices and sites. Each customer can have multiple sites."
-    ),
-    "Devices": (
-        "Device inventory for all enrolled endpoints — Windows, macOS, Linux, Android, iOS, and agentless WiFi devices. "
-        "Filter by OS using tabs. Click a device row to expand: view CPU/RAM/disk metrics, last-seen time, run scripts, "
-        "manage patches, edit device details, or delete the device."
-    ),
-    "Alerts": (
-        "Active alert management. View open alerts filtered by severity (critical/warning/info). "
-        "Acknowledge alerts to mark them as seen. Resolve alerts when the issue is fixed. "
-        "Also configure alert rules (thresholds that trigger alerts automatically)."
-    ),
-    "Network Discovery": (
-        "Scan the local network for devices (computers, phones, printers, routers) using ICMP ping sweep. "
-        "Enter a subnet (e.g. 192.168.1.0/24) and click Scan. "
-        "Discovered devices are listed with hostname, IP, MAC, and vendor. "
-        "Save devices you want to track as agentless devices."
-    ),
-    "OS Patches": (
-        "Operating system patch management. View pending Windows/macOS/Linux updates for online devices. "
-        "Select a device from the dropdown, view available patches, and deploy them. "
-        "Patches run via the device agent — the device must be online."
-    ),
-    "Software Patches": (
-        "Third-party software update management. View outdated software on enrolled devices. "
-        "Select a device, view software with available updates, and deploy updates via winget. "
-        "Agent-managed devices only (agentless/mobile devices are excluded)."
-    ),
-    "Scripts": (
-        "Script library for remote execution. Run built-in PowerShell scripts (disk cleanup, defrag, temp clean, etc.) "
-        "or create and upload custom scripts. Select a device and click Run. View execution history and output."
-    ),
-    "Remote Terminal": (
-        "Remote terminal sessions for direct command-line access to managed devices. "
-        "SSH for Linux/macOS, RDP for Windows. Connect by selecting a device and clicking Connect. "
-        "Requires the device to be online and the technician role or higher."
-    ),
-    "Disk Management": (
-        "Disk usage analysis and cleanup for managed devices. "
-        "Select a device to view disk space breakdown. Run cleanup tasks to free space. "
-        "Schedule automatic cleanup for recurring maintenance."
-    ),
-    "Maintenance": (
-        "Scheduled maintenance task management. "
-        "Run or schedule tasks like disk defrag, temp file cleanup, Windows Update, and system optimisation. "
-        "Tasks are dispatched to the device agent and run in the background."
-    ),
-    "Automation": (
-        "Automation rule builder. Create rules that trigger actions automatically based on conditions "
-        "(e.g. alert triggered → run script, device offline → create ticket). "
-        "Enable/disable rules. View rule execution history."
-    ),
-    "Reports": (
-        "Business reporting. Generate device health reports, patch compliance reports, ticket summary reports, "
-        "and billing reports. Reports are exported as CSV. "
-        "Select report type, date range, and optional customer filter, then click Generate."
-    ),
-    "Billing": (
-        "Invoice and billing management. View monthly recurring revenue (MRR), create invoices, "
-        "mark invoices as paid, add line items. Stripe integration available for online payment links. "
-        "Admin and technician access required."
-    ),
-    "Admin Panel": (
-        "System administration. Manage users (create, edit, delete, set roles, force password change). "
-        "View and change organisation name, logo, and branding. "
-        "Copy the agent enrollment token for deploying new agents. "
-        "Manage subscription settings. Admin or superadmin access required."
-    ),
-    "My Profile": (
-        "User account settings. Change your display name, update your password, "
-        "enable or disable two-factor authentication (MFA/TOTP). "
-        "View your current role and account details."
-    ),
-    "Client Portal": (
-        "Client self-service portal. Clients can view their own tickets and submit new support requests. "
-        "This view is restricted to the client role — technicians and admins use the main Tickets page."
-    ),
-    "Client Tickets": (
-        "Client ticket view. Submit new tickets, view existing tickets, "
-        "add comments, and track resolution status. Limited to the client's own tickets."
-    ),
-    "App Center": (
-        "Installed software inventory across all managed devices. "
-        "Select a device to view all software installed on it, including version numbers and publishers. "
-        "Useful for auditing software compliance and identifying unauthorised installations."
-    ),
-}
-
-_ROLE_CAPABILITIES = {
-    "viewer": (
-        "read-only access — can view the dashboard, devices, alerts, tickets, customers, and reports "
-        "but CANNOT create, edit, delete, or run any actions"
-    ),
-    "technician": (
-        "operational access — can manage devices, run scripts, deploy patches, handle tickets, "
-        "acknowledge and resolve alerts, use remote terminal, view reports and billing. "
-        "Cannot manage users, change org settings, or access admin functions"
-    ),
-    "admin": (
-        "full access — all technician capabilities plus user management, org branding, "
-        "billing management, enrollment token management, and all admin panel functions"
-    ),
-    "superadmin": (
-        "full system access — all admin capabilities plus platform-level superadmin controls. "
-        "The superadmin account cannot be deleted or modified by other users"
-    ),
-    "client": (
-        "client portal access — can only view and create support tickets for their own organisation. "
-        "Cannot access monitoring, devices, alerts, scripts, or admin functions"
-    ),
-}
-
-# ── Suggested quick actions per page ─────────────────────────────────────────
-_PAGE_ACTIONS = {
-    "Overview":          ["View open alerts", "Check offline devices", "Create a ticket"],
-    "Tickets":           ["Create a new ticket", "Filter by priority", "Assign a ticket"],
-    "Customers":         ["Add a new customer", "Search for a customer"],
-    "Devices":           ["Filter devices by OS", "Run a script on a device", "View device metrics"],
-    "Alerts":            ["Acknowledge an alert", "Resolve an alert", "Create an alert rule"],
-    "Network Discovery": ["Start a network scan", "Save a discovered device", "What is an agentless device?"],
-    "OS Patches":        ["Deploy OS patches", "Check patch status", "What devices need updates?"],
-    "Software Patches":  ["Scan a device for updates", "Deploy a software update"],
-    "Scripts":           ["Run a built-in script", "Create a custom script", "View run history"],
-    "Remote Terminal":   ["Connect to a device", "Difference between SSH and RDP"],
-    "Disk Management":   ["Run a disk cleanup", "View disk usage", "Schedule cleanup"],
-    "Maintenance":       ["Run a maintenance task now", "Schedule a recurring task"],
-    "Automation":        ["Create an automation rule", "Enable or disable a rule"],
-    "Reports":           ["Generate a report", "Download report as CSV"],
-    "Billing":           ["Create an invoice", "Mark an invoice as paid", "Add a billing item"],
-    "Admin Panel":       ["Add a new user", "Change organisation name", "Get enrollment token"],
-    "My Profile":        ["Change my password", "Enable two-factor authentication"],
-    "Client Tickets":   ["Submit a new ticket", "View ticket status", "Add a comment"],
-    "App Center":       ["View installed software on a device", "Check software versions", "Find a specific app"],
-}
+_MAX_TOOL_ITERATIONS = int(os.getenv("AI_ASSISTANT_MAX_TOOL_ITERATIONS", "4"))
+_MAX_TOKENS = int(os.getenv("AI_ASSISTANT_MAX_TOKENS", "900"))
+_HISTORY_TURNS = int(os.getenv("AI_ASSISTANT_HISTORY_TURNS", "10"))
 
 
-def _build_system_prompt(role: str, page: str, context: dict) -> str:
-    role_desc = _ROLE_CAPABILITIES.get(role, "standard platform user")
-    page_desc = _PAGE_INFO.get(page, "a page in the Remote Management System")
+def _agentic_enabled() -> bool:
+    return os.getenv("AI_ASSISTANT_AGENTIC_ENABLED", "true").lower() != "false"
 
-    ctx_lines = [f"- {k}: {v}" for k, v in context.items() if k and v is not None]
-    has_live_data = bool(ctx_lines) and not (len(ctx_lines) == 1 and "navigation_only" in str(ctx_lines[0]))
-    ctx_text = "\n".join(ctx_lines) if ctx_lines else "No specific context data available."
 
-    base = f"""You are the AI Assistant embedded in Remote Management System (RMS) — a professional Remote Monitoring & Management platform similar to NinjaOne and ConnectWise. Your sole job is to help users navigate and use this platform effectively.
+def _per_user_key():
+    try:
+        uid = get_jwt_identity()
+        if uid:
+            return f"user:{uid}"
+    except Exception:
+        pass
+    return get_remote_address()
 
-USER ROLE: {role}
-ROLE PERMISSIONS: {role_desc}
 
-CURRENT PAGE: {page}
-PAGE PURPOSE: {page_desc}
+def _build_ctx() -> ToolCtx:
+    claims = get_jwt()
+    role = claims.get("role", "viewer")
+    uid = get_jwt_identity()
+    customer_id = None
+    if role == "client":
+        user = db.session.get(User, uid)
+        customer_id = user.customer_id if user else None
+    return ToolCtx(user_id=uid, role=role, customer_id=customer_id)
 
-LIVE CONTEXT (current state of the page):
-{ctx_text}
 
-RESPONSE RULES:
-1. Be concise and direct. 2-4 sentences for simple questions; numbered steps for how-to guides.
-2. Always refer to UI elements by their exact names as the user would see them (button labels, tab names, section headings).
-3. ONLY describe features that exist in this system. Never invent pages, buttons, API endpoints, or settings that aren't real.
-4. Respect the user's role: if a feature requires a higher role, say so clearly (e.g. "This requires admin access").
-5. For viewer roles: never suggest create, edit, delete, or run actions — guide them to what they CAN see.
-6. If asked something unrelated to this RMM platform, say: "I can only help with navigating this system. For other questions, please contact your administrator."
-7. Use plain language. Assume the user may be new to RMM tools — avoid jargon unless explaining it.
-8. For multi-step tasks, number the steps clearly.
-9. If the live context shows a problem (e.g. offline devices, critical alerts), proactively mention the most urgent action first.
-10. {"If you do not see specific numbers in LIVE CONTEXT above, do NOT state or estimate any counts, percentages, or status values — say: 'I don't have live data for this page right now. I can describe the UI, but check the page directly for current values.'" if not has_live_data else "You have live context data — use it. Do not contradict it or invent additional values."}
-11. Never state specific numbers (device counts, alert counts, revenue figures) unless they appear explicitly in LIVE CONTEXT.
-12. For any action that modifies, deletes, or executes something, end your response with: "Verify this step before proceeding."
-13. When you are uncertain about any detail, say "I'm not certain — verify with your administrator or documentation." Never present uncertain information as fact."""
+def _get_or_create_conversation(user_id: str, page: str) -> AiConversation:
+    conv = (
+        AiConversation.query
+        .filter_by(user_id=user_id, is_archived=False)
+        .order_by(AiConversation.updated_at.desc())
+        .first()
+    )
+    if conv:
+        conv.page = page
+        return conv
+    conv = AiConversation(user_id=user_id, page=page)
+    db.session.add(conv)
+    db.session.flush()
+    return conv
 
-    if page in _RESTRICTED_PAGES:
-        base += """
 
-RESTRICTED MODE — HIGH-RISK PAGE:
-- You are in navigation-only mode. This page can execute commands on remote devices.
-- NEVER suggest any commands, scripts, terminal inputs, shell syntax, or code of any kind.
-- NEVER complete or continue partial commands the user pastes.
-- NEVER recommend running, executing, or pasting anything in the terminal or script fields.
-- If asked for a command or script, respond exactly: "I can't suggest commands on this page — consult your documentation or administrator for safe command references."
-- Only answer: how to navigate the UI, what buttons/fields do, how to connect/disconnect, what permissions are needed."""
+def _load_history_messages(conversation_id: str) -> list:
+    rows = (
+        AiMessage.query
+        .filter_by(conversation_id=conversation_id)
+        .filter(AiMessage.role.in_(("user", "assistant")))
+        .order_by(AiMessage.created_at.desc())
+        .limit(_HISTORY_TURNS)
+        .all()
+    )
+    rows.reverse()
+    return [{"role": r.role, "content": r.content} for r in rows]
 
-    return base
+
+def _audit(user_id, action, resource_type, resource_id, payload):
+    try:
+        db.session.add(AuditLog(
+            user_id=user_id, action=action, resource_type=resource_type,
+            resource_id=str(resource_id)[:36] if resource_id else None,
+            ip_address=request.remote_addr, payload=payload,
+        ))
+        db.session.commit()
+    except Exception:
+        log.exception("AI assistant audit log write failed")
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
 
 
 @assistant_bp.route("/chat", methods=["POST"])
 @jwt_required()
-@limiter.limit("30 per minute")
+@limiter.limit("30 per minute", key_func=_per_user_key)
 def chat():
     if os.getenv("AI_ASSISTANT_ENABLED", "true").lower() == "false":
         return jsonify({"error": "AI assistant is disabled for this organisation"}), 503
@@ -246,14 +117,12 @@ def chat():
     message = (body.get("message") or "").strip()
     page = str(body.get("page") or "Overview")[:60]
     raw_context = body.get("context") or {}
-    raw_history = body.get("history") or []
 
     if not message:
         return jsonify({"error": "message is required"}), 400
     if len(message) > 1000:
         message = message[:1000]
 
-    # Sanitise context keys/values
     safe_context = {
         str(k)[:60]: str(v)[:300]
         for k, v in raw_context.items()
@@ -262,66 +131,223 @@ def chat():
 
     role = get_jwt().get("role", "viewer")
 
-    system_prompt = _build_system_prompt(role, page, safe_context)
+    # ── Server-side page authorization (previously prompt-text-only) ─────────
+    allowed_roles = _PAGE_ALLOWED_ROLES.get(page)
+    if allowed_roles and role != "superadmin" and role not in allowed_roles:
+        return jsonify({"error": "Insufficient permissions for this page"}), 403
 
-    # Build message list (cap at last 10 turns to limit token spend)
-    messages = []
-    for turn in raw_history[-10:]:
-        r = turn.get("role", "")
-        c = (turn.get("content") or "")[:600]
-        if r in ("user", "assistant") and c.strip():
-            messages.append({"role": r, "content": c})
+    # ── Inbound danger-pattern scan (previously outbound-reply-only) ─────────
+    inbound_warning = any(p.search(message) for p in _DANGER_PATTERNS)
+
+    agentic = _agentic_enabled()
+    ctx = _build_ctx()
+    conversation = _get_or_create_conversation(ctx.user_id, page)
+
+    system_prompt = build_system_prompt(role, page, safe_context, agentic)
+    messages = _load_history_messages(conversation.id)
     messages.append({"role": "user", "content": message})
+
+    db.session.add(AiMessage(conversation_id=conversation.id, role="user", content=message,
+                              contains_warning=inbound_warning))
+    db.session.commit()
+
+    tools = tools_for_page(page, agentic)
+    tool_calls_log = []
+    pending_action = None
+    final_text = None
 
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
         model = os.getenv("AI_ASSISTANT_MODEL", "claude-haiku-4-5-20251001")
-        resp = client.messages.create(
-            model=model,
-            max_tokens=900,
-            system=system_prompt,
-            messages=messages,
-        )
-        reply = resp.content[0].text if resp.content else "I couldn't generate a response. Please try again."
+
+        for _ in range(_MAX_TOOL_ITERATIONS):
+            create_kwargs = dict(model=model, max_tokens=_MAX_TOKENS, system=system_prompt, messages=messages)
+            if tools:
+                create_kwargs["tools"] = tools
+            resp = client.messages.create(**create_kwargs)
+
+            assistant_blocks = []
+            for b in resp.content:
+                btype = getattr(b, "type", None)
+                if btype == "tool_use":
+                    assistant_blocks.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
+                else:
+                    assistant_blocks.append({"type": "text", "text": getattr(b, "text", "")})
+            messages.append({"role": "assistant", "content": assistant_blocks})
+
+            if resp.stop_reason != "tool_use":
+                final_text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+                break
+
+            tool_results = []
+            staged_this_round = False
+            for block in resp.content:
+                if getattr(block, "type", None) != "tool_use":
+                    continue
+                tool_calls_log.append({"tool_name": block.name, "input": block.input, "tool_use_id": block.id})
+                if block.name in READ_TOOLS:
+                    result = execute_read_tool(block.name, block.input or {}, ctx)
+                    tool_results.append({"type": "tool_result", "tool_use_id": block.id,
+                                          "content": json.dumps(result, default=str)})
+                else:
+                    pending_action = stage_mutating_tool(block.name, block.input or {}, ctx,
+                                                          conversation.id, block.id)
+                    tool_results.append({"type": "tool_result", "tool_use_id": block.id,
+                                          "content": json.dumps({"status": "pending_user_confirmation",
+                                                                  "summary": pending_action.summary})})
+                    staged_this_round = True
+
+            messages.append({"role": "user", "content": tool_results})
+            if staged_this_round:
+                # Do exactly one more turn so Claude can acknowledge the staged action in
+                # text, then stop — never let it loop past a staged mutation unattended.
+                create_kwargs["messages"] = messages
+                resp2 = client.messages.create(**create_kwargs)
+                final_text = "".join(b.text for b in resp2.content if getattr(b, "type", None) == "text")
+                break
+        else:
+            final_text = "I need more steps than allowed to complete this — please narrow your request."
+
+        if not final_text:
+            final_text = "I couldn't generate a response. Please try again."
     except Exception as exc:
         exc_name = type(exc).__name__
+        db.session.rollback()
         if "AuthenticationError" in exc_name or "Authentication" in str(exc):
             return jsonify({"error": "AI service configuration error — check ANTHROPIC_API_KEY"}), 503
         if "RateLimitError" in exc_name or "rate_limit" in str(exc).lower():
             return jsonify({"error": "AI service is busy. Please try again in a moment."}), 429
+        log.exception("AI assistant chat failed")
         return jsonify({"error": "AI assistant temporarily unavailable"}), 503
 
-    # ── Post-process: strip code blocks on restricted pages ───────────────────
+    reply = final_text
+
     if page in _RESTRICTED_PAGES:
         reply = _CODE_BLOCK_RE.sub("[code removed — command suggestions are disabled on this page]", reply)
 
-    # ── Danger pattern detection ──────────────────────────────────────────────
-    contains_warning = any(p.search(reply) for p in _DANGER_PATTERNS)
-    if contains_warning:
+    contains_warning = inbound_warning or any(p.search(reply) for p in _DANGER_PATTERNS)
+    if pending_action and pending_action.contains_warning:
+        contains_warning = True
+    if contains_warning and not (pending_action and pending_action.contains_warning):
         reply = (
             "**CAUTION:** This response references a potentially destructive operation. "
             "Do not execute without supervisor review.\n\n" + reply
         )
 
-    # ── Audit log (fire-and-forget — never block the response) ───────────────
-    try:
-        user_id = get_jwt_identity()
-        db.session.add(AuditLog(
-            user_id=user_id,
-            action="ai_assistant_chat",
-            resource_type="page",
-            resource_id=page[:36],
-            ip_address=request.remote_addr,
-            payload={"msg_len": len(message), "contains_warning": contains_warning},
-        ))
-        db.session.commit()
-    except Exception:
-        log.exception("AI assistant audit log write failed")
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
+    db.session.add(AiMessage(conversation_id=conversation.id, role="assistant", content=reply,
+                              tool_calls=tool_calls_log or None, contains_warning=contains_warning))
+    db.session.commit()
+
+    _audit(ctx.user_id, "ai_assistant_chat", "page", page,
+           {"msg_len": len(message), "contains_warning": contains_warning, "tool_calls": len(tool_calls_log)})
 
     suggested = _PAGE_ACTIONS.get(page, [])
-    return jsonify({"reply": reply, "suggested_actions": suggested, "contains_warning": contains_warning})
+    resp_body = {
+        "reply": reply,
+        "suggested_actions": suggested,
+        "contains_warning": contains_warning,
+        "conversation_id": conversation.id,
+    }
+    if pending_action:
+        resp_body["pending_action"] = {
+            "id": pending_action.id,
+            "tool_name": pending_action.tool_name,
+            "summary": pending_action.summary,
+            "contains_warning": pending_action.contains_warning,
+            "expires_at": pending_action.expires_at.isoformat(),
+        }
+    return jsonify(resp_body)
+
+
+@assistant_bp.route("/conversation", methods=["GET"])
+@jwt_required()
+def get_conversation():
+    uid = get_jwt_identity()
+    conv = (
+        AiConversation.query
+        .filter_by(user_id=uid, is_archived=False)
+        .order_by(AiConversation.updated_at.desc())
+        .first()
+    )
+    if not conv:
+        return jsonify({"conversation_id": None, "messages": []}), 200
+    msgs = (
+        AiMessage.query.filter_by(conversation_id=conv.id)
+        .order_by(AiMessage.created_at.asc())
+        .limit(200)
+        .all()
+    )
+    return jsonify({"conversation_id": conv.id, "messages": [m.to_dict() for m in msgs]}), 200
+
+
+@assistant_bp.route("/conversation", methods=["DELETE"])
+@jwt_required()
+def clear_conversation():
+    uid = get_jwt_identity()
+    conv = (
+        AiConversation.query
+        .filter_by(user_id=uid, is_archived=False)
+        .order_by(AiConversation.updated_at.desc())
+        .first()
+    )
+    if conv:
+        conv.is_archived = True
+        db.session.commit()
+    return jsonify({"message": "Conversation cleared"}), 200
+
+
+@assistant_bp.route("/actions/<action_id>/confirm", methods=["POST"])
+@jwt_required()
+@limiter.limit("30 per minute", key_func=_per_user_key)
+def confirm_action(action_id):
+    uid = get_jwt_identity()
+    pending = AiPendingAction.query.filter_by(id=action_id, user_id=uid).first()
+    if not pending:
+        return jsonify({"error": "Pending action not found"}), 404
+    if pending.status != "pending":
+        return jsonify({"error": f"Action already {pending.status}"}), 409
+
+    expires_at = pending.expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at < datetime.now(timezone.utc):
+        pending.status = "expired"
+        db.session.commit()
+        return jsonify({"error": "This action has expired — ask the assistant to try again"}), 409
+
+    ctx = _build_ctx()
+    result, err = execute_pending_action(pending, ctx)
+    if err:
+        pending.status = "failed"
+        pending.result = {"error": err[0]}
+        db.session.commit()
+        return jsonify({"error": err[0]}), err[1]
+
+    pending.status = "confirmed"
+    pending.result = result
+    pending.resolved_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+    _audit(uid, "ai_tool_call", "ai_pending_action", pending.id,
+           {"tool_name": pending.tool_name, "contains_warning": pending.contains_warning,
+            "conversation_id": pending.conversation_id})
+
+    return jsonify({"status": "confirmed", "result": result}), 200
+
+
+@assistant_bp.route("/actions/<action_id>/deny", methods=["POST"])
+@jwt_required()
+@limiter.limit("30 per minute", key_func=_per_user_key)
+def deny_action(action_id):
+    uid = get_jwt_identity()
+    pending = AiPendingAction.query.filter_by(id=action_id, user_id=uid).first()
+    if not pending:
+        return jsonify({"error": "Pending action not found"}), 404
+    if pending.status != "pending":
+        return jsonify({"error": f"Action already {pending.status}"}), 409
+
+    pending.status = "denied"
+    pending.resolved_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return jsonify({"status": "denied"}), 200

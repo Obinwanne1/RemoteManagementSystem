@@ -6,6 +6,7 @@ import {
   HardDrive, Wrench, MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import AiAssistant from './AiAssistant';
 
 interface NavItem { to: string; label: string; icon: React.ReactNode; roles?: string[] }
 
@@ -116,6 +117,8 @@ export default function Layout() {
       <main className="flex-1 overflow-y-auto">
         <Outlet />
       </main>
+
+      <AiAssistant />
     </div>
   );
 }

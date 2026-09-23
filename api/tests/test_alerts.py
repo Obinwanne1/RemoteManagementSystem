@@ -232,3 +232,69 @@ class TestAlertActions:
             assert r.status_code == 404
         finally:
             delete_user(app, uid)
+
+    # ── Security-gap regression: acknowledge/resolve previously had NO role check
+    # and NO audit logging at all — any authenticated user of any role could act on
+    # any alert. Fixed via services/alert_service.py. ─────────────────────────────
+
+    def test_viewer_cannot_acknowledge_alert(self, app, client):
+        uid, email, pw = create_user(app, role="viewer")
+        cust = _make_customer(app)
+        dev = _make_device(app, cust.id)
+        alert = _make_alert(app, dev.id)
+        try:
+            tok = login(client, email, pw).get_json()["access_token"]
+            r = client.post(f"/api/alerts/{alert.id}/acknowledge", headers=auth_headers(tok))
+            assert r.status_code == 403
+        finally:
+            from extensions import db
+            from models.alert import Alert
+            Alert.query.filter_by(device_id=dev.id).delete()
+            db.session.delete(dev)
+            db.session.delete(cust)
+            db.session.commit()
+            delete_user(app, uid)
+
+    def test_client_cannot_resolve_alert(self, app, client):
+        cust = _make_customer(app)
+        dev = _make_device(app, cust.id)
+        alert = _make_alert(app, dev.id)
+        from extensions import db
+        from models.user import User
+        email = f"client_{uuid.uuid4().hex[:8]}@test.local"
+        u = User(email=email, full_name="Client", role="client", is_active=True, customer_id=cust.id)
+        u.set_password("TestPassword@1!")
+        db.session.add(u)
+        db.session.commit()
+        try:
+            tok = login(client, email, "TestPassword@1!").get_json()["access_token"]
+            r = client.post(f"/api/alerts/{alert.id}/resolve", headers=auth_headers(tok))
+            assert r.status_code == 403
+        finally:
+            from models.alert import Alert
+            Alert.query.filter_by(device_id=dev.id).delete()
+            db.session.delete(dev)
+            db.session.delete(cust)
+            User.query.filter_by(id=u.id).delete()
+            db.session.commit()
+
+    def test_acknowledge_alert_writes_audit_log(self, app, client):
+        uid, email, pw = create_user(app, role="technician")
+        cust = _make_customer(app)
+        dev = _make_device(app, cust.id)
+        alert = _make_alert(app, dev.id)
+        try:
+            tok = login(client, email, pw).get_json()["access_token"]
+            r = client.post(f"/api/alerts/{alert.id}/acknowledge", headers=auth_headers(tok))
+            assert r.status_code == 200
+            from models.audit import AuditLog
+            assert AuditLog.query.filter_by(action="alert_acknowledge", resource_type="alert",
+                                             resource_id=alert.id).count() == 1
+        finally:
+            from extensions import db
+            from models.alert import Alert
+            Alert.query.filter_by(device_id=dev.id).delete()
+            db.session.delete(dev)
+            db.session.delete(cust)
+            db.session.commit()
+            delete_user(app, uid)

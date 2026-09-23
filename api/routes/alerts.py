@@ -1,12 +1,12 @@
 import json
-from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, Response
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from extensions import db
 from models.alert import Alert, AlertRule
 from utils.validation import validate_body
-from utils.cache import cache_get_raw, cache_set_raw, cache_delete_pattern
+from utils.cache import cache_get_raw, cache_set_raw
 from schemas.alerts import AlertRuleCreateSchema, AlertRuleUpdateSchema
+from services.alert_service import acknowledge_alert_service, resolve_alert_service
 
 alerts_bp = Blueprint("alerts", __name__)
 
@@ -144,21 +144,20 @@ def list_alerts():
 @alerts_bp.route("/alerts/<alert_id>/acknowledge", methods=["POST"])
 @jwt_required()
 def acknowledge_alert(alert_id):
-    alert = db.get_or_404(Alert, alert_id)
-    alert.status = "acknowledged"
-    alert.acknowledged_by = get_jwt_identity()
-    alert.acknowledged_at = datetime.now(timezone.utc)
-    db.session.commit()
-    cache_delete_pattern("rmm:alerts:list:*")
-    return jsonify(alert.to_dict()), 200
+    claims = get_jwt()
+    uid = get_jwt_identity()
+    result, err = acknowledge_alert_service(uid, claims.get("role"), claims.get("customer_id"), alert_id)
+    if err:
+        return jsonify({"error": err[0]}), err[1]
+    return jsonify(result), 200
 
 
 @alerts_bp.route("/alerts/<alert_id>/resolve", methods=["POST"])
 @jwt_required()
 def resolve_alert(alert_id):
-    alert = db.get_or_404(Alert, alert_id)
-    alert.status = "resolved"
-    alert.resolved_at = datetime.now(timezone.utc)
-    db.session.commit()
-    cache_delete_pattern("rmm:alerts:list:*")
-    return jsonify(alert.to_dict()), 200
+    claims = get_jwt()
+    uid = get_jwt_identity()
+    result, err = resolve_alert_service(uid, claims.get("role"), claims.get("customer_id"), alert_id)
+    if err:
+        return jsonify({"error": err[0]}), err[1]
+    return jsonify(result), 200

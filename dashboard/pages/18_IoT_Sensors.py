@@ -70,7 +70,7 @@ else:
 
 if not all_devices:
     st.info("No devices found for this customer.")
-    render_ai_assistant("IoT Sensors page — no devices found")
+    render_ai_assistant("IoT Sensors", {"status": "no devices found for this customer"})
     st.stop()
 
 # ── Device selector ───────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ if not readings:
         "No sensor readings for this device in the selected window. "
         "Make sure the IoT agent is running or the device is publishing to MQTT."
     )
-    render_ai_assistant("IoT Sensors page — no readings")
+    render_ai_assistant("IoT Sensors", {"device": selected_device_name, "status": "no readings in selected window"})
     st.stop()
 
 # Group by sensor_type
@@ -170,8 +170,8 @@ for tab_obj, (tab_name, sensor_types) in zip(tab_objects, SENSOR_TABS):
             st.caption(f"Source: {', '.join(sorted(sources))} · {len(sreadings)} readings")
             st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
-render_ai_assistant(
-    f"IoT Sensors page — device: {selected_device_name}, "
-    f"sensor types: {list(by_type.keys())}, "
-    f"window: {hours_opt}h"
-)
+render_ai_assistant("IoT Sensors", {
+    "device": selected_device_name,
+    "sensor_types": ", ".join(by_type.keys()),
+    "window_hours": hours_opt,
+})

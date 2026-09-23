@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from extensions import db, limiter
@@ -9,7 +9,6 @@ from models.audit import AuditLog
 from utils.validation import validate_body
 from schemas.tickets import TicketCreateSchema, TicketUpdateSchema, CommentCreateSchema
 from utils.notifications import (
-    send_ticket_created_client,
     send_ticket_assigned,
     send_ticket_resolved_client,
     send_ticket_comment_to_client,
@@ -26,38 +25,6 @@ def _require_role(*roles):
     if claims.get("role") not in roles:
         return jsonify({"error": "Insufficient permissions"}), 403
     return None
-
-
-_SLA_HOURS = {"critical": 4, "high": 8, "medium": 24, "low": 72}
-_sla_cache: dict = {}  # {(customer_id, priority): (hours, expires_at)}
-_SLA_CACHE_TTL = 120  # seconds
-
-
-def _sla_resolution_hours(priority: str, customer_id: str) -> int:
-    """Look up SLA resolution hours: customer-specific policy first, then global, then hardcoded.
-    Results cached in-process for 120s to avoid 2 DB queries per ticket creation."""
-    import time
-    from models.sla_policy import SLAPolicy
-
-    key = (customer_id, priority)
-    entry = _sla_cache.get(key)
-    if entry and entry[1] > time.monotonic():
-        return entry[0]
-
-    hours = None
-    if customer_id:
-        policy = SLAPolicy.query.filter_by(customer_id=customer_id, priority=priority).first()
-        if policy:
-            hours = policy.resolution_hours
-    if hours is None:
-        global_policy = SLAPolicy.query.filter_by(customer_id=None, priority=priority).first()
-        if global_policy:
-            hours = global_policy.resolution_hours
-    if hours is None:
-        hours = _SLA_HOURS.get(priority, 24)
-
-    _sla_cache[key] = (hours, time.monotonic() + _SLA_CACHE_TTL)
-    return hours
 
 
 def _current_claims():
@@ -137,82 +104,29 @@ def list_tickets():
 @limiter.limit("20 per minute")
 @validate_body(TicketCreateSchema)
 def create_ticket():
+    from services.ticket_service import create_ticket_service
     claims = _current_claims()
     role = claims.get("role")
     uid = get_jwt_identity()
-
-    # Client and staff roles can create tickets; viewers cannot
-    if role not in ("admin", "technician", "client", "superadmin"):
-        return jsonify({"error": "Insufficient permissions"}), 403
-
     data = request.get_json(silent=True) or {}
 
+    actor_customer_id = None
     if role == "client":
-        # Auto-populate from client's account; ignore any customer_id in payload
         user = db.session.get(User, uid)
-        if not user or not user.customer_id:
-            return jsonify({"error": "Client account not linked to a customer"}), 400
-        customer_id = user.customer_id
-        source = "client"
-        dept_id = current_app.config.get("HELPDESK_DEPT_ID")
-    else:
-        customer_id = data.get("customer_id")
-        if not customer_id:
-            return jsonify({"error": "customer_id required"}), 400
-        source = data.get("source", "manual")
-        dept_id = data.get("department_id")
+        actor_customer_id = user.customer_id if user else None
 
-    if not data.get("title"):
-        return jsonify({"error": "title required"}), 400
-
-    priority = data.get("priority", "medium")
-    due_date = data.get("due_date") or (
-        datetime.now(timezone.utc) + timedelta(hours=_sla_resolution_hours(priority, customer_id))
+    result, err = create_ticket_service(
+        uid, role, actor_customer_id,
+        title=data.get("title"), description=data.get("description"),
+        customer_id=data.get("customer_id"), device_id=data.get("device_id"),
+        assignee_id=data.get("assignee_id"), priority=data.get("priority", "medium"),
+        status=data.get("status", "open"), alert_id=data.get("alert_id"),
+        department_id=data.get("department_id"), tags=data.get("tags", []),
+        due_date=data.get("due_date"), source=data.get("source", "manual"),
     )
-    ticket = Ticket(
-        title=data["title"],
-        description=data.get("description"),
-        customer_id=customer_id,
-        device_id=data.get("device_id"),
-        assignee_id=data.get("assignee_id"),
-        priority=priority,
-        status=data.get("status", "open"),
-        source=source,
-        alert_id=data.get("alert_id"),
-        department_id=dept_id,
-        due_date=due_date,
-        tags=data.get("tags", []),
-    )
-    db.session.add(ticket)
-    _ticket_audit("CREATE", uid, ticket.id, {"title": ticket.title, "priority": ticket.priority, "source": source})
-    db.session.commit()
-
-    try:
-        if source == "client":
-            creator = db.session.get(User, uid)
-            if creator and creator.email:
-                send_ticket_created_client(ticket.title, ticket.id, ticket.priority, [creator.email])
-        if ticket.assignee_id:
-            assignee = db.session.get(User, ticket.assignee_id)
-            if assignee and assignee.email:
-                send_ticket_assigned(ticket.title, ticket.id, _customer_name(ticket.customer_id),
-                                     ticket.priority, assignee.email)
-    except Exception:
-        current_app.logger.warning("Ticket create notification failed for ticket %s", ticket.id)
-
-    try:
-        from utils.events import publish_event
-        publish_event("new_ticket", {
-            "ticket_id": ticket.id,
-            "title": ticket.title,
-            "priority": ticket.priority,
-            "source": source,
-            "customer": _customer_name(ticket.customer_id),
-        })
-    except Exception:
-        pass
-
-    return jsonify(ticket.to_dict()), 201
+    if err:
+        return jsonify({"error": err[0]}), err[1]
+    return jsonify(result), 201
 
 
 @tickets_bp.route("/<ticket_id>", methods=["GET"])

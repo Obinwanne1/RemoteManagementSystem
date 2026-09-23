@@ -11,6 +11,7 @@ import streamlit as st
 from utils.auth import require_auth, current_user
 from utils.nav import render_sidebar
 from utils.styles import inject_css, badge
+from utils.ai_assistant import render_ai_assistant
 
 st.set_page_config(page_title="Mobile Enrollment — RMM", layout="wide")
 inject_css()
@@ -224,3 +225,5 @@ with tab_ios:
         "or half-built, it's just not real management yet."
     )
     st.markdown('</div>', unsafe_allow_html=True)
+
+render_ai_assistant("Mobile Enrollment", {})

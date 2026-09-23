@@ -4,6 +4,7 @@ from utils.auth import require_auth, logout
 from utils.styles import inject_css, badge, BRAND
 from utils.formatters import fmt_datetime, PRIORITY_COLORS
 from utils.sanitize import esc
+from utils.ai_assistant import render_ai_assistant
 
 STATUS_BADGE_COLORS = {
     "open":        BRAND["danger"],
@@ -142,3 +143,7 @@ else:
         f'This ticket is <b>{status_val}</b> — replies are disabled.</div>',
         unsafe_allow_html=True,
     )
+
+render_ai_assistant("Client Tickets", {
+    "ticket_id": ticket.get("id"), "title": ticket.get("title"), "status": status_val,
+})

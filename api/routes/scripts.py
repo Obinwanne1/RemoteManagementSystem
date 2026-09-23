@@ -1,10 +1,7 @@
-from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from extensions import db, limiter
 from models.script import Script, ScriptRun
-from models.device import Device
-from models.audit import AuditLog
 from utils.validation import validate_body
 from schemas.scripts import ScriptCreateSchema, ScriptUpdateSchema, RunScriptSchema
 
@@ -119,47 +116,17 @@ def delete_script(script_id):
 @limiter.limit("5 per minute")
 @validate_body(RunScriptSchema)
 def run_script(script_id):
-    err = _require_role("admin", "technician")
-    if err:
-        return err
-    script = db.get_or_404(Script, script_id)
-    data = request.get_json(silent=True) or {}
-    device_ids = data.get("device_ids", [])
-    if not device_ids:
-        return jsonify({"error": "device_ids required"}), 400
-
+    from services.script_service import run_script_service
     claims = get_jwt()
-    cid = claims.get("customer_id") if claims.get("role") == "client" else None
-    dq = Device.query.filter(Device.id.in_(device_ids))
-    if cid:
-        dq = dq.filter_by(customer_id=cid)
-    valid_devices = {d.id for d in dq.all()}
-    runs = []
-    for device_id in device_ids:
-        if device_id not in valid_devices:
-            continue
-        run = ScriptRun(
-            script_id=script_id,
-            device_id=device_id,
-            triggered_by=get_jwt_identity(),
-            status="queued",
-            timeout_seconds=data.get("timeout_seconds", 300),
-        )
-        db.session.add(run)
-        runs.append(run)
     uid = get_jwt_identity()
-    db.session.flush()
-    audit = AuditLog(
-        user_id=uid,
-        action="script_run",
-        resource_type="script",
-        resource_id=script_id,
-        ip_address=request.remote_addr,
-        payload={"script_name": script.name, "device_count": len(runs), "device_ids": [r.device_id for r in runs]},
+    data = request.get_json(silent=True) or {}
+    result, err = run_script_service(
+        uid, claims.get("role"), claims.get("customer_id"),
+        script_id, data.get("device_ids", []), data.get("timeout_seconds", 300),
     )
-    db.session.add(audit)
-    db.session.commit()
-    return jsonify({"queued": len(runs), "run_ids": [r.id for r in runs]}), 202
+    if err:
+        return jsonify({"error": err[0]}), err[1]
+    return jsonify(result), 202
 
 
 @scripts_bp.route("/runs", methods=["GET"])

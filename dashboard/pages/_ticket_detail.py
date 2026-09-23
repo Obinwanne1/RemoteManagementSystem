@@ -7,6 +7,7 @@ from utils.nav import render_sidebar
 from utils.styles import inject_css, badge, BRAND, section_header
 from utils.formatters import fmt_datetime, PRIORITY_COLORS
 from utils.sanitize import esc
+from utils.ai_assistant import render_ai_assistant
 
 
 def _sla_badge(ticket: dict) -> str:
@@ -313,3 +314,8 @@ with tab_comments:
             else:
                 st.success("Comment posted.")
                 st.rerun()
+
+render_ai_assistant("Tickets", {
+    "ticket_id": ticket.get("id"), "title": ticket.get("title"),
+    "status": ticket.get("status"), "priority": ticket.get("priority"),
+})
