@@ -28,14 +28,17 @@ def prune_old_data():
     """Delete stale time-series and log data to prevent unbounded disk growth.
 
     Retention policy:
-      - device_metrics : 90 days  (high-volume, ~1 row/min per device)
-      - audit_log      : 365 days (compliance, lower volume)
-      - script_run     : 180 days (execution history)
+      - device_metrics    : 90 days  (high-volume, ~1 row/min per device)
+      - audit_log         : 365 days (compliance, lower volume)
+      - script_run        : 180 days (execution history)
+      - api_usage_events  : 90 days  (usage monitoring detail rows)
+      - api_usage_hourly  : 180 days (already aggregated, cheap to keep longer)
     """
     from extensions import db
     from models.device import DeviceMetrics
     from models.audit import AuditLog
     from models.script import ScriptRun
+    from models.usage import ApiUsageEvent, ApiUsageHourly
 
     with _get_app().app_context():
         now = datetime.now(timezone.utc)
@@ -43,6 +46,8 @@ def prune_old_data():
         metrics_cutoff = now - timedelta(days=90)
         audit_cutoff = now - timedelta(days=365)
         script_cutoff = now - timedelta(days=180)
+        usage_events_cutoff = now - timedelta(days=90)
+        usage_hourly_cutoff = now - timedelta(days=180)
 
         metrics_deleted = DeviceMetrics.query.filter(
             DeviceMetrics.collected_at < metrics_cutoff
@@ -56,14 +61,24 @@ def prune_old_data():
             ScriptRun.triggered_at < script_cutoff
         ).delete(synchronize_session=False)
 
+        usage_events_deleted = ApiUsageEvent.query.filter(
+            ApiUsageEvent.created_at < usage_events_cutoff
+        ).delete(synchronize_session=False)
+
+        usage_hourly_deleted = ApiUsageHourly.query.filter(
+            ApiUsageHourly.bucket_start < usage_hourly_cutoff
+        ).delete(synchronize_session=False)
+
         db.session.commit()
 
         logger.info(
-            "Data pruning complete: metrics=%d audit=%d scripts=%d",
-            metrics_deleted, audit_deleted, script_deleted,
+            "Data pruning complete: metrics=%d audit=%d scripts=%d usage_events=%d usage_hourly=%d",
+            metrics_deleted, audit_deleted, script_deleted, usage_events_deleted, usage_hourly_deleted,
         )
         return {
             "metrics_deleted": metrics_deleted,
             "audit_deleted": audit_deleted,
             "scripts_deleted": script_deleted,
+            "usage_events_deleted": usage_events_deleted,
+            "usage_hourly_deleted": usage_hourly_deleted,
         }

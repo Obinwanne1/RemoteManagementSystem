@@ -653,6 +653,31 @@ class RMMClient:
     def get_agent_update_info(self):
         return self._get("/api/agents/update/info")
 
+    # --- Usage Monitoring (superadmin only) ---
+    def get_usage_summary(self, range: str = "7d"):
+        return self._get("/api/admin/usage/summary", params={"range": range})
+
+    def get_usage_timeseries(self, range: str = "7d", service: str = None, metric: str = "calls"):
+        params = {"range": range, "metric": metric}
+        if service:
+            params["service"] = service
+        return self._get("/api/admin/usage/timeseries", params=params)
+
+    def get_usage_by_feature(self, range: str = "7d", service: str = None):
+        params = {"range": range}
+        if service:
+            params["service"] = service
+        return self._get("/api/admin/usage/by-feature", params=params)
+
+    def get_usage_events(self, **params):
+        return self._get("/api/admin/usage/events", params=params)
+
+    def get_usage_alert_config(self):
+        return self._get("/api/admin/usage/alert-config")
+
+    def update_usage_alert_config(self, data: dict):
+        return self._put("/api/admin/usage/alert-config", data)
+
     # --- Public (no auth) ---
     @staticmethod
     def get_branding() -> dict:

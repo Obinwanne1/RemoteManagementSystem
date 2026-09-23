@@ -259,10 +259,13 @@ def _upsert_agentless_host(ip: str, mac: str | None, vendor: str,
 
 def _run_scan(scan_id: str):
     """Pure scan logic — no Celery, no app context. Called from background thread."""
+    import time as _time
     from extensions import db
     from models.audit import NetworkScan
     from utils.oui import lookup_vendor
+    from utils.usage_tracker import record_event
 
+    _t0 = _time.perf_counter()
     scan = db.session.get(NetworkScan, scan_id)
     if not scan:
         return
@@ -350,6 +353,8 @@ def _run_scan(scan_id: str):
     scan.discovered_hosts = discovered
     scan.new_devices_count = created_count
     db.session.commit()
+    record_event(service="network_scan", feature=f"cidr_scan:{len(hosts_iter)}_hosts", status="success",
+                 latency_ms=int((_time.perf_counter() - _t0) * 1000))
 
 
 # ── Celery tasks (kept for beat schedule / future use) ─────────────────────────
@@ -367,9 +372,12 @@ def ping_agentless_devices(self):
     Ping all known agentless devices and update online/offline status.
     Runs every 5 minutes via Celery beat.
     """
+    import time as _time
     from extensions import db
     from models.device import Device
+    from utils.usage_tracker import record_event
 
+    _t0 = _time.perf_counter()
     with _get_app().app_context():
         now = datetime.now(timezone.utc)
         devices = Device.query.filter_by(is_agentless=True).filter(
@@ -397,3 +405,5 @@ def ping_agentless_devices(self):
                         device.is_online = False
 
         db.session.commit()
+        record_event(service="network_scan", feature=f"agentless_ping:{len(devices)}_devices", status="success",
+                     latency_ms=int((_time.perf_counter() - _t0) * 1000))

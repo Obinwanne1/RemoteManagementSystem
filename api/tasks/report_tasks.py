@@ -84,6 +84,8 @@ def _collect_data(report):
         return _software_inventory(cid)
     elif t == "ticket_summary":
         return _ticket_summary(cid, start, end)
+    elif t == "api_usage":
+        return _api_usage_summary(start, end)
     else:
         return [{"info": f"Unknown template type: {t}"}], ["info"]
 
@@ -208,6 +210,44 @@ def _software_inventory(customer_id):
             "install_date": s.install_date or "",
         }
         for s in q.order_by(InstalledSoftware.device_id, InstalledSoftware.name).all()
+    ]
+    return rows, headers
+
+
+def _api_usage_summary(start, end):
+    """Superadmin-only report — see reports.py's _SUPERADMIN_ONLY_TEMPLATES gate."""
+    from models.usage import ApiUsageEvent
+    from sqlalchemy import func, case
+    from extensions import db
+
+    q = db.select(
+        func.date(ApiUsageEvent.created_at).label("date"),
+        ApiUsageEvent.service,
+        func.count().label("request_count"),
+        func.sum(ApiUsageEvent.input_tokens).label("input_tokens"),
+        func.sum(ApiUsageEvent.output_tokens).label("output_tokens"),
+        func.sum(ApiUsageEvent.estimated_cost_usd).label("estimated_cost_usd"),
+        func.sum(case((ApiUsageEvent.status != "success", 1), else_=0)).label("error_count"),
+    )
+    if start:
+        q = q.where(ApiUsageEvent.created_at >= start)
+    if end:
+        q = q.where(ApiUsageEvent.created_at <= end)
+    q = q.group_by("date", ApiUsageEvent.service).order_by("date", ApiUsageEvent.service)
+
+    headers = ["date", "service", "request_count", "input_tokens", "output_tokens",
+               "estimated_cost_usd", "error_count"]
+    rows = [
+        {
+            "date": str(r.date),
+            "service": r.service,
+            "request_count": r.request_count or 0,
+            "input_tokens": r.input_tokens or 0,
+            "output_tokens": r.output_tokens or 0,
+            "estimated_cost_usd": round(float(r.estimated_cost_usd or 0), 4),
+            "error_count": r.error_count or 0,
+        }
+        for r in db.session.execute(q).all()
     ]
     return rows, headers
 

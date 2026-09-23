@@ -41,14 +41,24 @@ class AndroidManagementClient:
         return {"Authorization": f"Bearer {self._credentials.token}"}
 
     def _request(self, method: str, path: str, params: dict = None, body: dict = None) -> dict:
+        from utils.usage_tracker import record_event
         url = f"{_BASE}/{path}"
-        resp = requests.request(
-            method, url,
-            headers={**self._auth_headers(), "Content-Type": "application/json"},
-            params=params, json=body, timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json() if resp.content else {}
+        _t0 = time.perf_counter()
+        try:
+            resp = requests.request(
+                method, url,
+                headers={**self._auth_headers(), "Content-Type": "application/json"},
+                params=params, json=body, timeout=30,
+            )
+            resp.raise_for_status()
+            record_event(service="android_mdm", feature=path, status="success",
+                         status_code=resp.status_code, latency_ms=int((time.perf_counter() - _t0) * 1000))
+            return resp.json() if resp.content else {}
+        except Exception as exc:
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            record_event(service="android_mdm", feature=path, status="error", status_code=status_code,
+                         latency_ms=int((time.perf_counter() - _t0) * 1000), error=type(exc).__name__)
+            raise
 
     # --- Enterprise binding (one-time setup) ---
 

@@ -2,7 +2,7 @@
 import streamlit as st
 from datetime import date, timedelta
 
-from utils.auth import require_auth
+from utils.auth import require_auth, current_user
 from utils.nav import render_sidebar
 from utils.ai_assistant import render_ai_assistant
 from utils.styles import inject_css, badge, BRAND, stat_card
@@ -31,6 +31,8 @@ TEMPLATE_TYPES = {
     "Software Inventory":     "software_inventory",
     "Ticket Summary":         "ticket_summary",
 }
+if (current_user() or {}).get("role") == "superadmin":
+    TEMPLATE_TYPES["API & Token Usage"] = "api_usage"
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tab_gen, tab_hist = st.tabs(["Generate Report", "Report History"])

@@ -1,11 +1,13 @@
 """ConnectWise Manage REST client (API v3)."""
 import base64
+import time
 import logging
 from datetime import datetime, timezone
 
 import requests
 
 from .base import PSAClient
+from utils.usage_tracker import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -40,20 +42,28 @@ class ConnectWiseClient(PSAClient):
             "Accept": "application/json",
         })
 
+    def _track(self, method: str, path: str, fn):
+        _t0 = time.perf_counter()
+        try:
+            resp = fn()
+            resp.raise_for_status()
+            record_event(service="psa_connectwise", feature=path, status="success",
+                         status_code=resp.status_code, latency_ms=int((time.perf_counter() - _t0) * 1000))
+            return resp.json()
+        except Exception as exc:
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            record_event(service="psa_connectwise", feature=path, status="error", status_code=status_code,
+                         latency_ms=int((time.perf_counter() - _t0) * 1000), error=type(exc).__name__)
+            raise
+
     def _get(self, path: str, params: dict = None) -> list | dict:
-        resp = self._session.get(f"{self._base}{path}", params=params, timeout=TIMEOUT)
-        resp.raise_for_status()
-        return resp.json()
+        return self._track("GET", path, lambda: self._session.get(f"{self._base}{path}", params=params, timeout=TIMEOUT))
 
     def _post(self, path: str, body: dict) -> dict:
-        resp = self._session.post(f"{self._base}{path}", json=body, timeout=TIMEOUT)
-        resp.raise_for_status()
-        return resp.json()
+        return self._track("POST", path, lambda: self._session.post(f"{self._base}{path}", json=body, timeout=TIMEOUT))
 
     def _patch(self, path: str, ops: list) -> dict:
-        resp = self._session.patch(f"{self._base}{path}", json=ops, timeout=TIMEOUT)
-        resp.raise_for_status()
-        return resp.json()
+        return self._track("PATCH", path, lambda: self._session.patch(f"{self._base}{path}", json=ops, timeout=TIMEOUT))
 
     def test_connection(self) -> tuple[bool, str]:
         try:

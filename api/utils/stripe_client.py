@@ -1,6 +1,9 @@
 """Stripe integration — silently no-ops if STRIPE_SECRET_KEY not set."""
 import os
+import time
 import logging
+
+from utils.usage_tracker import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +73,16 @@ def create_checkout_session(invoice, customer_email: str = None) -> tuple:
         if customer_email:
             params["customer_email"] = customer_email
 
+        _t0 = time.perf_counter()
         session = stripe.checkout.Session.create(**params)
+        record_event(service="stripe", feature="create_checkout_session", status="success",
+                     latency_ms=int((time.perf_counter() - _t0) * 1000))
         return session.url, None
 
     except Exception as exc:
         logger.error("Stripe checkout session creation failed: %s", exc)
+        record_event(service="stripe", feature="create_checkout_session", status="error",
+                     error=type(exc).__name__)
         return None, str(exc)
 
 

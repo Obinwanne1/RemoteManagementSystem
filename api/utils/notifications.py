@@ -1,9 +1,12 @@
 """Email notification utility — reads SMTP config from .env."""
 import os
+import time
 import smtplib
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
+from utils.usage_tracker import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +20,7 @@ def _smtp_send(subject: str, body: str, recipients: list, extra_headers: dict = 
     smtp_user = os.getenv("SMTP_USER", "")
     smtp_pass = os.getenv("SMTP_PASSWORD", "")
     smtp_from = os.getenv("SMTP_FROM", smtp_user or "rmm@localhost")
+    _t0 = time.perf_counter()
     try:
         msg = MIMEMultipart()
         msg["From"] = smtp_from
@@ -33,9 +37,13 @@ def _smtp_send(subject: str, body: str, recipients: list, extra_headers: dict = 
             if smtp_user:
                 server.login(smtp_user, smtp_pass)
             server.sendmail(smtp_from, recipients, msg.as_string())
+        record_event(service="smtp", feature=subject[:100], status="success",
+                     latency_ms=int((time.perf_counter() - _t0) * 1000))
         return True
     except Exception as exc:
         logger.warning("SMTP send failed [%s]: %s", subject, exc)
+        record_event(service="smtp", feature=subject[:100], status="error",
+                     latency_ms=int((time.perf_counter() - _t0) * 1000), error=type(exc).__name__)
         return False
 
 

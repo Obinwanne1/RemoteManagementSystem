@@ -30,6 +30,7 @@ A NinjaOne-style Remote Monitoring & Management platform built in-house. Monitor
 | **Database Backup** | Nightly pg_dump via Celery beat, gzip compressed, configurable retention |
 | **API Docs** | Interactive Swagger/OpenAPI 3.0 UI at `/api/docs`, raw spec at `/api/openapi.json` |
 | **Admin** | Audit log, user management, org enrollment token, server IP display, GDPR controls |
+| **Usage Monitoring** | Superadmin-only API/AI-token usage tracking — per-service call counts, token consumption, estimated cost, error rates, trend charts, spike detection with real email/webhook alerts |
 
 ---
 
@@ -203,6 +204,7 @@ Copy `.env.example` to `api/.env` and fill in:
 | `ANTHROPIC_API_KEY` | — | Enables AI Assistant (Claude Haiku 4.5). Omit to disable. |
 | `AI_ASSISTANT_MODEL` | — | Default: `claude-haiku-4-5-20251001` |
 | `AI_ASSISTANT_ENABLED` | — | Default: `true`. Set `false` to hide widget. |
+| `AI_ASSISTANT_COST_PER_1M_INPUT` / `_OUTPUT` | — | $ per 1M tokens, used only to display an estimated cost on the superadmin Usage Monitoring page/report. Defaults: `1.00` / `5.00`. |
 | `BACKUP_DIR` | — | Directory for nightly DB backups. Default: `../backups` |
 | `BACKUP_RETAIN_DAYS` | — | Days to keep backup files. Default: `7` |
 | `SENTRY_DSN` | — | Sentry error tracking DSN. Omit to disable. Free tier: 10K errors/month. |
@@ -261,6 +263,8 @@ After first startup the superadmin account is auto-seeded from your `.env`:
 | 18 | IoT Sensors — sensor readings, charts, MQTT/SNMP status | Admin/Tech |
 | 19 | Mobile Enrollment — Android MDM integration setup, policy push, QR enrollment | Admin/Tech |
 | 20 | Client Portal — self-service ticket submission + "Enroll My Phone" (client role only) | Client |
+| 21 | Client Tickets — client-facing ticket detail/comments | Client |
+| 22 | Usage Monitoring — API/AI token usage, cost estimates, trends, spike alerts | Superadmin only |
 
 ---
 
@@ -272,7 +276,7 @@ After first startup the superadmin account is auto-seeded from your `.env`:
 | **technician** | Operational — scripts, patches, tickets, maintenance |
 | **admin** | Full — users, billing, audit log, system config |
 | **client** | Customer-facing — own tickets only, read-only device view |
-| **superadmin** | System-level — bypasses all role checks, cannot be deleted via UI |
+| **superadmin** | System-level — bypasses all role checks, cannot be deleted via UI. The *only* role with access to Usage Monitoring — not even `admin` can see it |
 
 ---
 
@@ -305,6 +309,7 @@ All routes prefixed `/api/`. JWT required unless noted.
 - **SLA Policies:** `/sla-policies/`, `/sla-policies/<id>`
 - **AI Assistant:** `/assistant/chat`
 - **Admin:** `/admin/users`, `/admin/org-token`, `/admin/server_ips`, `/admin/users/<id>/gdpr-export`, `/admin/users/<id>/gdpr-delete`
+- **Usage Monitoring (superadmin only):** `/admin/usage/summary`, `/admin/usage/timeseries`, `/admin/usage/by-feature`, `/admin/usage/events`, `/admin/usage/alert-config`
 - **API Docs:** `/api/docs` (Swagger UI), `/api/openapi.json` (raw spec)
 - **Health:** `/health` — `{"status": "ok", "db": true, "redis": true, "version": "1.0.0"}`
 

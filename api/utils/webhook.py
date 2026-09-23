@@ -12,9 +12,12 @@ notification_channels JSON format (per AlertRule):
 Any combination of channel types is valid. Multiple URLs per type are supported.
 """
 import logging
+import time
 from datetime import datetime, timezone
 
 import requests
+
+from utils.usage_tracker import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -109,16 +112,28 @@ def _post_generic(url: str, rule_name: str, hostname: str, message: str, severit
 
 
 def _send(url: str, payload: dict, channel_type: str) -> None:
+    service = f"webhook_{channel_type.lower()}"
+    feature = payload.get("rule") or payload.get("event") or channel_type
+    _t0 = time.perf_counter()
     try:
         resp = requests.post(url, json=payload, timeout=_TIMEOUT)
+        latency_ms = int((time.perf_counter() - _t0) * 1000)
         if not resp.ok:
             logger.warning(
                 "%s webhook failed [%s]: HTTP %d — %s",
                 channel_type, url[:60], resp.status_code, resp.text[:200],
             )
+            record_event(service=service, feature=feature, status="error",
+                         status_code=resp.status_code, latency_ms=latency_ms)
         else:
             logger.debug("%s webhook delivered to %s", channel_type, url[:60])
+            record_event(service=service, feature=feature, status="success",
+                         status_code=resp.status_code, latency_ms=latency_ms)
     except requests.exceptions.Timeout:
         logger.warning("%s webhook timed out after %ds [%s]", channel_type, _TIMEOUT, url[:60])
+        record_event(service=service, feature=feature, status="timeout",
+                     latency_ms=int((time.perf_counter() - _t0) * 1000))
     except requests.exceptions.RequestException as exc:
         logger.warning("%s webhook error [%s]: %s", channel_type, url[:60], exc)
+        record_event(service=service, feature=feature, status="error",
+                     latency_ms=int((time.perf_counter() - _t0) * 1000), error=str(exc)[:200])

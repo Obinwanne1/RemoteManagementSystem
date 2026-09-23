@@ -3,7 +3,7 @@ import {
   Monitor, LayoutDashboard, Computer, Bell, Ticket,
   Users, LogOut, Shield, Terminal, Zap, FileText,
   DollarSign, Settings, Network, Package, UserCircle,
-  HardDrive, Wrench, MessageSquare,
+  HardDrive, Wrench, MessageSquare, ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import AiAssistant from './AiAssistant';
@@ -28,6 +28,7 @@ const NAV: NavItem[] = [
   { to: '/disk',             label: 'Disk Management',   icon: <HardDrive size={18} />,  roles: ['superadmin','admin','technician'] },
   { to: '/maintenance',      label: 'Maintenance',        icon: <Wrench size={18} />,     roles: ['superadmin','admin','technician'] },
   { to: '/client-portal',    label: 'My Tickets',         icon: <MessageSquare size={18} />, roles: ['client'] },
+  { to: '/usage-monitoring', label: 'Usage Monitoring',   icon: <ShieldAlert size={18} />, roles: ['superadmin'] },
   { to: '/profile',          label: 'Profile',            icon: <UserCircle size={18} /> },
 ];
 

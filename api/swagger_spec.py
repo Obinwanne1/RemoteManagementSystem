@@ -859,6 +859,75 @@ OPENAPI_SPEC = {
             }
         },
 
+        # ── Usage Monitoring (superadmin only) ───────────────────────────────
+        "/api/admin/usage/summary": {
+            "get": {
+                "tags": ["Usage Monitoring"],
+                "summary": "Per-service usage totals + live anomaly flags",
+                "description": "Superadmin only — 403 for every other role, including admin.",
+                "parameters": [
+                    {"name": "range", "in": "query", "schema": {"type": "string", "enum": ["today", "7d", "30d"], "default": "7d"}},
+                ],
+                "responses": {
+                    "200": {"description": "Per-service calls/tokens/estimated cost/error rate + totals + anomalies"},
+                    "403": {"description": "Not superadmin"},
+                },
+            }
+        },
+        "/api/admin/usage/timeseries": {
+            "get": {
+                "tags": ["Usage Monitoring"],
+                "summary": "Bucketed usage series for charts",
+                "description": "Superadmin only.",
+                "parameters": [
+                    {"name": "range", "in": "query", "schema": {"type": "string", "enum": ["today", "7d", "30d"], "default": "7d"}},
+                    {"name": "service", "in": "query", "schema": {"type": "string"}},
+                    {"name": "metric", "in": "query", "schema": {"type": "string", "enum": ["calls", "tokens", "cost"], "default": "calls"}},
+                ],
+                "responses": {"200": {"description": "Time-bucketed points"}, "403": {"description": "Not superadmin"}},
+            }
+        },
+        "/api/admin/usage/by-feature": {
+            "get": {
+                "tags": ["Usage Monitoring"],
+                "summary": "Top features/pages/users by usage",
+                "description": "Superadmin only.",
+                "parameters": [
+                    {"name": "range", "in": "query", "schema": {"type": "string", "enum": ["today", "7d", "30d"], "default": "7d"}},
+                    {"name": "service", "in": "query", "schema": {"type": "string"}},
+                ],
+                "responses": {"200": {"description": "Feature/user breakdown"}, "403": {"description": "Not superadmin"}},
+            }
+        },
+        "/api/admin/usage/events": {
+            "get": {
+                "tags": ["Usage Monitoring"],
+                "summary": "Paginated raw usage event drill-down",
+                "description": "Superadmin only. error_message is a truncated exception message only — never a raw response body or secret.",
+                "parameters": [
+                    {"name": "service", "in": "query", "schema": {"type": "string"}},
+                    {"name": "status", "in": "query", "schema": {"type": "string"}},
+                    {"name": "page", "in": "query", "schema": {"type": "integer", "default": 1}},
+                    {"name": "per_page", "in": "query", "schema": {"type": "integer", "default": 50}},
+                ],
+                "responses": {"200": {"description": "Paginated event list", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Pagination"}}}}, "403": {"description": "Not superadmin"}},
+            }
+        },
+        "/api/admin/usage/alert-config": {
+            "get": {
+                "tags": ["Usage Monitoring"],
+                "summary": "Read the usage spike-alert configuration",
+                "description": "Superadmin only.",
+                "responses": {"200": {"description": "is_enabled, spike_multiplier, notification_channels"}, "403": {"description": "Not superadmin"}},
+            },
+            "put": {
+                "tags": ["Usage Monitoring"],
+                "summary": "Update the usage spike-alert configuration",
+                "description": "Superadmin only. Fires real email/Slack/Teams/webhook notifications hourly when enabled and a service exceeds spike_multiplier times its 7-day baseline.",
+                "responses": {"200": {"description": "Updated config"}, "403": {"description": "Not superadmin"}},
+            },
+        },
+
         # ── Health ────────────────────────────────────────────────────────────
         "/api/health": {
             "get": {
@@ -890,5 +959,6 @@ OPENAPI_SPEC = {
         {"name": "Billing", "description": "Invoice and subscription management"},
         {"name": "Reports", "description": "Report generation and download"},
         {"name": "System", "description": "Infrastructure health checks"},
+        {"name": "Usage Monitoring", "description": "API/AI-token usage, cost estimates, and spike alerts — superadmin only"},
     ],
 }

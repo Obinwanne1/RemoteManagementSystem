@@ -1,5 +1,6 @@
 import os
 import io
+import time
 import smtplib
 import logging
 from datetime import datetime, timezone, timedelta
@@ -15,6 +16,7 @@ from models.billing import Invoice
 from models.customer import Customer
 from models.device import Device
 from utils.validation import validate_body
+from utils.usage_tracker import record_event
 from schemas.billing import GenerateInvoiceSchema, InvoiceStatusSchema
 
 logger = logging.getLogger(__name__)
@@ -204,6 +206,7 @@ def send_invoice_email(invoice_id):
 <p style="color:#6B7B6B;font-size:12px">— {company_name}</p>
 """
 
+    _t0 = time.perf_counter()
     try:
         msg = MIMEMultipart()
         msg["From"] = smtp_from
@@ -226,10 +229,14 @@ def send_invoice_email(invoice_id):
             server.sendmail(smtp_from, [customer.email], msg.as_string())
 
         logger.info("Invoice %s emailed to %s", inv_num, customer.email)
+        record_event(service="smtp", feature="invoice_email", status="success",
+                     latency_ms=int((time.perf_counter() - _t0) * 1000))
         return jsonify({"message": f"Invoice {inv_num} sent to {customer.email}"}), 200
 
     except Exception as exc:
         logger.warning("Failed to email invoice %s: %s", inv_num, exc)
+        record_event(service="smtp", feature="invoice_email", status="error",
+                     latency_ms=int((time.perf_counter() - _t0) * 1000), error=type(exc).__name__)
         return jsonify({"error": f"Email delivery failed: {exc}"}), 500
 
 

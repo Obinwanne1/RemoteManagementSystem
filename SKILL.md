@@ -2,7 +2,7 @@
 
 > NinjaOne-style Remote Monitoring & Management system.
 > Stack: Flask API + Streamlit dashboard + Python agent + PostgreSQL + Redis/Celery.
-> All 9 phases + A/B/C optimization pass complete.
+> All 9 phases + A/B/C optimization pass + D/E/F/G/H post-ship phases complete.
 
 ---
 
@@ -1664,3 +1664,150 @@ Add to `.env.example` (see full comment block there — real credentials are upl
 # Admin -> Mobile Enrollment and stored encrypted in the DB.
 # Requires: google-auth>=2.30.0 in api/requirements.txt
 ```
+
+## Phase H — AI Assistant Services Refactor + API/Token Usage Monitoring
+
+Two related pieces of work: (1) moving the AI Assistant's prompt/tool logic into a proper services layer with durable conversation history, and (2) a superadmin-only feature to see and control API/AI-token usage after it grew unexpectedly high with no visibility into the cause.
+
+### H.1 AI Assistant refactor — `api/services/`
+
+Extract everything out of `routes/assistant.py` that isn't route-handling:
+
+```python
+# api/services/ai_prompt.py
+_PAGE_INFO = {...}              # per-page description injected into the system prompt
+_ROLE_CAPABILITIES = {...}      # per-role capability summary
+_PAGE_ALLOWED_ROLES = {...}     # server-side 403 BEFORE calling Claude — not just prompt text.
+                                 # Pages not listed here are reachable by any authenticated role.
+_RESTRICTED_PAGES = {...}       # nav-only mode, code blocks stripped from replies
+_DANGER_PATTERNS = [...]        # regexes that trigger a CAUTION banner
+def build_system_prompt(role, page, context, agentic): ...
+
+# api/services/ai_tools.py
+TOOL_DEFINITIONS = [...]        # Claude tool-use schema
+READ_TOOLS, MUTATING_TOOLS = {...}, {...}
+_TOOL_RATE_LIMITS = {"run_script": (5, 60), ...}   # (limit, window_seconds) per tool
+def tools_for_page(page, agentic): ...
+def execute_read_tool(name, input, ctx): ...        # dispatches to *_service.py
+def stage_mutating_tool(name, input, ctx, conv_id, tool_use_id): ...   # creates AiPendingAction, never executes
+def execute_pending_action(action_id, ctx): ...      # re-derives ctx from the CURRENT JWT at confirm-time
+```
+
+Business logic the tools call into (generic, reusable, no Anthropic dependency): `alert_service.py`, `script_service.py`, `ticket_service.py`, `fleet_query_service.py`, `device_query_service.py`.
+
+### H.2 Conversation persistence — migration `p7q8r9s0t1u2`
+
+```python
+class AiConversation(db.Model):   # ai_conversations — one active per (user_id, page)
+    user_id, page, is_archived, created_at, updated_at
+
+class AiMessage(db.Model):        # ai_messages
+    conversation_id, role, content, tool_calls (JSON), contains_warning, created_at
+
+class AiPendingAction(db.Model):  # ai_pending_actions — staged mutating tool call
+    conversation_id, user_id, tool_name, tool_input (JSON), tool_use_id, summary,
+    contains_warning, status (pending|confirmed|denied|expired|failed), result (JSON),
+    expires_at, resolved_at
+```
+
+New routes: `POST /api/assistant/actions/<id>/confirm`, `POST /api/assistant/actions/<id>/deny` — a staged mutating call sits until one of these is hit or `expires_at` passes (`AI_ASSISTANT_ACTION_TTL_SECONDS`, default 300s).
+
+### H.3 `api/utils/rate_limit.py`
+
+```python
+def check_and_increment(key: str, limit: int, window_seconds: int) -> bool:
+    """Redis INCR+EXPIRE. Returns True if under limit (and increments). Fails OPEN if Redis is down."""
+```
+
+Needed because tool execution calls service functions **directly**, bypassing Flask-Limiter's route decorators — this is the per-user/per-tool limiter for that path.
+
+### H.4 Usage Monitoring — why
+
+Not a feature anyone asked for in the abstract — it was built because usage (API calls, and especially AI tokens) had grown unexpectedly high with zero visibility into which service, page, or user was responsible. Requirement: visible to the Super Administrator **only** — not even a regular Admin.
+
+### H.5 Database — migration `q8r9s0t1u2v3` (chains after `p7q8r9s0t1u2`)
+
+```python
+class ApiUsageEvent(db.Model):     # api_usage_events — one row per instrumented call
+    service      # ai_assistant | stripe | psa_connectwise | psa_autotask | android_mdm |
+                 # email_imap | network_scan | webhook_slack/teams/generic | smtp
+    feature, user_id (nullable — null = system/celery-triggered)
+    input_tokens, output_tokens, estimated_cost_usd   # only populated for ai_assistant
+    status, status_code, latency_ms
+    error_message   # truncated exception text ONLY — never a raw response body/header/secret
+    created_at
+    # Index (service, created_at) for aggregation queries
+
+class ApiUsageHourly(db.Model):    # api_usage_hourly — durable rollup, NOT one row per request
+    bucket_start, endpoint, method, request_count, error_count, total_latency_ms
+    # UniqueConstraint(bucket_start, endpoint, method)
+
+class UsageAlertConfig(db.Model):  # usage_alert_config — singleton row, id="default"
+    is_enabled, spike_multiplier (default 3.0), notification_channels (JSON, same shape as AlertRule's)
+    # Deliberately its OWN table, NOT an AlertRule row — an AlertRule row would be
+    # visible to admin/technician via the Alerts page, leaking this feature's existence.
+```
+
+### H.6 `api/utils/usage_tracker.py` — the one shared utility
+
+```python
+def record_event(service, feature=None, user_id=None, input_tokens=None, output_tokens=None,
+                  status="success", status_code=None, latency_ms=None, error=None, model=None):
+    """Writes one ApiUsageEvent row. FAILS OPEN — never raises. Computes estimated_cost_usd
+    from AI_ASSISTANT_COST_PER_1M_INPUT/_OUTPUT when tokens are given and the model matches."""
+
+def record_internal_api_call(endpoint, method, status_code, latency_ms):
+    """Redis HINCRBY on rmm:usage:hourly:{YYYYMMDDHH} — too high-volume for one DB row/request.
+    Called from api/app.py's EXISTING _log_request after_request hook (reuses its duration_ms)."""
+
+def compute_anomalies(spike_multiplier=3.0):
+    """Compares the last COMPLETED hour per service against the trailing-7-day
+    same-hour-of-day average. Shared by the /summary endpoint AND the beat task below —
+    one implementation, not two that could drift."""
+```
+
+Instrumentation call sites (same `record_event(...)` pattern at each): both `client.messages.create()` calls in `routes/assistant.py` (reads `resp.usage` — guard with `getattr(resp, "usage", None)` first, since test mocks and possibly some SDK paths won't have it), `utils/webhook.py::_send`, `utils/notifications.py::_smtp_send` + `routes/billing.py`'s invoice-email block, `utils/stripe_client.py`, `utils/android_mgmt.py::_request`, `utils/psa/connectwise.py` + `utils/psa/autotask.py` (`_get`/`_post`/`_patch`/`_put`), `tasks/email_tasks.py::poll_support_inbox` (one event per run, not per message), `tasks/network_tasks.py` (one event per scan run, not per host — too granular).
+
+### H.7 `api/routes/usage.py` — `/api/admin/usage`, superadmin ONLY
+
+```python
+def _require_superadmin():
+    # UNLIKE every other route file's _require_role(), this has NO admin bypass:
+    if get_jwt().get("role") != "superadmin":
+        return jsonify({"error": "Super Administrator access required"}), 403
+```
+Routes: `GET /summary?range=today|7d|30d`, `GET /timeseries?range=&service=&metric=calls|tokens|cost`, `GET /by-feature?range=&service=`, `GET /events?service=&status=&page=`, `GET`/`PUT /alert-config`.
+
+### H.8 `api/tasks/usage_tasks.py` — two new hourly beat entries
+
+```python
+persist_hourly_usage_rollup()   # reads the PREVIOUS hour's Redis hash, upserts into ApiUsageHourly
+detect_usage_anomaly()          # if UsageAlertConfig.is_enabled: compute_anomalies() then call
+                                 # send_alert_notification()/dispatch_alert_webhooks() DIRECTLY with
+                                 # device_hostname="System / API Usage" — NO Alert/AlertRule row
+                                 # created (Alert.device_id is NOT NULL; not worth migrating for this)
+```
+Add both to `celery_app.py`'s `beat_schedule` (3600.0s each) and `"tasks.usage_tasks"` to `include=[...]`.
+
+### H.9 Retention + Reports integration
+
+`tasks/maintenance_tasks.py::prune_old_data` — add `ApiUsageEvent` (90-day cutoff) and `ApiUsageHourly` (180-day cutoff) to the existing delete-and-count pattern.
+
+`tasks/report_tasks.py` — new `"api_usage"` branch in `_collect_data()`. `routes/reports.py` — hide the `api_usage` template from list/generate/get for any non-superadmin (`_SUPERADMIN_ONLY_TEMPLATES = ("api_usage",)`).
+
+### H.10 UI — both surfaces, superadmin-only exactly
+
+`dashboard/pages/22_Usage_Monitoring.py` + `frontend/src/pages/UsageMonitoringPage.tsx` — guard is `role != "superadmin"` (not `not in ("admin", "superadmin")` like every other admin page). Nav entry in its own gated block in both `dashboard/utils/nav.py` and `frontend/src/components/Layout.tsx` (`roles: ['superadmin']`), never folded into an existing `("admin", "superadmin")` conditional.
+
+### H.11 New Environment Variables
+
+```
+AI_ASSISTANT_COST_PER_1M_INPUT=1.00
+AI_ASSISTANT_COST_PER_1M_OUTPUT=5.00
+# $ per 1M tokens for the configured AI_ASSISTANT_MODEL — drives the "Estimated cost"
+# figure on the superadmin Usage Monitoring page/report only. Not authoritative billing data.
+```
+
+### H.12 Tests
+
+`api/tests/test_assistant.py` (14 tests) — kill switches, page auth, tool dispatch, confirm/deny staging, danger-pattern detection, persistence. `api/tests/test_usage.py` (13 tests) — RBAC (admin → 403 on every route, superadmin → 200), `record_event` cost calculation, `compute_anomalies` threshold logic, hourly rollup persistence (mock Redis via `patch("utils.cache._get_client", ...)`), retention pruning. Full suite: 146/146 passing.

@@ -80,7 +80,7 @@ def create_app(config_name=None):
     with app.app_context():
         from models import user, device, customer, alert, ticket, patch, script, automation, report, billing, audit  # noqa
         from models import org_settings, user_session, department, terminal, sla_policy, psa_integration  # noqa
-        from models import mdm_integration, ai_conversation  # noqa
+        from models import mdm_integration, ai_conversation, usage  # noqa
         try:
             from utils.builtin_scripts import ensure_builtin_scripts
             ensure_builtin_scripts()
@@ -202,6 +202,7 @@ def create_app(config_name=None):
     from routes.sensors import sensors_bp
     from routes.psa import psa_bp
     from routes.mobile_mdm import mobile_mdm_bp
+    from routes.usage import usage_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(agents_bp, url_prefix="/api/agents")
@@ -227,6 +228,7 @@ def create_app(config_name=None):
     app.register_blueprint(sensors_bp, url_prefix="/api/sensors")
     app.register_blueprint(psa_bp, url_prefix="/api/psa")
     app.register_blueprint(mobile_mdm_bp, url_prefix="/api/mdm")
+    app.register_blueprint(usage_bp, url_prefix="/api/admin/usage")
 
     import redis as redis_lib
     _redis_client = redis_lib.from_url(
@@ -267,6 +269,11 @@ def create_app(config_name=None):
             "[%s] %s %s %s %.1fms",
             rid, request.method, request.path, response.status_code, duration_ms,
         )
+        try:
+            from utils.usage_tracker import record_internal_api_call
+            record_internal_api_call(request.endpoint, request.method, response.status_code, duration_ms)
+        except Exception:
+            pass
         response.headers["X-Request-ID"] = rid
         # Dashboard tokens ride in the URL (?tok=/&rtok=) to survive Streamlit
         # page reloads — see TECHNICAL_GUIDE.md Security Model. This stops them

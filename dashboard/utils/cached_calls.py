@@ -93,3 +93,27 @@ def cached_recent_events(_token: str, limit: int = 20):
     if not client:
         return None, "Not authenticated"
     return client.get_recent_events(limit=limit)
+
+
+@st.cache_data(ttl=45, show_spinner=False)
+def cached_usage_summary(_token: str, **params):
+    client = get_client()
+    if not client:
+        return None, "Not authenticated"
+    return client.get_usage_summary(**params)
+
+
+@st.cache_data(ttl=45, show_spinner=False)
+def cached_usage_timeseries(_token: str, **params):
+    client = get_client()
+    if not client:
+        return None, "Not authenticated"
+    return client.get_usage_timeseries(**params)
+
+
+@st.cache_data(ttl=45, show_spinner=False)
+def cached_usage_by_feature(_token: str, **params):
+    client = get_client()
+    if not client:
+        return None, "Not authenticated"
+    return client.get_usage_by_feature(**params)

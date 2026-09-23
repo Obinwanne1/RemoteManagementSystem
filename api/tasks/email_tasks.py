@@ -3,6 +3,7 @@ import imaplib
 import email as email_lib
 import os
 import re
+import time
 import logging
 from datetime import datetime, timezone, timedelta
 from email.header import decode_header as _raw_decode
@@ -147,6 +148,9 @@ def poll_support_inbox(self):
         send_ticket_comment_to_client,
     )
 
+    from utils.usage_tracker import record_event
+    _t0 = time.perf_counter()
+
     with _get_app().app_context():
         try:
             mail = imaplib.IMAP4_SSL(imap_host, imap_port)
@@ -157,6 +161,8 @@ def poll_support_inbox(self):
             msg_ids = msg_ids_raw[0].split()
             if not msg_ids:
                 mail.logout()
+                record_event(service="email_imap", feature="poll_support_inbox", status="success",
+                             latency_ms=int((time.perf_counter() - _t0) * 1000))
                 return
 
             logger.info("Email poller: %d unseen message(s)", len(msg_ids))
@@ -252,7 +258,11 @@ def poll_support_inbox(self):
                     db.session.rollback()
 
             mail.logout()
+            record_event(service="email_imap", feature="poll_support_inbox", status="success",
+                         latency_ms=int((time.perf_counter() - _t0) * 1000))
 
         except Exception as exc:
             logger.exception("poll_support_inbox failed")
+            record_event(service="email_imap", feature="poll_support_inbox", status="error",
+                         latency_ms=int((time.perf_counter() - _t0) * 1000), error=type(exc).__name__)
             raise self.retry(exc=exc, countdown=120)

@@ -8,7 +8,7 @@ Version 1.0 — Built exclusively for Faiyke-AI Agency
 **Prepared for:** Faiyke-AI Agency
 **System URL:** http://localhost:8501
 **API URL:** http://localhost:5000
-**Document version:** 7.0 (React Frontend, Cross-Platform Agent, Screenshot Capture, IoT/MQTT, Performance Hardening, Binary Deployment)
+**Document version:** 9.0 (React Frontend, Cross-Platform Agent, Screenshot Capture, IoT/MQTT, Performance Hardening, Binary Deployment, Mobile Device Management, API & Token Usage Monitoring)
 
 ---
 
@@ -131,6 +131,9 @@ This document is written in plain language. Technical jargon is explained when f
 - Chapter 53: Remote Screenshot Viewer
 - Chapter 54: IoT Sensor Monitoring
 - Chapter 55: Mobile Device Management — Managing Phones Without an Agent
+
+**PART XIII — GOVERNANCE AND COST CONTROL**
+- Chapter 56: API & Token Usage Monitoring — Finding and Controlling Runaway Usage
 
 **Appendix A: Glossary**
 **Appendix B: Quick Reference Cards**
@@ -5608,6 +5611,56 @@ Not available yet, and this is a business decision rather than something that ca
 
 ---
 
-*End of RMM System Complete Handbook — Version 8.0*
+# PART XIII — GOVERNANCE AND COST CONTROL
+
+## Chapter 56: API & Token Usage Monitoring — Finding and Controlling Runaway Usage
+
+### What it is
+
+A read-only monitoring page that shows exactly how many API calls and AI tokens the system is using, broken down by service and feature, with an estimated dollar cost for the AI Assistant's usage. It was added because usage had grown unexpectedly high and there was no way to see what was driving it. It is strictly limited to the **Super Administrator** account — even a regular Admin cannot see it or know it exists.
+
+### Who uses it
+
+Only the Super Administrator. This is deliberate: token/API usage and its cost are treated as sensitive operational information, one level above what a regular Admin sees.
+
+### Where to find it
+
+Log in as the Super Administrator account. A new **SUPERADMIN** section appears at the bottom of the sidebar with one link: **Usage Monitoring**. No other role sees this section at all — it does not appear greyed-out or hidden-but-clickable, it simply is not in their sidebar.
+
+### What the page shows
+
+- **Totals** for Today / 7 days / 30 days: total API calls, total AI tokens used, estimated dollar cost, and error rate.
+- **By Service** — a table/chart breaking usage down by exactly what generated it: the AI Assistant, Stripe billing, ConnectWise/Autotask PSA sync, Android device management, outbound Slack/Teams/webhook notifications, email, network scans, and all internal API traffic (from the dashboard, the agents, and the React app).
+- **Trend chart** — the same numbers over time, so a sudden jump is easy to spot visually.
+- **Top Features & Users** — which specific page, integration action, or staff member is responsible for the largest share of calls or tokens.
+- **Spike alert banner** — if any service's usage in the last hour is unusually high compared to its normal pattern over the past week, a red banner appears at the top of the page automatically.
+
+### Setting up real spike alerts
+
+By default the system only shows spikes visually on this page. If you also want a real email or Slack/Teams notification the moment a spike happens (for example, overnight when nobody is watching the dashboard):
+
+1. Open **Usage Monitoring** → **Spike Alert Configuration**.
+2. Turn on **Send real notifications on usage spikes**.
+3. Set the **spike multiplier** — how many times above the normal average counts as a spike (3× is a sensible starting point).
+4. Enter the email address(es) and/or Slack/Teams webhook URL(s) that should be notified.
+5. Click **Save**.
+
+This check runs automatically once an hour. It reuses the exact same notification system that device alerts already use — it just does not create a "device alert," since a usage spike is not tied to any one device.
+
+### Getting a downloadable report
+
+Click **Generate API & Token Usage Report** on the Usage Monitoring page. Like every other report in this system, it is generated in the background and appears in **Reports → Report History** shortly afterward as a downloadable CSV — broken down by day and by service. This report type, like the page itself, only appears for the Super Administrator; it does not show up in the report list for anyone else, even if they know the report exists.
+
+### What this does and does not track
+
+**Does track:** every AI Assistant conversation's token usage and an estimated cost, every call this system makes out to Stripe/PSA/Android device management/webhooks/email/network scanning, and the overall volume of every request hitting the API (from the dashboard, agents, and the React frontend).
+
+**Does not track:** the contents of any conversation or request, any API key, password, or other secret, or anything beyond a short error message when something fails. Nothing sensitive is ever stored by this feature — only counts, timings, and which service/page/user was involved.
+
+**Cost figures are estimates, not bills.** The dollar amount shown is calculated from a configurable price-per-token setting in the system's configuration file, not from an actual invoice — it is meant to give a sense of scale, not to be used for accounting.
+
+---
+
+*End of RMM System Complete Handbook — Version 9.0*
 
 *For support with this guide, contact your system administrator or development team.*

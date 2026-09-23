@@ -6,6 +6,7 @@ via AiPendingAction and require an explicit confirm/deny call — never auto-exe
 """
 import os
 import json
+import time
 import logging
 from datetime import datetime, timezone
 
@@ -17,6 +18,7 @@ from extensions import db, limiter
 from models.audit import AuditLog
 from models.ai_conversation import AiConversation, AiMessage, AiPendingAction
 from models.user import User
+from utils.usage_tracker import record_event
 from services.ai_prompt import (
     build_system_prompt, _RESTRICTED_PAGES, _CODE_BLOCK_RE, _DANGER_PATTERNS,
     _PAGE_ACTIONS, _PAGE_ALLOWED_ROLES,
@@ -165,7 +167,15 @@ def chat():
             create_kwargs = dict(model=model, max_tokens=_MAX_TOKENS, system=system_prompt, messages=messages)
             if tools:
                 create_kwargs["tools"] = tools
+            _t0 = time.perf_counter()
             resp = client.messages.create(**create_kwargs)
+            _usage = getattr(resp, "usage", None)
+            record_event(
+                service="ai_assistant", feature=page, user_id=ctx.user_id,
+                input_tokens=getattr(_usage, "input_tokens", None) if _usage else None,
+                output_tokens=getattr(_usage, "output_tokens", None) if _usage else None,
+                status="success", latency_ms=int((time.perf_counter() - _t0) * 1000), model=model,
+            )
 
             assistant_blocks = []
             for b in resp.content:
@@ -203,7 +213,15 @@ def chat():
                 # Do exactly one more turn so Claude can acknowledge the staged action in
                 # text, then stop — never let it loop past a staged mutation unattended.
                 create_kwargs["messages"] = messages
+                _t0 = time.perf_counter()
                 resp2 = client.messages.create(**create_kwargs)
+                _usage2 = getattr(resp2, "usage", None)
+                record_event(
+                    service="ai_assistant", feature=page, user_id=ctx.user_id,
+                    input_tokens=getattr(_usage2, "input_tokens", None) if _usage2 else None,
+                    output_tokens=getattr(_usage2, "output_tokens", None) if _usage2 else None,
+                    status="success", latency_ms=int((time.perf_counter() - _t0) * 1000), model=model,
+                )
                 final_text = "".join(b.text for b in resp2.content if getattr(b, "type", None) == "text")
                 break
         else:
@@ -214,6 +232,8 @@ def chat():
     except Exception as exc:
         exc_name = type(exc).__name__
         db.session.rollback()
+        record_event(service="ai_assistant", feature=page, user_id=ctx.user_id,
+                     status="error", error=f"{exc_name}: {str(exc)[:200]}")
         if "AuthenticationError" in exc_name or "Authentication" in str(exc):
             return jsonify({"error": "AI service configuration error — check ANTHROPIC_API_KEY"}), 503
         if "RateLimitError" in exc_name or "rate_limit" in str(exc).lower():

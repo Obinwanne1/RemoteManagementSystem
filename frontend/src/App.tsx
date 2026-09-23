@@ -20,6 +20,7 @@ import ProfilePage from './pages/ProfilePage';
 import DiskManagementPage from './pages/DiskManagementPage';
 import MaintenancePage from './pages/MaintenancePage';
 import ClientPortalPage from './pages/ClientPortalPage';
+import UsageMonitoringPage from './pages/UsageMonitoringPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="disk" element={<DiskManagementPage />} />
           <Route path="maintenance" element={<MaintenancePage />} />
           <Route path="client-portal" element={<ClientPortalPage />} />
+          <Route path="usage-monitoring" element={<UsageMonitoringPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

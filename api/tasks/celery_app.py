@@ -49,6 +49,7 @@ def make_celery(app=None):
             "tasks.anomaly_tasks",
             "tasks.psa_tasks",
             "tasks.mdm_tasks",
+            "tasks.usage_tasks",
         ],
     )
 
@@ -132,6 +133,14 @@ def make_celery(app=None):
             "mdm-sync-every-5-min": {
                 "task": "tasks.mdm_tasks.sync_all_mdm_integrations",
                 "schedule": 300.0,
+            },
+            "persist-usage-rollup-hourly": {
+                "task": "tasks.usage_tasks.persist_hourly_usage_rollup",
+                "schedule": 3600.0,
+            },
+            "detect-usage-anomaly-hourly": {
+                "task": "tasks.usage_tasks.detect_usage_anomaly",
+                "schedule": 3600.0,
             },
         },
     )

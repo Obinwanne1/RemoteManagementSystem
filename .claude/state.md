@@ -1,7 +1,15 @@
 # RMM Build State
 
 ## Current Phase
-**ALL PHASES COMPLETE — Commercial Audit (Phase F) done. Docs updated. Production-readiness diagnostic done 2026-09-21. Mobile Device Management (Android) added 2026-09-22.**
+**ALL PHASES COMPLETE — Commercial Audit (Phase F) done. Docs updated. Production-readiness diagnostic done 2026-09-21. Mobile Device Management (Android) added 2026-09-22. AI Assistant Phase 1 refactor + API/Token Usage Monitoring added 2026-09-23.**
+
+## 2026-09-23 — AI Assistant Phase 1 Refactor + API & Token Usage Monitoring
+- **AI Assistant refactor**: prompt/tool logic moved out of `routes/assistant.py` into `services/ai_prompt.py` + `services/ai_tools.py`; durable conversation history (`AiConversation`/`AiMessage`, migration `p7q8r9s0t1u2`); mutating tool calls staged via `AiPendingAction`, require explicit confirm/deny — never auto-executed; `utils/rate_limit.py` for per-tool rate limits on the agentic path. 14 new tests (`test_assistant.py`).
+- **Usage Monitoring** (why: usage had gotten unexpectedly high with no visibility into the cause): new `ApiUsageEvent`/`ApiUsageHourly`/`UsageAlertConfig` tables (migration `q8r9s0t1u2v3`); `utils/usage_tracker.py` records every AI Assistant call's token count + estimated cost, every outbound integration call (Stripe, PSA, Android MDM, webhooks, SMTP, IMAP poll, network scan), and every internal Flask API request (via a Redis counter rolled into an hourly table by Celery beat).
+- `api/routes/usage.py` (`/api/admin/usage`) is **strictly superadmin-only** — no admin bypass, unlike every other route in this app. `tasks/usage_tasks.py::detect_usage_anomaly` (hourly beat) fires real email/webhook notifications on a usage spike via the existing `send_alert_notification`/`dispatch_alert_webhooks` primitives (deliberately does not create an `Alert`/`AlertRule` row — `Alert.device_id` is `NOT NULL`, not worth migrating).
+- Dashboard `22_Usage_Monitoring.py` + React `UsageMonitoringPage.tsx`, both gated to `role == "superadmin"` exactly. New `api_usage` Reports template, hidden from non-superadmin.
+- 13 new tests (`test_usage.py`); full suite 146/146 passing. Committed as two separate commits (refactor, then usage monitoring) since they were independent work sharing a few touched files (`api/app.py`, `.env.example`, `dashboard/utils/api_client.py`, `frontend/src/components/Layout.tsx`).
+- Docs updated: CLAUDE.md, README.md, TECHNICAL_GUIDE.md, HANDOVER_GUIDE.md, SKILL.md, this file. PDFs not regenerated (pre-existing open TODO, see below).
 
 ## 2026-09-22 — Mobile Device Management (Android)
 - Real phone management (lock/wipe/lost-mode/compliance) via Google's Android Management API — no custom agent on the phone. `MdmIntegration`/`MobileEnrollment` models + migration `o6p7q8r9s0t1`; `api/routes/mobile_mdm.py` (`/api/mdm`); `api/tasks/mdm_tasks.py` (5-min beat sync); `api/utils/android_mgmt.py`; `api/utils/crypto.py` (promoted out of `psa_integration.py`, now shared).

@@ -29,6 +29,7 @@ _PAGE_ALLOWED_ROLES = {
     "Admin Panel": {"admin", "superadmin"},
     "Remote Terminal": {"admin", "technician", "superadmin"},
     "Automation": {"admin", "technician", "superadmin"},
+    "Usage Monitoring": {"superadmin"},
 }
 
 # ── Patterns that flag text as potentially destructive ────────────────────────────
@@ -157,6 +158,12 @@ _PAGE_INFO = {
         "Mobile device management setup (Android, via Google's Android Management API). "
         "Configure MDM integrations, generate enrollment QR codes for new phones, and view/manage "
         "enrolled devices (lock, reboot, reset password, wipe, lost mode). Admin or technician access required."
+    ),
+    "Usage Monitoring": (
+        "API and AI token usage monitoring — per-service call counts, token consumption, estimated cost, "
+        "error rates, trends, and spike/anomaly detection across the AI assistant and every outbound "
+        "integration (Stripe, PSA, MDM, webhooks, email, network scans). "
+        "Superadmin-only — not visible to admin or any other role."
     ),
 }
 

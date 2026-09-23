@@ -114,6 +114,10 @@ def render_sidebar() -> None:
             st.page_link("pages/08_Reports.py",      label="Reports",           icon=":material/bar_chart:")
             st.page_link("pages/09_Billing.py",      label="Billing",           icon=":material/payments:")
 
+        if role == "superadmin":
+            nav_section("SUPERADMIN")
+            st.page_link("pages/22_Usage_Monitoring.py", label="Usage Monitoring", icon=":material/monitoring:")
+
         nav_section("ACCOUNT")
         st.page_link("pages/17_Profile.py", label="My Profile", icon=":material/person:")
 

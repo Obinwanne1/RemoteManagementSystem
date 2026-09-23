@@ -2,7 +2,7 @@
 
 **Audience:** Developers, system architects, and advanced administrators  
 **Stack:** Flask 3 · SQLAlchemy 2 · Celery 5 · Streamlit 1.58 · React 19/Vite 8/TypeScript · PostgreSQL 15 · Redis/Memurai  
-**Version:** 1.4 (React frontend, cross-platform agent, screenshot pipeline, IoT/MQTT, performance hardening, Android MDM)
+**Version:** 1.5 (React frontend, cross-platform agent, screenshot pipeline, IoT/MQTT, performance hardening, Android MDM, AI Assistant services refactor, API/token usage monitoring)
 
 ---
 
@@ -27,6 +27,7 @@
 17. [IoT / MQTT / SNMP](#17-iot--mqtt--snmp)
 18. [Test Suite](#18-test-suite)
 19. [Mobile Device Management](#19-mobile-device-management)
+20. [API & Token Usage Monitoring](#20-api--token-usage-monitoring)
 
 ---
 
@@ -2129,3 +2130,72 @@ Enrollment consent is checked server-side, not just hidden in the UI: `create_en
 ### iOS status
 
 Not implemented. Real Apple MDM requires an APNs push certificate, which Apple only counter-signs for organizations enrolled in Apple Business Manager or for already vendor-signed MDM servers (Fleet, MicroMDM/NanoMDM) — a business/account decision outside this codebase. `MdmIntegration.type` already accepts `"apple"` and the `apple_push_cert_enc`/`apple_topic` columns exist, so this phase needs no schema migration when the decision is made — only a new branch in `MdmIntegration.get_client()`, which currently raises `NotImplementedError` for `type="apple"`.
+
+## 20. API & Token Usage Monitoring
+
+### Overview
+
+Superadmin-only backend auditing/reporting for API call volume and AI token consumption, built after usage got unexpectedly high with no visibility into which service, feature, or user was responsible. Strictly gated to `role == "superadmin"` — `admin` gets 403/sees nothing, unlike every other admin surface in this app.
+
+Key files: `api/models/usage.py`, `api/utils/usage_tracker.py`, `api/routes/usage.py`, `api/tasks/usage_tasks.py`, `dashboard/pages/22_Usage_Monitoring.py`, `frontend/src/pages/UsageMonitoringPage.tsx`.
+
+### Data model
+
+**`ApiUsageEvent`** (`api_usage_events`) — one row per instrumented call:
+
+| Field | Notes |
+|-------|-------|
+| `service` | `ai_assistant`, `stripe`, `psa_connectwise`, `psa_autotask`, `android_mdm`, `email_imap`, `network_scan`, `webhook_slack`/`webhook_teams`/`webhook_generic`, `smtp` |
+| `feature` | Sub-label — dashboard page name for `ai_assistant`, action name (e.g. `get_companies`) for integrations |
+| `user_id` | Nullable — null for Celery/system-triggered calls |
+| `input_tokens` / `output_tokens` / `estimated_cost_usd` | Only populated for `ai_assistant`; cost is a configurable estimate, not billing data |
+| `status` / `status_code` / `latency_ms` / `error_message` | `error_message` is a truncated exception type/message only — never a raw response body, header, or secret |
+
+**`ApiUsageHourly`** (`api_usage_hourly`) — durable rollup of internal Flask API request volume (`bucket_start`, `endpoint`, `method`, `request_count`, `error_count`, `total_latency_ms`). Too high-volume to log one `ApiUsageEvent` row per request, so `utils/usage_tracker.py::record_internal_api_call` increments a Redis hash (`rmm:usage:hourly:{YYYYMMDDHH}`, 8-day TTL) on every request via `app.py`'s existing `_log_request` `after_request` hook, and `tasks.usage_tasks.persist_hourly_usage_rollup` (hourly beat) upserts the previous completed hour's counters into this table before the Redis TTL expires.
+
+**`UsageAlertConfig`** (`usage_alert_config`) — singleton row (`id="default"`): `is_enabled`, `spike_multiplier` (default 3.0), `notification_channels` (same JSON shape as `AlertRule.notification_channels`). Deliberately its **own** table, not an `AlertRule` row — an `AlertRule` row would be visible to `admin`/`technician` via the Alerts page's "Alert Rules" tab, leaking this feature's existence/config to roles that must not see it.
+
+Migration: `q8r9s0t1u2v3` (revises `p7q8r9s0t1u2`).
+
+### API: `/api/admin/usage` (`api/routes/usage.py`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/admin/usage/summary?range=today\|7d\|30d` | superadmin only | Per-service totals (calls, tokens, estimated cost, error rate) + live anomaly flags |
+| GET | `/api/admin/usage/timeseries?range=&service=&metric=calls\|tokens\|cost` | superadmin only | Bucketed series for charts |
+| GET | `/api/admin/usage/by-feature?range=&service=` | superadmin only | Top features/pages/users breakdown |
+| GET | `/api/admin/usage/events?service=&status=&page=` | superadmin only | Paginated raw event drill-down |
+| GET / PUT | `/api/admin/usage/alert-config` | superadmin only | Read/update the spike-alert config |
+
+`_require_superadmin()` in this file has **no** admin bypass — unlike every other route file's `_require_role()`, which lets `superadmin` bypass an explicit admin/technician list. Here even `admin` is excluded outright.
+
+### Practical example: check today's AI Assistant spend
+
+```bash
+curl http://localhost:5000/api/admin/usage/summary?range=today \
+  -H "Authorization: Bearer $SUPERADMIN_JWT"
+# → {
+#     "range": "today",
+#     "services": [
+#       {"service": "ai_assistant", "calls": 214, "input_tokens": 61000,
+#        "output_tokens": 38500, "estimated_cost_usd": 0.2535, "error_count": 1, "error_rate": 0.005},
+#       {"service": "internal_api", "calls": 18420, "input_tokens": 0, "output_tokens": 0,
+#        "estimated_cost_usd": 0, "error_count": 32, "error_rate": 0.002}
+#     ],
+#     "totals": {"calls": 18634, "tokens": 99500, "estimated_cost_usd": 0.2535,
+#                "error_count": 33, "error_rate": 0.0018},
+#     "anomalies": []
+#   }
+```
+
+### Spike detection and alerting
+
+`utils.usage_tracker.compute_anomalies(spike_multiplier)` compares the most recently **completed** hour's per-service count against the trailing-7-day average for that same hour-of-day, flagging anything over the multiplier (default 3.0×). This same function powers both the live banner on `22_Usage_Monitoring.py`/`UsageMonitoringPage.tsx` and the hourly `tasks.usage_tasks.detect_usage_anomaly` beat task, which — only if `UsageAlertConfig.is_enabled` — calls `send_alert_notification`/`dispatch_alert_webhooks` **directly** with a synthetic `device_hostname="System / API Usage"` identity. No `Alert`/`AlertRule` row is created: `Alert.device_id` is `NOT NULL` and the whole `evaluate_all_rules` batch-query machinery is written around real online devices, so extending it for a non-device concept was judged not worth the schema migration — reusing the already-decoupled notification primitives directly was the cleaner path.
+
+### Retention and reports
+
+`tasks.maintenance_tasks.prune_old_data` (existing daily beat, extended) deletes `ApiUsageEvent` rows older than 90 days and `ApiUsageHourly` rows older than 180 days. A new `api_usage` Reports template type (`tasks.report_tasks._api_usage_summary`) produces a per-day-per-service CSV via the existing async Celery report pipeline — `reports.py` hides this template from list/generate/get for any non-superadmin caller, same as the API endpoints above.
+
+### What's deliberately NOT tracked
+
+Per-ping/per-host detail during a network scan (only one event per scan run, with host count in `feature`), and the six legacy per-function SMTP call sites in `utils/notifications.py` that predate the shared `_smtp_send` helper (only `_smtp_send` itself and `billing.py`'s invoice-email block are instrumented) — both would add event volume disproportionate to their value for finding the cause of high usage.
