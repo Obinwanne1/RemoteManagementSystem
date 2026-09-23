@@ -131,8 +131,24 @@ def list_alerts():
         query = query.filter_by(device_id=device_id)
 
     paginated = query.order_by(Alert.triggered_at.desc()).paginate(page=page, per_page=per_page)
+
+    # Enrich with hostname — Alert.to_dict() only has device_id (a UUID), but the
+    # dashboard/React alert lists have always expected a device_hostname field.
+    from models.device import Device
+    dev_ids = {a.device_id for a in paginated.items if a.device_id}
+    hostnames = {}
+    if dev_ids:
+        for d in Device.query.filter(Device.id.in_(dev_ids)).all():
+            hostnames[d.id] = d.display_name or d.hostname
+
+    items = []
+    for a in paginated.items:
+        item = a.to_dict()
+        item["device_hostname"] = hostnames.get(a.device_id)
+        items.append(item)
+
     result = {
-        "items": [a.to_dict() for a in paginated.items],
+        "items": items,
         "total": paginated.total,
         "page": page,
     }
