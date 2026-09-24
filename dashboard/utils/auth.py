@@ -5,14 +5,27 @@ from utils.session_store import create_session, get_session, delete_session
 
 
 def get_client() -> RMMClient | None:
-    """Return a fresh RMMClient if logged in, else None."""
+    """Return this session's RMMClient (reused across reruns so its
+    requests.Session/connection pool isn't rebuilt on every Streamlit rerun),
+    or None if not logged in.
+
+    Reuse is only valid while the cached client's access token still matches
+    session_state's — RMMClient._try_refresh() keeps both in lockstep on a
+    401 auto-refresh, so this comparison also catches token rotation without
+    ever serving a stale client.
+    """
     token = st.session_state.get("access_token")
     if not token:
         return None
-    return RMMClient(
+    cached: RMMClient | None = st.session_state.get("_rmm_client")
+    if cached is not None and cached._token == token:
+        return cached
+    client = RMMClient(
         access_token=token,
         refresh_token=st.session_state.get("refresh_token", ""),
     )
+    st.session_state["_rmm_client"] = client
+    return client
 
 
 def establish_session(access_token: str, refresh_token: str = "") -> None:
@@ -145,7 +158,7 @@ def logout():
     sid = st.session_state.get("_dash_session_id", "")
     if sid:
         delete_session(sid)
-    for key in ["access_token", "refresh_token", "user", "_dash_session_id"]:
+    for key in ["access_token", "refresh_token", "user", "_dash_session_id", "_rmm_client"]:
         st.session_state.pop(key, None)
     st.query_params.clear()
     st.rerun()

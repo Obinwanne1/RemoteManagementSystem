@@ -347,12 +347,14 @@ with tab_users:
 
     # Pre-load customers + departments for the create/edit forms
     from utils.cached_calls import cached_list_customers
-    _cust_raw, _ = cached_list_customers(st.session_state.get("access_token", ""), per_page=200)
+    _cust_raw, _cust_err = cached_list_customers(st.session_state.get("access_token", ""), per_page=200)
     _cust_list = (_cust_raw.get("items", []) if _cust_raw else [])
     _cust_map = {c["name"]: c["id"] for c in _cust_list}
-    _dept_raw, _ = client.list_departments()
+    _dept_raw, _dept_err = client.list_departments()
     _dept_list = (_dept_raw.get("departments", []) if _dept_raw else [])
     _dept_map = {"— None —": None, **{d["name"]: d["id"] for d in _dept_list}}
+    if _cust_err or _dept_err:
+        st.caption(f"⚠ Could not load some form options — {_cust_err or _dept_err}")
 
     # ── Create user form ──────────────────────────────────────────────────────
     with st.expander("+ Create New User", expanded=False):

@@ -26,19 +26,65 @@ class ToolCtx:
     customer_id: str = None
 
 
-READ_TOOLS = {"get_fleet_summary", "list_devices", "get_device_status", "list_alerts"}
-MUTATING_TOOLS = {"create_ticket", "acknowledge_alert", "resolve_alert", "run_builtin_action", "run_script"}
+@dataclass
+class MutatingToolHandler:
+    """One entry per mutating tool, in one place — summarizer, executor, and
+    rate limit together, instead of three parallel name-keyed structures that
+    could silently drift out of sync (e.g. a new tool shipping without a
+    rate limit because the corresponding _TOOL_RATE_LIMITS entry was missed).
 
-# Per-tool rate limits mirroring the underlying human-facing routes (script run 5/min,
-# reboot/shutdown effectively 2/min, ticket create 20/min) — needed because calling the
-# service function directly bypasses the route's own @limiter.limit decorator.
-_TOOL_RATE_LIMITS = {
-    "create_ticket": (20, 60),
-    "run_script": (5, 60),
-    "run_builtin_action": (2, 60),
-    "acknowledge_alert": (30, 60),
-    "resolve_alert": (30, 60),
+    rate_limit mirrors the underlying human-facing route's own @limiter.limit
+    (script run 5/min, reboot/shutdown effectively 2/min, ticket create
+    20/min) — required here because calling the service function directly
+    bypasses the route decorator entirely."""
+    summarize: callable  # (tool_input: dict) -> str
+    execute: callable     # (tool_input: dict, ctx: ToolCtx) -> (result_dict_or_None, error_or_None)
+    rate_limit: tuple = None  # (max_calls, window_seconds)
+
+
+READ_TOOLS = {"get_fleet_summary", "list_devices", "get_device_status", "list_alerts"}
+
+MUTATING_TOOL_HANDLERS: dict[str, MutatingToolHandler] = {
+    "create_ticket": MutatingToolHandler(
+        summarize=lambda ti: f"Create ticket: \"{ti.get('title', '')[:80]}\" (priority: {ti.get('priority', 'medium')})",
+        execute=lambda ti, ctx: ticket_service.create_ticket_service(
+            ctx.user_id, ctx.role, ctx.customer_id,
+            title=ti.get("title", ""), description=ti.get("description"),
+            customer_id=ti.get("customer_id"), device_id=ti.get("device_id"),
+            priority=ti.get("priority", "medium"), source="ai_assistant",
+        ),
+        rate_limit=(20, 60),
+    ),
+    "acknowledge_alert": MutatingToolHandler(
+        summarize=lambda ti: f"Acknowledge alert {ti.get('alert_id', '')}",
+        execute=lambda ti, ctx: alert_service.acknowledge_alert_service(
+            ctx.user_id, ctx.role, ctx.customer_id, ti.get("alert_id", "")),
+        rate_limit=(30, 60),
+    ),
+    "resolve_alert": MutatingToolHandler(
+        summarize=lambda ti: f"Resolve alert {ti.get('alert_id', '')}",
+        execute=lambda ti, ctx: alert_service.resolve_alert_service(
+            ctx.user_id, ctx.role, ctx.customer_id, ti.get("alert_id", ""), ti.get("resolution_note")),
+        rate_limit=(30, 60),
+    ),
+    "run_builtin_action": MutatingToolHandler(
+        summarize=lambda ti: (
+            f"Run '{ti.get('action', '')}' on {len(ti.get('device_ids', []))} "
+            f"device(s): {', '.join(ti.get('device_ids', [])[:5])}"
+        ),
+        execute=lambda ti, ctx: script_service.run_builtin_action_service(
+            ctx.user_id, ctx.role, ctx.customer_id, ti.get("device_ids", []), ti.get("action", "")),
+        rate_limit=(2, 60),
+    ),
+    "run_script": MutatingToolHandler(
+        summarize=lambda ti: f"Run script {ti.get('script_id', '')} on {len(ti.get('device_ids', []))} device(s)",
+        execute=lambda ti, ctx: script_service.run_script_service(
+            ctx.user_id, ctx.role, ctx.customer_id, ti.get("script_id", ""), ti.get("device_ids", [])),
+        rate_limit=(5, 60),
+    ),
 }
+
+MUTATING_TOOLS = set(MUTATING_TOOL_HANDLERS)
 
 TOOL_DEFINITIONS = [
     {
@@ -191,18 +237,9 @@ def _danger_scan(tool_input: dict) -> bool:
 
 
 def _summarize(name: str, tool_input: dict) -> str:
-    if name == "create_ticket":
-        return f"Create ticket: \"{tool_input.get('title', '')[:80]}\" (priority: {tool_input.get('priority', 'medium')})"
-    if name == "acknowledge_alert":
-        return f"Acknowledge alert {tool_input.get('alert_id', '')}"
-    if name == "resolve_alert":
-        return f"Resolve alert {tool_input.get('alert_id', '')}"
-    if name == "run_builtin_action":
-        ids = tool_input.get("device_ids", [])
-        return f"Run '{tool_input.get('action', '')}' on {len(ids)} device(s): {', '.join(ids[:5])}"
-    if name == "run_script":
-        ids = tool_input.get("device_ids", [])
-        return f"Run script {tool_input.get('script_id', '')} on {len(ids)} device(s)"
+    handler = MUTATING_TOOL_HANDLERS.get(name)
+    if handler:
+        return handler.summarize(tool_input)
     return f"{name}({tool_input})"
 
 
@@ -229,29 +266,14 @@ def execute_pending_action(pending: AiPendingAction, ctx: ToolCtx):
     """Re-derives permissions fresh from ctx (built from the CURRENT caller's JWT at
     confirm-time — never trusts anything on the pending row except tool_name/tool_input).
     Returns (result_dict, error_or_None)."""
-    limit = _TOOL_RATE_LIMITS.get(pending.tool_name)
-    if limit:
-        allowed = check_and_increment(f"rmm:ai:toolrate:{ctx.user_id}:{pending.tool_name}", limit[0], limit[1])
+    handler = MUTATING_TOOL_HANDLERS.get(pending.tool_name)
+    if not handler:
+        return None, (f"Unknown tool '{pending.tool_name}'", 400)
+
+    if handler.rate_limit:
+        max_calls, window = handler.rate_limit
+        allowed = check_and_increment(f"rmm:ai:toolrate:{ctx.user_id}:{pending.tool_name}", max_calls, window)
         if not allowed:
             return None, ("Rate limit exceeded for this action — please wait a moment.", 429)
 
-    ti = pending.tool_input or {}
-    if pending.tool_name == "create_ticket":
-        return ticket_service.create_ticket_service(
-            ctx.user_id, ctx.role, ctx.customer_id,
-            title=ti.get("title", ""), description=ti.get("description"),
-            customer_id=ti.get("customer_id"), device_id=ti.get("device_id"),
-            priority=ti.get("priority", "medium"), source="ai_assistant",
-        )
-    if pending.tool_name == "acknowledge_alert":
-        return alert_service.acknowledge_alert_service(ctx.user_id, ctx.role, ctx.customer_id, ti.get("alert_id", ""))
-    if pending.tool_name == "resolve_alert":
-        return alert_service.resolve_alert_service(ctx.user_id, ctx.role, ctx.customer_id,
-                                                     ti.get("alert_id", ""), ti.get("resolution_note"))
-    if pending.tool_name == "run_builtin_action":
-        return script_service.run_builtin_action_service(ctx.user_id, ctx.role, ctx.customer_id,
-                                                           ti.get("device_ids", []), ti.get("action", ""))
-    if pending.tool_name == "run_script":
-        return script_service.run_script_service(ctx.user_id, ctx.role, ctx.customer_id,
-                                                   ti.get("script_id", ""), ti.get("device_ids", []))
-    return None, (f"Unknown tool '{pending.tool_name}'", 400)
+    return handler.execute(pending.tool_input or {}, ctx)

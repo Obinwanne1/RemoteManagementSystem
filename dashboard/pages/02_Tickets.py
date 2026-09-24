@@ -86,7 +86,9 @@ st.markdown(
 
 # ── New Ticket form ───────────────────────────────────────────────────────────
 with st.expander("+ New Ticket", expanded=False):
-    cust_data, _ = client.list_customers(per_page=100)
+    cust_data, cust_err = client.list_customers(per_page=100)
+    if cust_err:
+        st.caption(f"⚠ Could not load customers — {cust_err}")
     customers = cust_data.get("items", []) if cust_data else []
     cust_options = {c["name"]: c["id"] for c in customers}
     cust_names = list(cust_options.keys()) if cust_options else ["— no customers —"]
@@ -232,7 +234,9 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
         )
 
         if is_admin:
-            users_data_b, _ = client.list_users()
+            users_data_b, users_err_b = client.list_users()
+            if users_err_b:
+                st.caption(f"⚠ Could not load users — {users_err_b}")
             all_users_b = [
                 u for u in (users_data_b.get("users", []) if isinstance(users_data_b, dict) else [])
                 if u.get("is_active", True)

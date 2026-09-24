@@ -10,6 +10,7 @@ from extensions import db
 from models.device import Device
 from models.audit import AgentToken, AuditLog
 from models.terminal import TerminalSession, TerminalCommand, TerminalOutput
+from utils.auth_decorators import require_role as _require_role
 
 logger = logging.getLogger(__name__)
 terminal_bp = Blueprint("terminal", __name__)
@@ -19,13 +20,6 @@ _MAX_OUTPUT_BYTES = 512 * 1024  # 512 KB per session
 _STUCK_CMD_TIMEOUT = timedelta(minutes=3)
 
 
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
 
 
 def _get_device_by_token(device_id: str):

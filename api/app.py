@@ -68,6 +68,30 @@ def create_app(config_name=None):
     from utils.jwt_cache import install as _install_jwt_cache
     _install_jwt_cache()
 
+    # Without these, flask_jwt_extended's default error bodies use {"msg": ...} —
+    # the only place in this whole API that doesn't use this app's {"error": ...}
+    # convention (every hand-written error response, and every @app.errorhandler
+    # below, uses "error"). A missing/expired/invalid token is the single most
+    # common failure a client will see, so keep its shape consistent with everything else.
+    @jwt.unauthorized_loader
+    def _jwt_missing(reason):
+        return {"error": "Authorization token required"}, 401
+
+    @jwt.invalid_token_loader
+    def _jwt_invalid(reason):
+        # 422, not 401 — flask_jwt_extended's own default status code for this
+        # callback (it also covers WrongTokenError, e.g. an access token used
+        # where a refresh token is required). Only the body's key changes here.
+        return {"error": str(reason) or "Invalid or malformed token"}, 422
+
+    @jwt.expired_token_loader
+    def _jwt_expired(jwt_header, jwt_payload):
+        return {"error": "Token has expired"}, 401
+
+    @jwt.revoked_token_loader
+    def _jwt_revoked(jwt_header, jwt_payload):
+        return {"error": "Token has been revoked"}, 401
+
     # Warn when running in insecure development mode
     if config_name != "production":
         app.logger.warning(
@@ -125,8 +149,8 @@ def create_app(config_name=None):
             for _ in range(min(3, app.config.get("SQLALCHEMY_ENGINE_OPTIONS", {}).get("pool_size", 10))):
                 db.session.execute(_text("SELECT 1"))
             db.session.remove()
-        except Exception:
-            pass
+        except Exception as exc:
+            app.logger.warning("Connection pool warm-up failed: %s", exc)
 
         # Pre-warm dashboard Redis cache so first real user never hits DB cold
         try:
@@ -340,8 +364,17 @@ if __name__ == "__main__":
     app = create_app()
     host = os.getenv("API_HOST", "0.0.0.0")
     port = int(os.getenv("API_PORT", 5000))
-    if os.getenv("FLASK_DEBUG", "0") == "1":
-        app.run(host=host, port=port, debug=True, use_reloader=False)
+    debug = os.getenv("FLASK_DEBUG", "0") == "1"
+    if debug and os.getenv("FLASK_ENV") == "production":
+        # Werkzeug's debug mode has no PIN gate on viewing tracebacks/source/locals —
+        # never allow it alongside a config that claims to be production.
+        raise RuntimeError(
+            "Refusing to start: FLASK_DEBUG=1 with FLASK_ENV=production. "
+            "Unset one of them before starting the API."
+        )
+    if debug:
+        # Never bind the interactive debugger to 0.0.0.0 — it has no auth on its own.
+        app.run(host="127.0.0.1", port=port, debug=True, use_reloader=False)
     else:
         from waitress import serve
         print(f" * Serving on http://{host}:{port} (waitress)")

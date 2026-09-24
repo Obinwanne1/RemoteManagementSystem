@@ -38,6 +38,10 @@ class MdmIntegration(db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     last_sync_at = db.Column(db.DateTime(timezone=True), nullable=True)
     sync_error = db.Column(db.Text, nullable=True)
+    # Simple circuit breaker: tasks/mdm_tasks.py auto-disables (is_active=False) an
+    # integration after too many consecutive sync failures, instead of retrying a
+    # permanently-broken integration (e.g. revoked credentials) forever.
+    consecutive_failures = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     enrollments = db.relationship("MobileEnrollment", backref="integration",
@@ -72,6 +76,7 @@ class MdmIntegration(db.Model):
             "is_active": self.is_active,
             "last_sync_at": self.last_sync_at.isoformat() if self.last_sync_at else None,
             "sync_error": self.sync_error,
+            "consecutive_failures": self.consecutive_failures,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

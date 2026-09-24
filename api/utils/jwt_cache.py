@@ -6,6 +6,17 @@ repeated requests with the same bearer token skip HMAC verification.
 Cache is per-process (no Redis), TTL=60s, max 512 tokens.
 
 Import this module once at app startup to activate the patch.
+
+SECURITY NOTE: decoded claims are cached for up to TTL (60s), so a token
+revoked — or a user's role changed — during that window keeps being accepted
+with its stale claims until the cache entry expires. This includes the
+superadmin bypass consumed by every route file's require_role()
+(api/utils/auth_decorators.py): a demoted admin/superadmin can retain
+elevated access for up to TTL seconds after the change lands in the DB.
+Keep TTL short, and re-evaluate this window before raising it. If a route
+ever needs revocation to take effect immediately (e.g. right after an
+admin edits a user's role), invalidate that user's cached entries rather
+than raising the global TTL.
 """
 import hashlib
 import threading

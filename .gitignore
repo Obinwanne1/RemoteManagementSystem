@@ -67,10 +67,14 @@ scripts_library/custom/
 # Agent screenshots (runtime capture, may show a real device's screen)
 api/screenshots/
 
-# Celery beat schedule (runtime artifacts)
+# Celery beat schedule (runtime artifacts — filenames vary by Python's dbm backend:
+# sqlite3 on 3.13+ produces -shm/-wal, dbm.dumb on 3.11 produces .bak/.dat/.dir)
 api/celerybeat-schedule
 api/celerybeat-schedule-shm
 api/celerybeat-schedule-wal
+api/celerybeat-schedule.bak
+api/celerybeat-schedule.dat
+api/celerybeat-schedule.dir
 
 # PyInstaller
 agent/dist/
@@ -99,3 +103,6 @@ nginx/certs/
 *.p12
 *.pem
 google-service-account*.json
+
+# Nightly pg_dump output (backup_tasks.py default BACKUP_DIR) — raw DB dump, never commit
+backups/

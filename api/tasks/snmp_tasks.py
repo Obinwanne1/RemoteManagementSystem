@@ -26,15 +26,7 @@ _OID_IF_OUT_OCTETS     = "1.3.6.1.2.1.2.2.1.16"     # ifOutOctets (table — app
 
 _SNMP_DEVICE_TYPES = {"switch", "ap", "ups", "router", "iot_gateway"}
 
-_app = None
-
-
-def _get_app():
-    global _app
-    if _app is None:
-        from app import create_app
-        _app = create_app()
-    return _app
+from tasks._app_singleton import get_app as _get_app
 
 
 def _snmp_get(ip: str, community: str, oid: str):

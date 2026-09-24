@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { HardDrive } from 'lucide-react';
 import api from '../api/client';
 import type { Device } from '../api/types';
+import { apiErrorMessage } from '../api/errors';
 
 interface DiskInfo {
   mountpoint?: string;
@@ -59,8 +60,8 @@ export default function DiskManagementPage() {
     onSuccess: (_, vars) => {
       setTaskMsg({ type: 'ok', text: `${vars.task_type} queued — agent will execute on next poll.` });
     },
-    onError: (e: any) => {
-      setTaskMsg({ type: 'err', text: e.response?.data?.error ?? 'Failed to queue task' });
+    onError: (e: unknown) => {
+      setTaskMsg({ type: 'err', text: apiErrorMessage(e, 'Failed to queue task') });
     },
   });
 

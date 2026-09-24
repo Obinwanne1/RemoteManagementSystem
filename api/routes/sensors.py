@@ -14,6 +14,7 @@ from flask_jwt_extended import jwt_required, get_jwt
 from extensions import db, limiter
 from models.device import Device, DeviceSensorReading, SENSOR_TYPES
 from models.audit import AgentToken
+from utils.auth_decorators import require_role as _require_role
 
 sensors_bp = Blueprint("sensors", __name__)
 logger = logging.getLogger(__name__)
@@ -48,13 +49,6 @@ def _get_device_by_token(device_id: str):
     return db.session.get(Device, device_id)
 
 
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
 
 
 @sensors_bp.route("/<device_id>/data", methods=["POST"])

@@ -22,15 +22,7 @@ _MQTT_PREFIX = "rmm"
 _MQTT_USER = None
 _MQTT_PASS = None
 
-_app = None
-
-
-def _get_app():
-    global _app
-    if _app is None:
-        from app import create_app
-        _app = create_app()
-    return _app
+from tasks._app_singleton import get_app as _get_app
 
 
 def _load_config():
@@ -104,7 +96,10 @@ def subscribe_mqtt_sensors(self):
         client.disconnect()
     except Exception as exc:
         logger.warning("MQTT connection error (%s:%d): %s", _MQTT_HOST, _MQTT_PORT, exc)
-        return
+        # max_retries=3 on the task decorator was previously decorative — nothing
+        # ever called self.retry(). A transient broker blip now gets retried with
+        # backoff instead of silently skipping this poll cycle entirely.
+        raise self.retry(exc=exc, countdown=30)
 
     if not received:
         return

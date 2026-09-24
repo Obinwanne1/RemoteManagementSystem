@@ -5,25 +5,18 @@ from tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
-_app = None
+from tasks._app_singleton import get_app as _get_app
 
 
-def _get_app():
-    global _app
-    if _app is None:
-        from app import create_app
-        _app = create_app()
-    return _app
-
-
-@celery.task(name="tasks.usage_tasks.persist_hourly_usage_rollup")
-def persist_hourly_usage_rollup():
+@celery.task(name="tasks.usage_tasks.persist_hourly_usage_rollup", bind=True, max_retries=2)
+def persist_hourly_usage_rollup(self):
     """Reads the previous completed hour's Redis usage-counter hash and upserts it
     into the durable ApiUsageHourly table, so history survives past the Redis TTL."""
     from extensions import db
     from models.usage import ApiUsageHourly
     from utils.cache import _get_client
     from utils.usage_tracker import _hourly_redis_key
+    from sqlalchemy.exc import OperationalError
 
     with _get_app().app_context():
         hour_start = (datetime.now(timezone.utc) - timedelta(hours=1)).replace(
@@ -57,25 +50,33 @@ def persist_hourly_usage_rollup():
             elif kind == "latency_sum":
                 b["latency_sum"] = int(value)
 
-        rows_written = 0
-        for (endpoint, method), stats in buckets.items():
-            existing = ApiUsageHourly.query.filter_by(
-                bucket_start=hour_start, endpoint=endpoint, method=method
-            ).first()
-            if existing:
-                existing.request_count = stats["count"]
-                existing.error_count = stats["errors"]
-                existing.total_latency_ms = stats["latency_sum"]
-            else:
-                db.session.add(ApiUsageHourly(
-                    bucket_start=hour_start, endpoint=endpoint, method=method,
-                    request_count=stats["count"], error_count=stats["errors"],
-                    total_latency_ms=stats["latency_sum"],
-                ))
-            rows_written += 1
-        db.session.commit()
-        logger.info("persist_hourly_usage_rollup: wrote %d row(s) for hour %s", rows_written, hour_start)
-        return {"rows": rows_written}
+        try:
+            rows_written = 0
+            for (endpoint, method), stats in buckets.items():
+                existing = ApiUsageHourly.query.filter_by(
+                    bucket_start=hour_start, endpoint=endpoint, method=method
+                ).first()
+                if existing:
+                    existing.request_count = stats["count"]
+                    existing.error_count = stats["errors"]
+                    existing.total_latency_ms = stats["latency_sum"]
+                else:
+                    db.session.add(ApiUsageHourly(
+                        bucket_start=hour_start, endpoint=endpoint, method=method,
+                        request_count=stats["count"], error_count=stats["errors"],
+                        total_latency_ms=stats["latency_sum"],
+                    ))
+                rows_written += 1
+            db.session.commit()
+            logger.info("persist_hourly_usage_rollup: wrote %d row(s) for hour %s", rows_written, hour_start)
+            return {"rows": rows_written}
+        except OperationalError as exc:
+            db.session.rollback()
+            raise self.retry(exc=exc, countdown=60)
+        except Exception:
+            db.session.rollback()
+            logger.exception("persist_hourly_usage_rollup failed")
+            raise
 
 
 @celery.task(name="tasks.usage_tasks.detect_usage_anomaly")

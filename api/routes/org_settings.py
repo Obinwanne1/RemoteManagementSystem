@@ -1,6 +1,6 @@
 import base64
 import io
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt
 from extensions import db
 from models.org_settings import OrgSettings
@@ -83,7 +83,8 @@ def upload_org_logo():
         img.save(out, format="PNG", optimize=True)
         logo_b64 = "data:image/png;base64," + base64.b64encode(out.getvalue()).decode()
     except Exception as e:
-        return jsonify({"error": f"Image processing failed: {e}"}), 400
+        current_app.logger.warning("Org logo image processing failed: %s", e, exc_info=True)
+        return jsonify({"error": "Image processing failed — please upload a valid JPEG/PNG under the size limit."}), 400
 
     settings = db.session.get(OrgSettings, 1)
     if not settings:

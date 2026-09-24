@@ -4,9 +4,11 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from extensions import db, limiter
 from models.ticket import Ticket, TicketComment
 from models.user import User
-from models.customer import Customer
 from models.audit import AuditLog
 from utils.validation import validate_body
+from utils.auth_decorators import require_role as _require_role
+from utils.scope import require_customer_scope
+from services.ticket_service import _customer_name
 from schemas.tickets import TicketCreateSchema, TicketUpdateSchema, CommentCreateSchema
 from utils.notifications import (
     send_ticket_assigned,
@@ -18,15 +20,6 @@ from utils.notifications import (
 tickets_bp = Blueprint("tickets", __name__)
 
 
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
-
-
 def _current_claims():
     return get_jwt()
 
@@ -35,11 +28,6 @@ def _get_client_emails(customer_id: str) -> list:
     """Return emails of active client-role users linked to this customer."""
     clients = User.query.filter_by(role="client", customer_id=customer_id, is_active=True).all()
     return [u.email for u in clients if u.email]
-
-
-def _customer_name(customer_id: str) -> str:
-    c = db.session.get(Customer, customer_id)
-    return c.name if c else "Unknown"
 
 
 def _ticket_audit(action: str, user_id: str, ticket_id: str, payload: dict = None):
@@ -132,17 +120,11 @@ def create_ticket():
 @tickets_bp.route("/<ticket_id>", methods=["GET"])
 @jwt_required()
 def get_ticket(ticket_id):
-    claims = _current_claims()
-    role = claims.get("role")
-    uid = get_jwt_identity()
-
     ticket = db.get_or_404(Ticket, ticket_id)
 
-    # Client can only view their own customer's tickets
-    if role == "client":
-        user = db.session.get(User, uid)
-        if not user or ticket.customer_id != user.customer_id:
-            return jsonify({"error": "Not found"}), 404
+    err = require_customer_scope(ticket.customer_id)
+    if err:
+        return err
 
     return jsonify(ticket.to_dict(include_comments=True)), 200
 
@@ -215,7 +197,7 @@ def update_ticket(ticket_id):
             client_emails = _get_client_emails(ticket.customer_id)
             send_ticket_resolved_client(ticket.title, ticket.id, client_emails, ticket.requester_email)
     except Exception:
-        current_app.logger.warning("Ticket update notification failed for ticket %s", ticket.id)
+        current_app.logger.warning("Ticket update notification failed for ticket %s", ticket.id, exc_info=True)
 
     return jsonify(ticket.to_dict()), 200
 
@@ -244,11 +226,9 @@ def add_comment(ticket_id):
 
     ticket = db.get_or_404(Ticket, ticket_id)
 
-    # Client can only comment on their own customer's tickets
-    if role == "client":
-        user = db.session.get(User, uid)
-        if not user or ticket.customer_id != user.customer_id:
-            return jsonify({"error": "Not found"}), 404
+    err = require_customer_scope(ticket.customer_id)
+    if err:
+        return err
 
     data = request.get_json(silent=True) or {}
     if not data.get("body"):
@@ -284,7 +264,7 @@ def add_comment(ticket_id):
                     client_emails, ticket.requester_email,
                 )
     except Exception:
-        current_app.logger.warning("Comment notification failed for ticket %s", ticket.id)
+        current_app.logger.warning("Comment notification failed for ticket %s", ticket.id, exc_info=True)
 
     return jsonify(comment.to_dict()), 201
 

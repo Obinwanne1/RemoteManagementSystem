@@ -5,7 +5,7 @@ import time
 
 from flask import Blueprint, Response, request, jsonify, stream_with_context, current_app
 from flask_jwt_extended import jwt_required, decode_token
-from jwt.exceptions import DecodeError, ExpiredSignatureError
+from jwt.exceptions import ExpiredSignatureError
 
 logger = logging.getLogger(__name__)
 events_bp = Blueprint("events", __name__)
@@ -23,8 +23,12 @@ def _validate_token_param(token: str) -> tuple:
         return claims, None
     except ExpiredSignatureError:
         return None, "token expired"
-    except (DecodeError, Exception) as exc:
-        return None, f"invalid token: {exc}"
+    except Exception as exc:
+        # Generic message to an unauthenticated caller (this endpoint has no
+        # @jwt_required() — it reads ?token= itself since EventSource can't set
+        # headers, so this branch is reachable pre-auth). Full detail server-side only.
+        logger.debug("SSE token validation failed: %s", exc)
+        return None, "invalid token"
 
 
 @events_bp.route("/stream", methods=["GET"])

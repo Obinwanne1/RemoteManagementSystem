@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Terminal, Send, X } from 'lucide-react';
 import api from '../api/client';
 import type { Device } from '../api/types';
+import { apiErrorMessage } from '../api/errors';
 
 interface OutputRow {
   id: number;
@@ -163,7 +164,7 @@ export default function TerminalPage() {
           </button>
           {openSession.isError && (
             <p className="text-xs text-red-600">
-              {(openSession.error as any)?.response?.data?.error ?? 'Failed to open session'}
+              {apiErrorMessage(openSession.error, 'Failed to open session')}
             </p>
           )}
         </div>

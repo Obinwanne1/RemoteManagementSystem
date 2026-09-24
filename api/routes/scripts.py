@@ -4,20 +4,12 @@ from extensions import db, limiter
 from models.script import Script, ScriptRun
 from utils.validation import validate_body
 from schemas.scripts import ScriptCreateSchema, ScriptUpdateSchema, RunScriptSchema
+from utils.auth_decorators import require_role as _require_role
 
 scripts_bp = Blueprint("scripts", __name__)
 
 ALLOWED_TYPES = {"bat", "ps1", "py"}
 MAX_SCRIPT_SIZE = 512 * 1024  # 512KB
-
-
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
 
 
 @scripts_bp.route("/", methods=["GET"])

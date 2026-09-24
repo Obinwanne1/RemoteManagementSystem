@@ -19,6 +19,8 @@ from models.device import Device
 from models.user import User
 from models.audit import AuditLog
 from utils.cache import cache_get, cache_set, cache_delete
+from utils.auth_decorators import require_role as _require_role
+from utils.scope import require_customer_scope as _mdm_scope_check
 
 logger = logging.getLogger(__name__)
 mobile_mdm_bp = Blueprint("mobile_mdm", __name__)
@@ -30,15 +32,6 @@ _BIND_STATE_TTL = 900  # 15 min to complete the Google-hosted signup flow
 _CLIENT_ALLOWED_COMMANDS = {"lock", "start_lost_mode", "stop_lost_mode"}
 
 
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
-
-
 def _client_customer_id_or_error():
     claims = get_jwt()
     if claims.get("role") != "client":
@@ -48,18 +41,6 @@ def _client_customer_id_or_error():
     if not user or not user.customer_id:
         return None, (jsonify({"error": "No customer assigned to this account"}), 403)
     return user.customer_id, None
-
-
-def _mdm_scope_check(customer_id):
-    """Returns a 404 response if a client-role JWT doesn't own this resource's customer_id."""
-    claims = get_jwt()
-    if claims.get("role") != "client":
-        return None
-    uid = get_jwt_identity()
-    user = db.session.get(User, uid)
-    if not user or customer_id != user.customer_id:
-        return jsonify({"error": "Not found"}), 404
-    return None
 
 
 def _audit(action, resource_id, payload):
@@ -164,8 +145,8 @@ def start_binding(integration_id):
         client = integration.get_client()
         result = client.create_signup_url(callback_url)
     except Exception as exc:
-        logger.error("MDM bind start failed for %s: %s", integration_id, exc)
-        return jsonify({"error": str(exc)}), 502
+        logger.error("MDM bind start failed for %s: %s", integration_id, exc, exc_info=True)
+        return jsonify({"error": "Could not start MDM enrollment. Check integration credentials and try again."}), 502
 
     state = secrets.token_urlsafe(24)
     cache_set(f"rmm:mdm:bind_state:{state}", {
@@ -196,8 +177,8 @@ def bind_callback(integration_id):
             display_name=integration.name,
         )
     except Exception as exc:
-        logger.error("MDM enterprise creation failed for %s: %s", integration_id, exc)
-        return jsonify({"error": str(exc)}), 502
+        logger.error("MDM enterprise creation failed for %s: %s", integration_id, exc, exc_info=True)
+        return jsonify({"error": "Could not complete MDM enterprise binding. Check integration credentials and try again."}), 502
 
     integration.enterprise_id = result.get("name")  # "enterprises/{id}"
     db.session.commit()
@@ -221,7 +202,8 @@ def update_policy(integration_id):
         client = integration.get_client()
         client.patch_policy(policy_name, policy_body)
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 502
+        logger.error("MDM policy update failed for %s: %s", integration_id, exc, exc_info=True)
+        return jsonify({"error": "Could not update MDM policy. Check integration credentials and try again."}), 502
 
     integration.default_policy_name = policy_name
     db.session.commit()
@@ -301,8 +283,8 @@ def create_enrollment():
             policy_name=policy_name, ttl_hours=1, allow_personal_usage=allow_personal_usage,
         )
     except Exception as exc:
-        logger.error("MDM enrollment token creation failed: %s", exc)
-        return jsonify({"error": str(exc)}), 502
+        logger.error("MDM enrollment token creation failed: %s", exc, exc_info=True)
+        return jsonify({"error": "Could not create enrollment token. Check integration credentials and try again."}), 502
 
     now = datetime.now(timezone.utc)
     enrollment = MobileEnrollment(
@@ -382,8 +364,8 @@ def revoke_enrollment(enrollment_id):
             else:
                 client.delete_device(enrollment.android_enterprise_device_name)
         except Exception as exc:
-            logger.error("MDM revoke failed for enrollment %s: %s", enrollment_id, exc)
-            return jsonify({"error": str(exc)}), 502
+            logger.error("MDM revoke failed for enrollment %s: %s", enrollment_id, exc, exc_info=True)
+            return jsonify({"error": "Could not revoke MDM enrollment. Check integration credentials and try again."}), 502
 
     enrollment.status = "revoked"
     enrollment.revoked_at = datetime.now(timezone.utc)
@@ -416,8 +398,8 @@ def _issue_device_command(device_id, command_type, role_allowed, **extra):
         client = integration.get_client()
         client.issue_command(enrollment.android_enterprise_device_name, command_type.upper(), **extra)
     except Exception as exc:
-        logger.error("MDM command %s failed for device %s: %s", command_type, device_id, exc)
-        return jsonify({"error": str(exc)}), 502
+        logger.error("MDM command %s failed for device %s: %s", command_type, device_id, exc, exc_info=True)
+        return jsonify({"error": "Could not send command to device. Check integration credentials and try again."}), 502
 
     _audit(f"mdm_command_{command_type.lower()}", device_id, {
         "enrollment_id": enrollment.id, "command": command_type,

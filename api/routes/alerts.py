@@ -7,17 +7,9 @@ from utils.validation import validate_body
 from utils.cache import cache_get_raw, cache_set_raw
 from schemas.alerts import AlertRuleCreateSchema, AlertRuleUpdateSchema
 from services.alert_service import acknowledge_alert_service, resolve_alert_service
+from utils.auth_decorators import require_role as _require_role
 
 alerts_bp = Blueprint("alerts", __name__)
-
-
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
 
 
 # --- Alert Rules ---

@@ -6,27 +6,29 @@ from tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
-_app = None
+from tasks._app_singleton import get_app as _get_app
 
-
-def _get_app():
-    global _app
-    if _app is None:
-        from app import create_app
-        _app = create_app()
-    return _app
+# Simple circuit breaker: auto-disable an integration after this many consecutive
+# sync failures instead of retrying a permanently-broken one (e.g. revoked
+# credentials) forever every 15-min beat cycle.
+_MAX_CONSECUTIVE_FAILURES = 10
 
 
 @celery.task(name="tasks.psa_tasks.sync_all_psa_integrations", bind=True, max_retries=1)
 def sync_all_psa_integrations(self):
     """Fan-out: dispatch one sync task per active PSA integration."""
+    from sqlalchemy.exc import OperationalError
+
     app = _get_app()
     with app.app_context():
         from models.psa_integration import PsaIntegration
-        active = PsaIntegration.query.filter_by(is_active=True).all()
-        for integration in active:
-            sync_psa_integration.delay(integration.id)
-        logger.info("PSA sync: dispatched %d integration(s)", len(active))
+        try:
+            active = PsaIntegration.query.filter_by(is_active=True).all()
+            for integration in active:
+                sync_psa_integration.delay(integration.id)
+            logger.info("PSA sync: dispatched %d integration(s)", len(active))
+        except OperationalError as exc:
+            raise self.retry(exc=exc, countdown=120)
 
 
 @celery.task(name="tasks.psa_tasks.sync_psa_integration", bind=True, max_retries=2)
@@ -56,12 +58,21 @@ def sync_psa_integration(self, psa_integration_id: str):
 
             integration.last_sync_at = datetime.now(timezone.utc)
             integration.sync_error = None
+            integration.consecutive_failures = 0
             db.session.commit()
             logger.info("PSA sync complete: %s (%s)", integration.name, integration.type)
 
         except Exception as exc:
             logger.error("PSA sync failed for %s: %s", psa_integration_id, exc)
+            db.session.rollback()
             integration.sync_error = str(exc)[:500]
+            integration.consecutive_failures = (integration.consecutive_failures or 0) + 1
+            if integration.consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+                integration.is_active = False
+                logger.warning(
+                    "Disabling PSA integration %s (%s) after %d consecutive failures",
+                    integration.id, integration.name, integration.consecutive_failures,
+                )
             db.session.commit()
             raise self.retry(exc=exc, countdown=120)
 

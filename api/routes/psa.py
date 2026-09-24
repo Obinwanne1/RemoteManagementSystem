@@ -7,20 +7,12 @@ from flask_jwt_extended import jwt_required, get_jwt
 
 from extensions import db, limiter
 from models.psa_integration import PsaIntegration, PsaCompanyMap, PsaTicketMap, encrypt_cred
+from utils.auth_decorators import require_role as _require_role
 
 logger = logging.getLogger(__name__)
 psa_bp = Blueprint("psa", __name__)
 
 VALID_TYPES = {"connectwise", "autotask"}
-
-
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
 
 
 # ─── Integration CRUD ──────────────────────────────────────────────────────────
@@ -145,8 +137,8 @@ def trigger_sync(integration_id):
         sync_psa_integration.delay(integration_id)
         return jsonify({"message": "Sync queued", "integration_id": integration_id}), 202
     except Exception as exc:
-        logger.error("Failed to queue PSA sync: %s", exc)
-        return jsonify({"error": str(exc)}), 500
+        logger.error("Failed to queue PSA sync: %s", exc, exc_info=True)
+        return jsonify({"error": "Could not queue PSA sync. Try again shortly."}), 500
 
 
 # ─── Status / stats ───────────────────────────────────────────────────────────
@@ -244,4 +236,5 @@ def fetch_psa_companies(integration_id):
         companies = client.get_companies()
         return jsonify(companies), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 502
+        logger.error("Failed to fetch PSA companies for %s: %s", integration_id, exc, exc_info=True)
+        return jsonify({"error": "Could not fetch companies from PSA. Check integration credentials."}), 502

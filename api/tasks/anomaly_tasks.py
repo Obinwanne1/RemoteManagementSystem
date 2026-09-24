@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from statistics import mean, stdev
 from tasks.celery_app import celery
+from services.device_query_service import online_devices
 
 logger = logging.getLogger(__name__)
 
@@ -20,15 +21,7 @@ SPIKE_COUNT = 3         # how many anomalous samples in 1h to fire an alert
 MIN_SAMPLES = 10        # minimum samples needed to compute a baseline
 BASELINE_SAMPLES = 20   # samples used for mean/stdev baseline
 
-_app = None
-
-
-def _get_app():
-    global _app
-    if _app is None:
-        from app import create_app
-        _app = create_app()
-    return _app
+from tasks._app_singleton import get_app as _get_app
 
 
 def _zscore_anomalies(values: list[float]) -> list[bool]:
@@ -117,7 +110,7 @@ def detect_metric_anomalies(self):
         from extensions import db
         from models.device import Device, DeviceMetrics
 
-        devices = Device.query.filter_by(is_online=True).all()
+        devices = online_devices()
         if not devices:
             return
 

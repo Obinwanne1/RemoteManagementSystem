@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Lock, Shield, CheckCircle } from 'lucide-react';
 import api from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import { apiErrorMessage } from '../api/errors';
 
 interface MFASetupData {
   secret: string;
@@ -28,8 +29,8 @@ export default function ProfilePage() {
       setPwMsg({ type: 'ok', text: 'Password changed.' });
       setPwForm({ current_password: '', new_password: '', confirm: '' });
     },
-    onError: (e: any) => {
-      setPwMsg({ type: 'err', text: e.response?.data?.error ?? 'Failed to change password' });
+    onError: (e: unknown) => {
+      setPwMsg({ type: 'err', text: apiErrorMessage(e, 'Failed to change password') });
     },
   });
 
@@ -45,8 +46,8 @@ export default function ProfilePage() {
       setMfaSetup(null);
       setMfaCode('');
     },
-    onError: (e: any) => {
-      setMfaMsg({ type: 'err', text: e.response?.data?.error ?? 'Invalid code' });
+    onError: (e: unknown) => {
+      setMfaMsg({ type: 'err', text: apiErrorMessage(e, 'Invalid code') });
     },
   });
 

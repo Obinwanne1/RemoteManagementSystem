@@ -6,17 +6,9 @@ from models.automation import AutomationProfile, ScheduledTaskRun
 from models.device import Device
 from utils.validation import validate_body
 from schemas.automation import AutomationProfileCreateSchema, AutomationProfileUpdateSchema
+from utils.auth_decorators import require_role as _require_role
 
 automation_bp = Blueprint("automation", __name__)
-
-
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
 
 
 @automation_bp.route("/profiles", methods=["GET"])

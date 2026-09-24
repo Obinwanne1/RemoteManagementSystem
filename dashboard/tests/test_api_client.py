@@ -122,3 +122,28 @@ class TestConnectionRetry:
         assert data is None
         assert "Connection failed after" in error
         assert mocked.call_count == 3  # len(_BACKOFF)
+
+    def test_post_timeout_is_not_retried(self):
+        """POST (and other non-idempotent methods) must fail fast on a lost response
+        instead of blind-retrying — a retried POST could resubmit a non-idempotent
+        action (e.g. a device wipe, a script run, a ticket create) that the server
+        already received and processed the first time."""
+        client = RMMClient(access_token="tok123")
+        with patch.object(requests.Session, "request", side_effect=requests.Timeout("timed out")) as mocked, \
+             patch("time.sleep") as mocked_sleep:
+            data, error = client._post("/api/mdm/devices/abc/wipe")
+
+        assert data is None
+        assert error == "Connection failed: timed out"
+        assert mocked.call_count == 1
+        mocked_sleep.assert_not_called()
+
+    def test_get_timeout_still_retries(self):
+        """Idempotent methods keep the existing retry-with-backoff behavior."""
+        client = RMMClient(access_token="tok123")
+        with patch.object(requests.Session, "request", side_effect=requests.Timeout("timed out")) as mocked, \
+             patch("time.sleep"):
+            data, error = client._get("/api/devices/")
+
+        assert data is None
+        assert mocked.call_count == 3  # len(_BACKOFF)

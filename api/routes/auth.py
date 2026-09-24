@@ -3,7 +3,7 @@ import hashlib
 import io
 import os
 from datetime import datetime, timezone, timedelta
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
     jwt_required, get_jwt_identity, get_jwt, decode_token
@@ -444,7 +444,8 @@ def upload_avatar():
         b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
         user.avatar_data = f"data:image/png;base64,{b64}"
     except Exception as exc:
-        return jsonify({"error": f"Image processing failed: {exc}"}), 422
+        current_app.logger.warning("Avatar image processing failed for user %s: %s", user.id, exc, exc_info=True)
+        return jsonify({"error": "Image processing failed — please upload a valid JPEG/PNG under the size limit."}), 422
 
     _audit("avatar_updated", user_id=user.id)
     db.session.commit()

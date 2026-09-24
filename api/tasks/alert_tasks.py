@@ -3,7 +3,6 @@ Periodic tasks: evaluate alert rules against latest device metrics,
 mark devices offline if heartbeat timeout exceeded.
 """
 import logging
-import os
 from datetime import datetime, timezone, timedelta
 from tasks.celery_app import celery
 from sqlalchemy import func
@@ -18,25 +17,9 @@ SENSOR_METRICS = {
 _EVAL_LOCK_KEY = "rmm:alert_eval:lock"
 _EVAL_LOCK_TTL = 55  # seconds — expires just before next 60s beat fires
 
-# Shared Flask app — created once per worker process, not once per task
-_app = None
-
-
-def _get_app():
-    global _app
-    if _app is None:
-        from app import create_app
-        _app = create_app()
-    return _app
-
-
-def _get_redis():
-    import redis
-    return redis.from_url(
-        os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-        socket_timeout=2,
-        socket_connect_timeout=2,
-    )
+from tasks._app_singleton import get_app as _get_app
+from utils.cache import _get_client as _get_redis
+from services.device_query_service import online_devices
 
 
 @celery.task(name="tasks.alert_tasks.evaluate_all_rules", bind=True, max_retries=3)
@@ -67,7 +50,7 @@ def evaluate_all_rules(self):
             now = datetime.now(timezone.utc)
 
             # Collect all online devices across all rules in one query
-            all_online_devices = Device.query.filter_by(is_online=True).all()
+            all_online_devices = online_devices()
             if not all_online_devices:
                 return
 
@@ -186,16 +169,13 @@ def evaluate_all_rules(self):
                             alert.message, rule.severity,
                         )
 
-                    try:
-                        from utils.events import publish_event
-                        publish_event("new_alert", {
-                            "rule": rule.name,
-                            "device": device.hostname,
-                            "severity": rule.severity,
-                            "message": alert.message,
-                        })
-                    except Exception:
-                        pass
+                    from utils.events import publish_event
+                    publish_event("new_alert", {
+                        "rule": rule.name,
+                        "device": device.hostname,
+                        "severity": rule.severity,
+                        "message": alert.message,
+                    })
 
             # Bulk auto-resolve in one UPDATE per (rule_id, device_id) batch
             if to_resolve_keys:
@@ -276,12 +256,9 @@ def mark_offline_devices(self):
                         message=f"{hostname} has gone offline (last seen: {last_seen_str})",
                     ))
 
-            try:
-                from utils.events import publish_event
-                for device_id, hostname, _, _ in stale_rows:
-                    publish_event("device_offline", {"device_id": device_id, "hostname": hostname})
-            except Exception:
-                pass
+            from utils.events import publish_event
+            for device_id, hostname, _, _ in stale_rows:
+                publish_event("device_offline", {"device_id": device_id, "hostname": hostname})
 
             db.session.commit()
             return len(stale_rows)

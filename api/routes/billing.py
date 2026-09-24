@@ -18,18 +18,12 @@ from models.device import Device
 from utils.validation import validate_body
 from utils.usage_tracker import record_event
 from schemas.billing import GenerateInvoiceSchema, InvoiceStatusSchema
+from utils.auth_decorators import require_role as _require_role
 
 logger = logging.getLogger(__name__)
 billing_bp = Blueprint("billing", __name__)
 
 
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
 
 
 def _next_invoice_number():
@@ -234,10 +228,10 @@ def send_invoice_email(invoice_id):
         return jsonify({"message": f"Invoice {inv_num} sent to {customer.email}"}), 200
 
     except Exception as exc:
-        logger.warning("Failed to email invoice %s: %s", inv_num, exc)
+        logger.warning("Failed to email invoice %s: %s", inv_num, exc, exc_info=True)
         record_event(service="smtp", feature="invoice_email", status="error",
                      latency_ms=int((time.perf_counter() - _t0) * 1000), error=type(exc).__name__)
-        return jsonify({"error": f"Email delivery failed: {exc}"}), 500
+        return jsonify({"error": "Email delivery failed — check SMTP configuration."}), 500
 
 
 @billing_bp.route("/invoices/<invoice_id>/send", methods=["POST"])

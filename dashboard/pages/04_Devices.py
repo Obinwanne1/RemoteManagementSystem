@@ -207,7 +207,9 @@ def _render_agentless_row(device: dict, tab_key: str = ""):
 
         # Assign to customer
         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-        cust_data, _ = client.list_customers(per_page=200)
+        cust_data, cust_err = client.list_customers(per_page=200)
+        if cust_err:
+            st.caption(f"⚠ Could not load customers — {cust_err}")
         customers = (cust_data or {}).get("items", [])
         cust_options = {c["id"]: c["name"] for c in customers}
         cust_ids = [""] + list(cust_options.keys())
@@ -505,7 +507,9 @@ def _render_agent_row(device: dict, tab_key: str = "", latest_version: str = "")
 
         # Assign to customer
         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-        cust_data, _ = client.list_customers(per_page=200)
+        cust_data, cust_err = client.list_customers(per_page=200)
+        if cust_err:
+            st.caption(f"⚠ Could not load customers — {cust_err}")
         customers = (cust_data or {}).get("items", [])
         cust_options = {c["id"]: c["name"] for c in customers}
         cust_ids = [""] + list(cust_options.keys())

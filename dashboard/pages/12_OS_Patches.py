@@ -17,8 +17,10 @@ render_sidebar()
 CARD = "background:#FFFFFF;border-radius:12px;padding:1.2rem 1.5rem;border:1px solid #DDE8DD;box-shadow:0 2px 8px rgba(0,0,0,0.05);margin-bottom:1rem"
 
 # Stat cards row — always visible at top
-summary, _ = client.get_patch_summary()
-if summary:
+summary, summary_err = client.get_patch_summary()
+if summary_err:
+    st.caption(f"⚠ Could not load patch summary — {summary_err}")
+elif summary:
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(stat_card("Pending", summary.get("pending", 0), icon="<i class='fa-solid fa-clock'></i>", accent=BRAND["warning"]), unsafe_allow_html=True)

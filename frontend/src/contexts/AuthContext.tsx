@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { User } from '../api/types';
 import api from '../api/client';
+import { apiErrorMessage } from '../api/errors';
 
 interface AuthState {
   token: string | null;
@@ -47,9 +48,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       _storeTokens(data.access_token, data.refresh_token, data.user);
       return {};
-    } catch (err: any) {
-      const msg = err.response?.data?.error || 'Login failed';
-      return { error: msg };
+    } catch (err) {
+      return { error: apiErrorMessage(err, 'Login failed') };
     }
   }, []);
 
@@ -58,8 +58,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.post('/auth/mfa/login', { mfa_token: mfaToken, code });
       _storeTokens(res.data.access_token, res.data.refresh_token, res.data.user);
       return {};
-    } catch (err: any) {
-      return { error: err.response?.data?.error || 'Invalid code' };
+    } catch (err) {
+      return { error: apiErrorMessage(err, 'Invalid code') };
     }
   }, []);
 

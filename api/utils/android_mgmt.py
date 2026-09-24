@@ -13,13 +13,15 @@ import time
 
 import requests
 
+from utils.mdm_client import MdmClient
+
 logger = logging.getLogger(__name__)
 
 _BASE = "https://androidmanagement.googleapis.com/v1"
 _SCOPES = ["https://www.googleapis.com/auth/androidmanagement"]
 
 
-class AndroidManagementClient:
+class AndroidManagementClient(MdmClient):
     def __init__(self, project_id: str, enterprise_id: str = None, service_account_json: str = ""):
         self.project_id = project_id
         self.enterprise_id = enterprise_id

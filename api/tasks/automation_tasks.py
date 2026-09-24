@@ -8,15 +8,8 @@ from tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
-_app = None
-
-
-def _get_app():
-    global _app
-    if _app is None:
-        from app import create_app
-        _app = create_app()
-    return _app
+from tasks._app_singleton import get_app as _get_app
+from services.device_query_service import online_devices
 
 
 @celery.task(name="tasks.automation_tasks.enqueue_profile_run", bind=True, max_retries=3)
@@ -43,7 +36,7 @@ def enqueue_profile_run(self, profile_id: str):
                     customer_id=profile.customer_id, is_online=True
                 ).all()
             else:
-                devices = Device.query.filter_by(is_online=True).all()
+                devices = online_devices()
 
             if not devices:
                 logger.info("enqueue_profile_run: no online devices for profile %s", profile_id)

@@ -3,17 +3,9 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from datetime import datetime, timezone
 from extensions import db
 from models.patch import PatchRecord, PatchPolicy
+from utils.auth_decorators import require_role as _require_role
 
 patches_bp = Blueprint("patches", __name__)
-
-
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None  # superadmin bypasses all role checks
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
 
 
 @patches_bp.route("/", methods=["GET"])

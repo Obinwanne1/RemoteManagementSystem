@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, UserPlus, Trash2, RefreshCw, Copy, Eye, EyeOff, Shield, Lock } from 'lucide-react';
 import api from '../api/client';
 import type { User } from '../api/types';
+import { apiErrorMessage } from '../api/errors';
 
 interface UserListResponse {
   items: User[];
@@ -184,7 +185,7 @@ export default function AdminPage() {
                 </button>
               </div>
               {createUser.isError && (
-                <p className="text-xs text-red-600">{(createUser.error as any)?.response?.data?.error ?? 'Failed to create user'}</p>
+                <p className="text-xs text-red-600">{apiErrorMessage(createUser.error, 'Failed to create user')}</p>
               )}
             </div>
           )}

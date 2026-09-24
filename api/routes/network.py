@@ -6,17 +6,9 @@ from extensions import db
 from models.audit import NetworkScan
 from utils.validation import validate_body
 from schemas.network import NetworkScanSchema, AgentlessDevicesSchema
+from utils.auth_decorators import require_role as _require_role
 
 network_bp = Blueprint("network", __name__)
-
-
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
 
 
 @network_bp.route("/scan", methods=["POST"])

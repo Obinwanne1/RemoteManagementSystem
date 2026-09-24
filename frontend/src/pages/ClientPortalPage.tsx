@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, Plus, X, RefreshCw } from 'lucide-react';
 import api from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import { apiErrorMessage } from '../api/errors';
 import type { Ticket, PaginatedResponse } from '../api/types';
 
 const STATUS_BADGE: Record<string, string> = {
@@ -46,8 +47,8 @@ export default function ClientPortalPage() {
       setSubmitMsg({ type: 'ok', text: 'Ticket submitted. Our team will review it shortly.' });
       setTimeout(() => setSubmitMsg(null), 5000);
     },
-    onError: (e: any) => {
-      setSubmitMsg({ type: 'err', text: e.response?.data?.error ?? 'Failed to submit ticket' });
+    onError: (e: unknown) => {
+      setSubmitMsg({ type: 'err', text: apiErrorMessage(e, 'Failed to submit ticket') });
     },
   });
 

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Wrench, Power, RotateCcw, Trash2, Globe, HardDrive, Shield } from 'lucide-react';
 import api from '../api/client';
 import type { Device, DeviceMetrics } from '../api/types';
+import { apiErrorMessage } from '../api/errors';
 
 const ACTIONS = [
   { key: 'clean_temp',    label: 'Clean Temp Files',      icon: Trash2,    color: 'text-amber-500',  desc: 'Delete temp files and system caches' },
@@ -42,10 +43,10 @@ export default function MaintenancePage() {
     onSuccess: (_, vars) => {
       setMsgs((prev) => ({ ...prev, [vars.task_type]: { type: 'ok', text: 'Queued — agent executes on next poll.' } }));
     },
-    onError: (e: any, vars) => {
+    onError: (e: unknown, vars) => {
       setMsgs((prev) => ({
         ...prev,
-        [vars.task_type]: { type: 'err', text: e.response?.data?.error ?? 'Failed' },
+        [vars.task_type]: { type: 'err', text: apiErrorMessage(e, 'Failed') },
       }));
     },
   });

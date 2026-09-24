@@ -20,6 +20,13 @@ def _batch_latest_metrics(device_ids: list) -> dict:
     return {m.device_id: m.to_dict() for m in rows}
 
 
+def online_devices() -> list:
+    """Devices currently marked online. Shared by alert/anomaly/automation Celery
+    tasks that previously each hand-duplicated this exact filter — one place to
+    change if "online" ever needs a soft-delete/staleness clause added."""
+    return Device.query.filter_by(is_online=True).all()
+
+
 def list_devices_for_assistant(actor_role: str, actor_customer_id: str, *,
                                 is_online: bool = None, status: str = None,
                                 platform: str = None, q: str = None, limit: int = 50) -> list:

@@ -74,7 +74,9 @@ with tab2:
     st.subheader("Edit Automation Profile")
 
     # Profile selector
-    profiles_data, _ = client.list_profiles()
+    profiles_data, profiles_err = client.list_profiles()
+    if profiles_err:
+        st.caption(f"⚠ Could not load automation profiles — {profiles_err}")
     profiles = (profiles_data or {}).get("items", [])
     profile_names = ["— New Profile —"] + [p["name"] for p in profiles]
     selected = st.selectbox("Select profile to edit (or create new)", profile_names)
@@ -189,7 +191,9 @@ with tab2:
         maint_shutdown = st.checkbox("Shutdown", value=maint_cfg.get("shutdown", False), key="m_shutdown")
         st.markdown(f'<div style="{col_header_style};margin-top:0.75rem">SCRIPTS</div>', unsafe_allow_html=True)
         # Script selector (Phase 4+)
-        scripts_data, _ = client.list_scripts()
+        scripts_data, scripts_err = client.list_scripts()
+        if scripts_err:
+            st.caption(f"⚠ Could not load scripts — {scripts_err}")
         scripts = scripts_data or []
         script_options = {s["name"]: s["id"] for s in scripts}
         selected_scripts = st.multiselect(

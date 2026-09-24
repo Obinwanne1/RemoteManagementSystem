@@ -5,19 +5,11 @@ from models.customer import Customer, DeviceGroup
 from models.audit import AuditLog
 from utils.validation import validate_body
 from schemas.customers import CustomerCreateSchema, CustomerUpdateSchema, DeviceGroupCreateSchema
+from utils.auth_decorators import require_role as _require_role
 import uuid
 import re
 
 customers_bp = Blueprint("customers", __name__)
-
-
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None  # superadmin bypasses all role checks
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
 
 
 def _slugify(name: str) -> str:

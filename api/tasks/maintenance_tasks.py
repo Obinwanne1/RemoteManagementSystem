@@ -5,16 +5,7 @@ from tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
-# Shared Flask app — created once per worker process, not per task invocation
-_app = None
-
-
-def _get_app():
-    global _app
-    if _app is None:
-        from app import create_app
-        _app = create_app()
-    return _app
+from tasks._app_singleton import get_app as _get_app
 
 
 @celery.task(name="tasks.maintenance_tasks.execute_profile")
@@ -23,8 +14,8 @@ def execute_profile(profile_id: str, run_id: str):
     pass
 
 
-@celery.task(name="tasks.maintenance_tasks.prune_old_data")
-def prune_old_data():
+@celery.task(name="tasks.maintenance_tasks.prune_old_data", bind=True, max_retries=2)
+def prune_old_data(self):
     """Delete stale time-series and log data to prevent unbounded disk growth.
 
     Retention policy:
@@ -39,46 +30,55 @@ def prune_old_data():
     from models.audit import AuditLog
     from models.script import ScriptRun
     from models.usage import ApiUsageEvent, ApiUsageHourly
+    from sqlalchemy.exc import OperationalError
 
     with _get_app().app_context():
-        now = datetime.now(timezone.utc)
+        try:
+            now = datetime.now(timezone.utc)
 
-        metrics_cutoff = now - timedelta(days=90)
-        audit_cutoff = now - timedelta(days=365)
-        script_cutoff = now - timedelta(days=180)
-        usage_events_cutoff = now - timedelta(days=90)
-        usage_hourly_cutoff = now - timedelta(days=180)
+            metrics_cutoff = now - timedelta(days=90)
+            audit_cutoff = now - timedelta(days=365)
+            script_cutoff = now - timedelta(days=180)
+            usage_events_cutoff = now - timedelta(days=90)
+            usage_hourly_cutoff = now - timedelta(days=180)
 
-        metrics_deleted = DeviceMetrics.query.filter(
-            DeviceMetrics.collected_at < metrics_cutoff
-        ).delete(synchronize_session=False)
+            metrics_deleted = DeviceMetrics.query.filter(
+                DeviceMetrics.collected_at < metrics_cutoff
+            ).delete(synchronize_session=False)
 
-        audit_deleted = AuditLog.query.filter(
-            AuditLog.created_at < audit_cutoff
-        ).delete(synchronize_session=False)
+            audit_deleted = AuditLog.query.filter(
+                AuditLog.created_at < audit_cutoff
+            ).delete(synchronize_session=False)
 
-        script_deleted = ScriptRun.query.filter(
-            ScriptRun.triggered_at < script_cutoff
-        ).delete(synchronize_session=False)
+            script_deleted = ScriptRun.query.filter(
+                ScriptRun.triggered_at < script_cutoff
+            ).delete(synchronize_session=False)
 
-        usage_events_deleted = ApiUsageEvent.query.filter(
-            ApiUsageEvent.created_at < usage_events_cutoff
-        ).delete(synchronize_session=False)
+            usage_events_deleted = ApiUsageEvent.query.filter(
+                ApiUsageEvent.created_at < usage_events_cutoff
+            ).delete(synchronize_session=False)
 
-        usage_hourly_deleted = ApiUsageHourly.query.filter(
-            ApiUsageHourly.bucket_start < usage_hourly_cutoff
-        ).delete(synchronize_session=False)
+            usage_hourly_deleted = ApiUsageHourly.query.filter(
+                ApiUsageHourly.bucket_start < usage_hourly_cutoff
+            ).delete(synchronize_session=False)
 
-        db.session.commit()
+            db.session.commit()
 
-        logger.info(
-            "Data pruning complete: metrics=%d audit=%d scripts=%d usage_events=%d usage_hourly=%d",
-            metrics_deleted, audit_deleted, script_deleted, usage_events_deleted, usage_hourly_deleted,
-        )
-        return {
-            "metrics_deleted": metrics_deleted,
-            "audit_deleted": audit_deleted,
-            "scripts_deleted": script_deleted,
-            "usage_events_deleted": usage_events_deleted,
-            "usage_hourly_deleted": usage_hourly_deleted,
-        }
+            logger.info(
+                "Data pruning complete: metrics=%d audit=%d scripts=%d usage_events=%d usage_hourly=%d",
+                metrics_deleted, audit_deleted, script_deleted, usage_events_deleted, usage_hourly_deleted,
+            )
+            return {
+                "metrics_deleted": metrics_deleted,
+                "audit_deleted": audit_deleted,
+                "scripts_deleted": script_deleted,
+                "usage_events_deleted": usage_events_deleted,
+                "usage_hourly_deleted": usage_hourly_deleted,
+            }
+        except OperationalError as exc:
+            db.session.rollback()
+            raise self.retry(exc=exc, countdown=300)
+        except Exception:
+            db.session.rollback()
+            logger.exception("prune_old_data failed")
+            raise

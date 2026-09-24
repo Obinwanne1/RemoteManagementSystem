@@ -25,6 +25,10 @@ if API_BASE.startswith("http://") and _host not in ("localhost", "127.0.0.1", "0
 
 _RETRY_ON = (requests.ConnectionError, requests.Timeout)
 _BACKOFF = [0.5, 1.0, 2.0]  # seconds between retries
+# GET/PUT/DELETE are safe to blind-retry (idempotent by design in this API's routes).
+# POST is not — retrying a POST whose response was lost to a timeout can resubmit a
+# non-idempotent action (e.g. RMMClient.mdm_wipe_device, run_script, create_ticket).
+_IDEMPOTENT_METHODS = {"GET", "PUT", "DELETE"}
 
 
 class RMMClient:
@@ -64,11 +68,14 @@ class RMMClient:
         return False
 
     def _request(self, method: str, path: str, **kwargs) -> Tuple[Any, Optional[str]]:
-        """Single entry point: retry on transient errors, auto-refresh on 401."""
+        """Single entry point: retry on transient errors (idempotent methods only),
+        auto-refresh on 401."""
         url = f"{self.base}{path}"
         last_err = None
+        retryable = method.upper() in _IDEMPOTENT_METHODS
+        attempts = _BACKOFF if retryable else [0]
 
-        for attempt, wait in enumerate(_BACKOFF):
+        for attempt, wait in enumerate(attempts):
             try:
                 resp = self.session.request(method, url, timeout=15, **kwargs)
 
@@ -84,14 +91,26 @@ class RMMClient:
                 return resp.json(), None
 
             except requests.HTTPError as e:
-                # HTTP errors (4xx except 401, 5xx) are not retried
-                return None, f"HTTP {e.response.status_code}: {e.response.text}"
+                # HTTP errors (4xx except 401, 5xx) are not retried. Prefer the API's
+                # own {"error": ...} JSON body; fall back to raw text (truncated) so a
+                # non-JSON error body (e.g. a proxy's HTML page, or a Werkzeug debug
+                # traceback if debug mode is ever misconfigured) never renders in full.
+                try:
+                    body = e.response.json()
+                    detail = body.get("error", e.response.text) if isinstance(body, dict) else e.response.text
+                except Exception:
+                    detail = e.response.text
+                return None, f"HTTP {e.response.status_code}: {detail}"[:300]
             except _RETRY_ON as e:
                 last_err = e
-                if attempt < len(_BACKOFF) - 1:
+                if retryable and attempt < len(attempts) - 1:
                     time.sleep(wait)
+                else:
+                    break
 
-        return None, f"Connection failed after {len(_BACKOFF)} attempts: {last_err}"
+        if not retryable:
+            return None, f"Connection failed: {last_err}"
+        return None, f"Connection failed after {len(attempts)} attempts: {last_err}"
 
     def _get(self, path: str, params: dict = None) -> Tuple[Any, Optional[str]]:
         return self._request("GET", path, params=params)

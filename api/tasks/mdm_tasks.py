@@ -7,30 +7,32 @@ from tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
-_app = None
+from tasks._app_singleton import get_app as _get_app
 
-
-def _get_app():
-    global _app
-    if _app is None:
-        from app import create_app
-        _app = create_app()
-    return _app
+# Simple circuit breaker: auto-disable an integration after this many consecutive
+# sync failures instead of retrying a permanently-broken one (e.g. revoked
+# credentials) forever every 5-min beat cycle.
+_MAX_CONSECUTIVE_FAILURES = 10
 
 
 @celery.task(name="tasks.mdm_tasks.sync_all_mdm_integrations", bind=True, max_retries=1)
 def sync_all_mdm_integrations(self):
     """Fan-out: dispatch one sync task per active, bound MDM integration."""
+    from sqlalchemy.exc import OperationalError
+
     app = _get_app()
     with app.app_context():
         from models.mdm_integration import MdmIntegration
-        active = MdmIntegration.query.filter(
-            MdmIntegration.is_active == True,  # noqa: E712
-            MdmIntegration.enterprise_id.isnot(None),
-        ).all()
-        for integration in active:
-            sync_mdm_integration.delay(integration.id)
-        logger.info("MDM sync: dispatched %d integration(s)", len(active))
+        try:
+            active = MdmIntegration.query.filter(
+                MdmIntegration.is_active == True,  # noqa: E712
+                MdmIntegration.enterprise_id.isnot(None),
+            ).all()
+            for integration in active:
+                sync_mdm_integration.delay(integration.id)
+            logger.info("MDM sync: dispatched %d integration(s)", len(active))
+        except OperationalError as exc:
+            raise self.retry(exc=exc, countdown=120)
 
 
 @celery.task(name="tasks.mdm_tasks.sync_mdm_integration", bind=True, max_retries=2)
@@ -118,11 +120,20 @@ def sync_mdm_integration(self, mdm_integration_id: str):
 
             integration.last_sync_at = now
             integration.sync_error = None
+            integration.consecutive_failures = 0
             db.session.commit()
             logger.info("MDM sync complete: %s (%d devices)", integration.name, len(remote_devices))
 
         except Exception as exc:
             logger.error("MDM sync failed for %s: %s", mdm_integration_id, exc)
+            db.session.rollback()
             integration.sync_error = str(exc)[:500]
+            integration.consecutive_failures = (integration.consecutive_failures or 0) + 1
+            if integration.consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+                integration.is_active = False
+                logger.warning(
+                    "Disabling MDM integration %s (%s) after %d consecutive failures",
+                    integration.id, integration.name, integration.consecutive_failures,
+                )
             db.session.commit()
             raise self.retry(exc=exc, countdown=120)

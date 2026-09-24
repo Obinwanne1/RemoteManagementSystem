@@ -5,15 +5,7 @@ from tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
-_app = None
-
-
-def _get_app():
-    global _app
-    if _app is None:
-        from app import create_app
-        _app = create_app()
-    return _app
+from tasks._app_singleton import get_app as _get_app
 
 
 def _within_maintenance_window(window: dict | None) -> bool:

@@ -8,6 +8,8 @@ from models.device import Device, DeviceMetrics
 from models.user import User
 from utils.validation import validate_body
 from utils.cache import cache_get_raw, cache_set_raw, cache_delete_pattern
+from utils.auth_decorators import require_role as _require_role
+from utils.scope import require_customer_scope
 from schemas.devices import DeviceUpdateSchema, QueueTaskSchema, DeployPatchesSchema
 
 devices_bp = Blueprint("devices", __name__)
@@ -29,15 +31,6 @@ def _batch_latest_metrics(device_ids: list) -> dict:
     return {m.device_id: m.to_dict() for m in rows}
 
 
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None  # superadmin bypasses all role checks
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
-
-
 def _client_customer_id_or_error():
     """For role=client, returns (customer_id, None). For other roles, returns (None, None)
     meaning unrestricted. Returns (None, error_response) if a client has no customer_id."""
@@ -53,14 +46,7 @@ def _client_customer_id_or_error():
 
 def _client_scope_check(device):
     """Returns a 404 response if a client-role JWT does not own this device, else None."""
-    claims = get_jwt()
-    if claims.get("role") != "client":
-        return None
-    uid = get_jwt_identity()
-    user = db.session.get(User, uid)
-    if not user or device.customer_id != user.customer_id:
-        return jsonify({"error": "Device not found"}), 404
-    return None
+    return require_customer_scope(device.customer_id, not_found_message="Device not found")
 
 
 @devices_bp.route("/", methods=["GET"])

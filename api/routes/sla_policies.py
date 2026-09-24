@@ -3,19 +3,11 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
 from extensions import db
 from models.sla_policy import SLAPolicy
+from utils.auth_decorators import require_role as _require_role
 
 sla_bp = Blueprint("sla_policies", __name__)
 
 _VALID_PRIORITIES = {"critical", "high", "medium", "low"}
-
-
-def _require_role(*roles):
-    claims = get_jwt()
-    if claims.get("role") == "superadmin":
-        return None
-    if claims.get("role") not in roles:
-        return jsonify({"error": "Insufficient permissions"}), 403
-    return None
 
 
 @sla_bp.route("/", methods=["GET"])

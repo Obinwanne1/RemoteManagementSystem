@@ -122,7 +122,9 @@ with tab_android:
             new_name = st.text_input("Name", placeholder="e.g. Acme Corp Android Fleet")
         with c2:
             new_project = st.text_input("Google Cloud project ID")
-        cust_data, _ = client.list_customers(per_page=200)
+        cust_data, cust_err = client.list_customers(per_page=200)
+        if cust_err:
+            st.caption(f"⚠ Could not load customers — {cust_err}")
         customers = (cust_data or {}).get("items", [])
         cust_ids = [""] + [c["id"] for c in customers]
         cust_labels = ["— Staff-wide (no customer) —"] + [c["name"] for c in customers]
@@ -188,8 +190,10 @@ with tab_android:
     # ── Enrolled devices ─────────────────────────────────────────────────────
     st.markdown(f'<div style="{CARD}">', unsafe_allow_html=True)
     st.markdown("##### Enrollments")
-    enrollments, _ = client.list_mdm_enrollments()
-    if not enrollments:
+    enrollments, enrollments_err = client.list_mdm_enrollments()
+    if enrollments_err:
+        st.caption(f"⚠ Could not load enrollments — {enrollments_err}")
+    elif not enrollments:
         st.info("No enrollments yet.")
     for en in (enrollments or []):
         status = en.get("status", "pending")

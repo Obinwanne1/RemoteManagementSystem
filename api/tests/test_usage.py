@@ -186,7 +186,8 @@ class TestComputeAnomalies:
 class TestHourlyRollupPersistence:
     def test_persists_redis_counters_into_durable_table(self, app):
         import tasks.usage_tasks as usage_tasks
-        usage_tasks._app = app  # reuse the test app/db instead of spinning up a new one
+        import tasks._app_singleton as app_singleton
+        app_singleton._app = app  # reuse the test app/db instead of spinning up a new one (shared singleton — see tasks/_app_singleton.py)
 
         hour_start = (datetime.now(timezone.utc) - timedelta(hours=1)).replace(
             minute=0, second=0, microsecond=0
@@ -219,7 +220,8 @@ class TestHourlyRollupPersistence:
 class TestUsageRetentionPruning:
     def test_prune_old_data_deletes_expired_usage_rows(self, app):
         import tasks.maintenance_tasks as maintenance_tasks
-        maintenance_tasks._app = app
+        import tasks._app_singleton as app_singleton
+        app_singleton._app = app  # shared singleton — see tasks/_app_singleton.py
 
         with app.app_context():
             from extensions import db

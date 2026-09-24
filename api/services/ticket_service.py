@@ -129,18 +129,17 @@ def create_ticket_service(
                 send_ticket_assigned(ticket.title, ticket.id, _customer_name(ticket.customer_id),
                                      ticket.priority, assignee.email)
     except Exception:
-        current_app.logger.warning("Ticket create notification failed for ticket %s", ticket.id)
+        current_app.logger.warning("Ticket create notification failed for ticket %s", ticket.id, exc_info=True)
 
-    try:
-        from utils.events import publish_event
-        publish_event("new_ticket", {
-            "ticket_id": ticket.id,
-            "title": ticket.title,
-            "priority": ticket.priority,
-            "source": source,
-            "customer": _customer_name(ticket.customer_id),
-        })
-    except Exception:
-        pass
+    # publish_event() already catches and logs internally — it never raises — so no
+    # try/except needed here (see api/utils/events.py::publish_event).
+    from utils.events import publish_event
+    publish_event("new_ticket", {
+        "ticket_id": ticket.id,
+        "title": ticket.title,
+        "priority": ticket.priority,
+        "source": source,
+        "customer": _customer_name(ticket.customer_id),
+    })
 
     return ticket.to_dict(), None

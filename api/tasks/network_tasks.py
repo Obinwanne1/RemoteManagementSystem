@@ -4,12 +4,15 @@ Uses stdlib only (subprocess ping + arp, ipaddress, concurrent.futures).
 No nmap or external scanning library required.
 """
 import ipaddress
+import logging
 import re
 import subprocess
 import sys
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 # Ensure api/ is in sys.path so Flask app modules are importable from Celery worker
 _api_dir = str(Path(__file__).parent.parent)
@@ -21,15 +24,7 @@ from tasks.celery_app import celery
 # Windows: suppress console window for subprocesses (CLAUDE.md rule)
 CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
-_app = None
-
-
-def _get_app():
-    global _app
-    if _app is None:
-        from app import create_app
-        _app = create_app()
-    return _app
+from tasks._app_singleton import get_app as _get_app
 
 
 # ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -291,71 +286,85 @@ def _run_scan(scan_id: str):
     discovered = []
     created_count = 0
 
-    with ThreadPoolExecutor(max_workers=50) as pool:
-        futures = {pool.submit(_ping_host, str(ip)): str(ip) for ip in hosts_iter}
-        for future in as_completed(futures):
-            ip = futures[future]
-            try:
-                alive = future.result()
-            except Exception:
-                alive = False
+    try:
+        with ThreadPoolExecutor(max_workers=50) as pool:
+            futures = {pool.submit(_ping_host, str(ip)): str(ip) for ip in hosts_iter}
+            for future in as_completed(futures):
+                ip = futures[future]
+                try:
+                    alive = future.result()
+                except Exception:
+                    alive = False
 
-            if not alive:
-                continue
+                if not alive:
+                    continue
 
-            mac = _get_mac_for_ip(ip)
-            vendor = lookup_vendor(mac) if mac else "Unknown"
-            platform, device_type = _guess_platform(vendor)
+                mac = _get_mac_for_ip(ip)
+                vendor = lookup_vendor(mac) if mac else "Unknown"
+                platform, device_type = _guess_platform(vendor)
 
-            # Try reverse DNS for a friendly hostname (needed before hostname-based detection)
-            rdns = _get_hostname(ip)
+                # Try reverse DNS for a friendly hostname (needed before hostname-based detection)
+                rdns = _get_hostname(ip)
 
-            # If OUI lookup failed, try port probing — skip for actual router/gateway hostnames.
-            # Match only bare router names, not device.fritz.box suffixes (all LAN devices get those).
-            _ROUTER_EXACT = ("fritz.box", "fritzbox", "router", "gateway", "modem",
-                             "router.fritz.box", "dsldevice", "repeater", "ap.lan")
-            h_lower = (rdns or "").lower()
-            # Bare hostname (strip .fritz.box / .local suffix for comparison)
-            bare = h_lower.split(".")[0]
-            is_router = h_lower in _ROUTER_EXACT or bare in ("router", "gateway", "modem",
-                                                              "fritzbox", "repeater")
-            if platform == "unknown" and not is_router:
-                platform, device_type = _probe_platform(ip)
+                # If OUI lookup failed, try port probing — skip for actual router/gateway hostnames.
+                # Match only bare router names, not device.fritz.box suffixes (all LAN devices get those).
+                _ROUTER_EXACT = ("fritz.box", "fritzbox", "router", "gateway", "modem",
+                                 "router.fritz.box", "dsldevice", "repeater", "ap.lan")
+                h_lower = (rdns or "").lower()
+                # Bare hostname (strip .fritz.box / .local suffix for comparison)
+                bare = h_lower.split(".")[0]
+                is_router = h_lower in _ROUTER_EXACT or bare in ("router", "gateway", "modem",
+                                                                  "fritzbox", "repeater")
+                if platform == "unknown" and not is_router:
+                    platform, device_type = _probe_platform(ip)
 
-            # Final fallback: infer from rDNS hostname (catches Android phones with ADB off)
-            if platform == "unknown" and rdns:
-                platform, device_type = _guess_platform_from_hostname(rdns)
+                # Final fallback: infer from rDNS hostname (catches Android phones with ADB off)
+                if platform == "unknown" and rdns:
+                    platform, device_type = _guess_platform_from_hostname(rdns)
 
-            discovered.append({
-                "ip": ip,
-                "mac": mac,
-                "vendor": vendor,
-                "platform": platform,
-                "device_type": device_type,
-                "hostname": rdns or ip,
-                "status": "up",
-            })
+                discovered.append({
+                    "ip": ip,
+                    "mac": mac,
+                    "vendor": vendor,
+                    "platform": platform,
+                    "device_type": device_type,
+                    "hostname": rdns or ip,
+                    "status": "up",
+                })
 
-            # Skip persisting router/gateway devices — no value in tracking them as endpoints
-            if is_router:
-                continue
+                # Skip persisting router/gateway devices — no value in tracking them as endpoints
+                if is_router:
+                    continue
 
-            result = _upsert_agentless_host(
-                ip=ip, mac=mac, vendor=vendor,
-                platform=platform, device_type=device_type,
-                customer_id=scan.customer_id,
-                hostname=rdns,
-            )
-            if result == "created":
-                created_count += 1
+                result = _upsert_agentless_host(
+                    ip=ip, mac=mac, vendor=vendor,
+                    platform=platform, device_type=device_type,
+                    customer_id=scan.customer_id,
+                    hostname=rdns,
+                )
+                if result == "created":
+                    created_count += 1
 
-    scan.status = "completed"
-    scan.completed_at = datetime.now(timezone.utc)
-    scan.discovered_hosts = discovered
-    scan.new_devices_count = created_count
-    db.session.commit()
-    record_event(service="network_scan", feature=f"cidr_scan:{len(hosts_iter)}_hosts", status="success",
-                 latency_ms=int((_time.perf_counter() - _t0) * 1000))
+        scan.status = "completed"
+        scan.completed_at = datetime.now(timezone.utc)
+        scan.discovered_hosts = discovered
+        scan.new_devices_count = created_count
+        db.session.commit()
+        record_event(service="network_scan", feature=f"cidr_scan:{len(hosts_iter)}_hosts", status="success",
+                     latency_ms=int((_time.perf_counter() - _t0) * 1000))
+    except Exception as exc:
+        # Without this, an exception here (e.g. a DB error in _upsert_agentless_host, or a
+        # connection drop mid-scan) left `scan` stuck at status="running" forever — the
+        # Network Discovery dashboard page polls this row and would show an indefinite
+        # spinner with no error surfaced.
+        db.session.rollback()
+        scan.status = "failed"
+        scan.completed_at = datetime.now(timezone.utc)
+        scan.discovered_hosts = [{"error": str(exc)[:300]}]
+        db.session.commit()
+        logger.exception("Network scan %s failed", scan_id)
+        record_event(service="network_scan", feature=f"cidr_scan:{len(hosts_iter)}_hosts", status="error",
+                     latency_ms=int((_time.perf_counter() - _t0) * 1000), error=type(exc).__name__)
 
 
 # ── Celery tasks (kept for beat schedule / future use) ─────────────────────────
