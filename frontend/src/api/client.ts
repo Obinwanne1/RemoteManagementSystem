@@ -9,12 +9,19 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// On 401: try refresh, retry once, else force logout
+// On 401: try refresh, retry once, else force logout. Skipped for the auth
+// endpoints themselves — a 401 there means "wrong credentials," not "your
+// session expired," and the redirect this does (window.location.href, a
+// full page reload) was wiping LoginPage's error state before React could
+// render "Invalid email or password" (caught by an E2E test — see
+// audits/testing_audit.md Finding C6 / frontend/e2e/login-and-view-devices.spec.ts).
+const _AUTH_ENDPOINTS = ['/auth/login', '/auth/mfa/login', '/auth/refresh'];
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
     const original = err.config;
-    if (err.response?.status === 401 && !original._retry) {
+    const isAuthEndpoint = _AUTH_ENDPOINTS.some((p) => original?.url?.includes(p));
+    if (err.response?.status === 401 && !original._retry && !isAuthEndpoint) {
       original._retry = true;
       const refreshToken = localStorage.getItem('refresh_token');
       if (refreshToken) {

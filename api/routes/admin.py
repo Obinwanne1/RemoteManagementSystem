@@ -9,6 +9,7 @@ from models.department import Department
 from models.audit import AuditLog
 from utils.password import password_error_response
 from utils.validation import validate_body
+from utils.pagination import paginated_response
 from schemas.admin import (
     CreateUserSchema, UpdateUserSchema,
     DepartmentCreateSchema, DepartmentUpdateSchema,
@@ -49,13 +50,13 @@ def list_users():
     if err:
         return err, code
 
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
     include_inactive = request.args.get("include_inactive", "false").lower() == "true"
     query = User.query if include_inactive else User.query.filter_by(is_active=True)
     query = query.filter(~User.email.like("__deleted__%"))
-    paginated = query.order_by(User.created_at.desc()).paginate(page=page, per_page=per_page)
-    return jsonify({"users": [u.to_dict() for u in paginated.items], "total": paginated.total, "page": page})
+    # "items" (not "users") — matches every other paginated list endpoint and what
+    # frontend/src/pages/AdminPage.tsx already expects (it was reading `data.items`
+    # from a response that only ever had "users", so this list was rendering empty).
+    return paginated_response(query, lambda u: u.to_dict(), order_by=User.created_at.desc())
 
 
 @admin_bp.route("/users", methods=["POST"])

@@ -6,6 +6,7 @@ from models.audit import AuditLog
 from utils.validation import validate_body
 from schemas.customers import CustomerCreateSchema, CustomerUpdateSchema, DeviceGroupCreateSchema
 from utils.auth_decorators import require_role as _require_role
+from utils.pagination import paginated_response
 import uuid
 import re
 
@@ -20,21 +21,16 @@ def _slugify(name: str) -> str:
 @customers_bp.route("/", methods=["GET"])
 @jwt_required()
 def list_customers():
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 20, type=int), 100)
     q = request.args.get("q", "")
 
     query = Customer.query.filter_by(is_active=True)
     if q:
         query = query.filter(Customer.name.ilike(f"%{q}%"))
 
-    paginated = query.order_by(Customer.name).paginate(page=page, per_page=per_page)
-    return jsonify({
-        "items": [c.to_dict(include_counts=True) for c in paginated.items],
-        "total": paginated.total,
-        "page": page,
-        "pages": paginated.pages,
-    }), 200
+    return paginated_response(
+        query, lambda c: c.to_dict(include_counts=True),
+        order_by=Customer.name, default_per_page=20, max_per_page=100,
+    )
 
 
 @customers_bp.route("/", methods=["POST"])
@@ -140,18 +136,11 @@ def list_groups():
     err = _require_role("admin", "technician", "viewer")
     if err:
         return err
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
     customer_id = request.args.get("customer_id")
     query = DeviceGroup.query
     if customer_id:
         query = query.filter_by(customer_id=customer_id)
-    paginated = query.order_by(DeviceGroup.name).paginate(page=page, per_page=per_page)
-    return jsonify({
-        "items": [g.to_dict() for g in paginated.items],
-        "total": paginated.total,
-        "page": page,
-    }), 200
+    return paginated_response(query, lambda g: g.to_dict(), order_by=DeviceGroup.name)
 
 
 @customers_bp.route("/groups", methods=["POST"])

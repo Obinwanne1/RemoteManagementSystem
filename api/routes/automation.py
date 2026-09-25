@@ -7,6 +7,7 @@ from models.device import Device
 from utils.validation import validate_body
 from schemas.automation import AutomationProfileCreateSchema, AutomationProfileUpdateSchema
 from utils.auth_decorators import require_role as _require_role
+from utils.pagination import paginated_response
 
 automation_bp = Blueprint("automation", __name__)
 
@@ -17,18 +18,11 @@ def list_profiles():
     err = _require_role("admin", "technician", "viewer")
     if err:
         return err
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
     customer_id = request.args.get("customer_id")
     query = AutomationProfile.query
     if customer_id:
         query = query.filter_by(customer_id=customer_id)
-    paginated = query.order_by(AutomationProfile.name).paginate(page=page, per_page=per_page)
-    return jsonify({
-        "items": [p.to_dict() for p in paginated.items],
-        "total": paginated.total,
-        "page": page,
-    }), 200
+    return paginated_response(query, lambda p: p.to_dict(), order_by=AutomationProfile.name)
 
 
 @automation_bp.route("/profiles", methods=["POST"])
@@ -131,20 +125,13 @@ def run_profile_now(profile_id):
 @automation_bp.route("/runs", methods=["GET"])
 @jwt_required()
 def list_runs():
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
     profile_id = request.args.get("profile_id")
 
     query = ScheduledTaskRun.query
     if profile_id:
         query = query.filter_by(profile_id=profile_id)
 
-    paginated = query.order_by(ScheduledTaskRun.started_at.desc()).paginate(page=page, per_page=per_page)
-    return jsonify({
-        "items": [r.to_dict() for r in paginated.items],
-        "total": paginated.total,
-        "page": page,
-    }), 200
+    return paginated_response(query, lambda r: r.to_dict(), order_by=ScheduledTaskRun.started_at.desc())
 
 
 @automation_bp.route("/runs/<run_id>", methods=["DELETE"])

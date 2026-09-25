@@ -72,8 +72,9 @@ export default function LoginPage() {
               <h2 className="text-lg font-semibold text-gray-800 mb-6">Sign in</h2>
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-brand-600 mb-1.5">Email address</label>
+                  <label htmlFor="login-email" className="block text-xs font-semibold text-brand-600 mb-1.5">Email address</label>
                   <input
+                    id="login-email"
                     type="email"
                     autoComplete="email"
                     value={email}
@@ -83,9 +84,10 @@ export default function LoginPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-brand-600 mb-1.5">Password</label>
+                  <label htmlFor="login-password" className="block text-xs font-semibold text-brand-600 mb-1.5">Password</label>
                   <div className="relative">
                     <input
+                      id="login-password"
                       type={showPw ? 'text' : 'password'}
                       autoComplete="current-password"
                       value={password}

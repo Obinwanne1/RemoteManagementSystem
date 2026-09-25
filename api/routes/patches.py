@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from extensions import db
 from models.patch import PatchRecord, PatchPolicy
 from utils.auth_decorators import require_role as _require_role
+from utils.pagination import paginated_response
 
 patches_bp = Blueprint("patches", __name__)
 
@@ -11,8 +12,6 @@ patches_bp = Blueprint("patches", __name__)
 @patches_bp.route("/", methods=["GET"])
 @jwt_required()
 def list_patches():
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
     device_id = request.args.get("device_id")
     status = request.args.get("status")
     patch_type = request.args.get("type")
@@ -25,12 +24,7 @@ def list_patches():
     if patch_type:
         query = query.filter_by(patch_type=patch_type)
 
-    paginated = query.order_by(PatchRecord.created_at.desc()).paginate(page=page, per_page=per_page)
-    return jsonify({
-        "items": [p.to_dict() for p in paginated.items],
-        "total": paginated.total,
-        "page": page,
-    }), 200
+    return paginated_response(query, lambda p: p.to_dict(), order_by=PatchRecord.created_at.desc())
 
 
 @patches_bp.route("/pending", methods=["GET"])

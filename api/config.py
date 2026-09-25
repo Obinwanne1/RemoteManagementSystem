@@ -60,6 +60,7 @@ class TestConfig(DevelopmentConfig):
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}  # SQLite doesn't need pool options
     RATELIMIT_ENABLED = False
     RATELIMIT_STORAGE_URL = "memory://"
+    BCRYPT_ROUNDS = 4  # bcrypt is O(2^rounds) — 4 vs 12 is ~250x faster; irrelevant for ephemeral test data
 
 
 config_map = {

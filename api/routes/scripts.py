@@ -5,6 +5,7 @@ from models.script import Script, ScriptRun
 from utils.validation import validate_body
 from schemas.scripts import ScriptCreateSchema, ScriptUpdateSchema, RunScriptSchema
 from utils.auth_decorators import require_role as _require_role
+from utils.pagination import paginated_response
 
 scripts_bp = Blueprint("scripts", __name__)
 
@@ -124,8 +125,6 @@ def run_script(script_id):
 @scripts_bp.route("/runs", methods=["GET"])
 @jwt_required()
 def list_runs():
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
     device_id = request.args.get("device_id")
     script_id = request.args.get("script_id")
     status = request.args.get("status")
@@ -138,12 +137,7 @@ def list_runs():
     if status:
         query = query.filter_by(status=status)
 
-    paginated = query.order_by(ScriptRun.triggered_at.desc()).paginate(page=page, per_page=per_page)
-    return jsonify({
-        "items": [r.to_dict() for r in paginated.items],
-        "total": paginated.total,
-        "page": page,
-    }), 200
+    return paginated_response(query, lambda r: r.to_dict(), order_by=ScriptRun.triggered_at.desc())
 
 
 @scripts_bp.route("/runs/<run_id>", methods=["GET"])

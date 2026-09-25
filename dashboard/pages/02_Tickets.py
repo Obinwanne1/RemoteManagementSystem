@@ -238,7 +238,7 @@ def _render_tickets(tickets_list: list, tab_key: str) -> None:
             if users_err_b:
                 st.caption(f"⚠ Could not load users — {users_err_b}")
             all_users_b = [
-                u for u in (users_data_b.get("users", []) if isinstance(users_data_b, dict) else [])
+                u for u in (users_data_b.get("items", []) if isinstance(users_data_b, dict) else [])
                 if u.get("is_active", True)
             ]
             user_opts_b = {

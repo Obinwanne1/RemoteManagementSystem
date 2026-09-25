@@ -229,6 +229,7 @@ def events():
         "total": paginated.total,
         "page": page,
         "per_page": per_page,
+        "pages": paginated.pages,
     }), 200
 
 

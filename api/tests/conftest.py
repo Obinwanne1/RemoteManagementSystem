@@ -21,7 +21,14 @@ os.environ["ORG_REGISTRATION_TOKEN"] = "test-org-token-unique-secret-value"
 
 @pytest.fixture(scope="session")
 def app():
-    """Create one Flask app + SQLite in-memory DB for the entire test session."""
+    """Create one Flask app + SQLite in-memory DB for the entire test session.
+
+    IMPORTANT: this DB is SHARED across every test in the suite. Any test that
+    creates a row MUST use a unique identifier (see create_user()'s uuid suffix)
+    and clean up in a finally block (see delete_user()). Never assert on a
+    global count (e.g. User.query.count()) — it is order-dependent across the
+    whole session, not just within one test file.
+    """
     from app import create_app
     flask_app = create_app("testing")
 

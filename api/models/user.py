@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime, timezone
 import bcrypt
+from flask import current_app
 from extensions import db
+from utils.crypto import encrypt_cred, decrypt_cred
 
 
 class User(db.Model):
@@ -15,7 +17,7 @@ class User(db.Model):
     department_id = db.Column(db.String(36), db.ForeignKey("departments.id"), nullable=True)
     customer_id = db.Column(db.String(36), db.ForeignKey("customers.id"), nullable=True)  # set for client-role users
     is_active = db.Column(db.Boolean, default=True, nullable=False)
-    mfa_secret = db.Column(db.String(255), nullable=True)
+    mfa_secret = db.Column(db.String(255), nullable=True)  # encrypted at rest — always access via set_mfa_secret()/get_mfa_secret(), never directly
     mfa_enabled = db.Column(db.Boolean, default=False)
     must_change_password = db.Column(db.Boolean, default=False, nullable=False, server_default="false")
     failed_login_attempts = db.Column(db.Integer, nullable=False, server_default="0", default=0)
@@ -28,14 +30,23 @@ class User(db.Model):
     known_ips = db.Column(db.JSON, nullable=True, default=list)
 
     def set_password(self, password: str):
+        rounds = current_app.config.get("BCRYPT_ROUNDS", 12)
         self.password_hash = bcrypt.hashpw(
-            password.encode("utf-8"), bcrypt.gensalt(rounds=12)
+            password.encode("utf-8"), bcrypt.gensalt(rounds=rounds)
         ).decode("utf-8")
 
     def check_password(self, password: str) -> bool:
         return bcrypt.checkpw(
             password.encode("utf-8"), self.password_hash.encode("utf-8")
         )
+
+    def set_mfa_secret(self, secret: str):
+        """Encrypt the TOTP shared secret before storing it (audits/security_audit.md
+        Finding S2 — this was previously stored in plaintext)."""
+        self.mfa_secret = encrypt_cred(secret) if secret else None
+
+    def get_mfa_secret(self) -> str | None:
+        return decrypt_cred(self.mfa_secret) if self.mfa_secret else None
 
     def to_dict(self):
         return {

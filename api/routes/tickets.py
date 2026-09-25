@@ -8,6 +8,7 @@ from models.audit import AuditLog
 from utils.validation import validate_body
 from utils.auth_decorators import require_role as _require_role
 from utils.scope import require_customer_scope
+from utils.pagination import paginated_response
 from services.ticket_service import _customer_name
 from schemas.tickets import TicketCreateSchema, TicketUpdateSchema, CommentCreateSchema
 from utils.notifications import (
@@ -51,7 +52,6 @@ def list_tickets():
     uid = get_jwt_identity()
 
     page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
     status = request.args.get("status")
     priority = request.args.get("priority")
     customer_id = request.args.get("customer_id")
@@ -64,7 +64,7 @@ def list_tickets():
     if role == "client":
         user = db.session.get(User, uid)
         if not user or not user.customer_id:
-            return jsonify({"items": [], "total": 0, "page": page}), 200
+            return jsonify({"items": [], "total": 0, "page": page, "pages": 0}), 200
         query = query.filter_by(customer_id=user.customer_id)
     else:
         if customer_id:
@@ -79,12 +79,7 @@ def list_tickets():
     if department_id:
         query = query.filter_by(department_id=department_id)
 
-    paginated = query.order_by(Ticket.created_at.desc()).paginate(page=page, per_page=per_page)
-    return jsonify({
-        "items": [t.to_dict() for t in paginated.items],
-        "total": paginated.total,
-        "page": page,
-    }), 200
+    return paginated_response(query, lambda t: t.to_dict(), order_by=Ticket.created_at.desc())
 
 
 @tickets_bp.route("/", methods=["POST"])

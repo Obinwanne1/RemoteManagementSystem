@@ -296,7 +296,7 @@ def mfa_setup():
         return jsonify({"error": "User not found"}), 404
 
     secret = pyotp.random_base32()
-    user.mfa_secret = secret
+    user.set_mfa_secret(secret)
     db.session.commit()
 
     totp = pyotp.TOTP(secret)
@@ -328,7 +328,7 @@ def mfa_enable():
     if not user.mfa_secret:
         return jsonify({"error": "Call /mfa/setup first"}), 400
 
-    totp = pyotp.TOTP(user.mfa_secret)
+    totp = pyotp.TOTP(user.get_mfa_secret())
     if not totp.verify(code, valid_window=1):
         return jsonify({"error": "Invalid or expired TOTP code"}), 401
 
@@ -363,7 +363,7 @@ def mfa_login():
     if not user or not user.is_active or not user.mfa_secret:
         return jsonify({"error": "User not found or MFA not configured"}), 401
 
-    totp = pyotp.TOTP(user.mfa_secret)
+    totp = pyotp.TOTP(user.get_mfa_secret())
     if not totp.verify(code, valid_window=1):
         _audit("mfa_failed", user_id=user.id)
         db.session.commit()
@@ -522,6 +522,23 @@ def password_reset_confirm():
     user = db.session.get(User, user_id)
     if not user or not user.is_active:
         return jsonify({"error": "User not found"}), 404
+
+    # Single-use enforcement (audits/security_audit.md Finding A1) — this is a
+    # stateless JWT with no server-side revocation, so a token already used
+    # once (password_changed_at updated below) must not work again for the
+    # rest of its validity window. Reject any token issued before the most
+    # recent successful password change.
+    if user.password_changed_at:
+        issued_at = datetime.fromtimestamp(decoded.get("iat", 0), tz=timezone.utc)
+        # SQLite (used in tests) round-trips DateTime(timezone=True) columns as
+        # naive; Postgres (production) may return either depending on driver
+        # config — normalize before comparing, same defensive pattern already
+        # used in tasks/network_tasks.py::ping_agentless_devices.
+        changed_at = user.password_changed_at
+        if changed_at.tzinfo is None:
+            changed_at = changed_at.replace(tzinfo=timezone.utc)
+        if issued_at < changed_at:
+            return jsonify({"error": "Invalid or expired reset link"}), 400
 
     user.set_password(new_password)
     user.must_change_password = False

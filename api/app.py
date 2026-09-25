@@ -304,6 +304,22 @@ def create_app(config_name=None):
         # leaking via the Referer header on any outbound link; it does not stop
         # them landing in browser history or server access logs.
         response.headers["Referrer-Policy"] = "no-referrer"
+        # audits/security_audit.md Finding H1 — standard hardening headers,
+        # applied to every response (mostly JSON, where these are inert but
+        # harmless). /api/docs is the one HTML page this app serves itself
+        # (SwaggerUI, routes/docs.py) and needs a looser CSP allowing the
+        # exact CDN + inline script it actually uses — everything else gets
+        # the strict default.
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        if request.path == "/api/docs":
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; style-src 'self' https://unpkg.com; "
+                "script-src 'self' https://unpkg.com 'unsafe-inline'; "
+                "img-src 'self' data:; frame-ancestors 'none'"
+            )
+        else:
+            response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'"
         return response
 
     _register_error_handlers(app)
@@ -360,18 +376,25 @@ def _register_error_handlers(app):
         return {"error": "Internal server error"}, 500
 
 
+def _refuse_debug_in_production(flask_debug: str, flask_env: str) -> None:
+    """Raises RuntimeError if FLASK_DEBUG=1 is combined with FLASK_ENV=production.
+    Werkzeug's debug mode has no PIN gate on viewing tracebacks/source/locals —
+    never allow it alongside a config that claims to be production. Extracted
+    from the __main__ guard below so it's unit-testable without a subprocess
+    (see api/tests/test_app_factory.py) — behavior is unchanged."""
+    if flask_debug == "1" and flask_env == "production":
+        raise RuntimeError(
+            "Refusing to start: FLASK_DEBUG=1 with FLASK_ENV=production. "
+            "Unset one of them before starting the API."
+        )
+
+
 if __name__ == "__main__":
     app = create_app()
     host = os.getenv("API_HOST", "0.0.0.0")
     port = int(os.getenv("API_PORT", 5000))
     debug = os.getenv("FLASK_DEBUG", "0") == "1"
-    if debug and os.getenv("FLASK_ENV") == "production":
-        # Werkzeug's debug mode has no PIN gate on viewing tracebacks/source/locals —
-        # never allow it alongside a config that claims to be production.
-        raise RuntimeError(
-            "Refusing to start: FLASK_DEBUG=1 with FLASK_ENV=production. "
-            "Unset one of them before starting the API."
-        )
+    _refuse_debug_in_production(os.getenv("FLASK_DEBUG", "0"), os.getenv("FLASK_ENV", ""))
     if debug:
         # Never bind the interactive debugger to 0.0.0.0 — it has no auth on its own.
         app.run(host="127.0.0.1", port=port, debug=True, use_reloader=False)

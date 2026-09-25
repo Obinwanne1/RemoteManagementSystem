@@ -442,13 +442,13 @@ def _render_agent_row(device: dict, tab_key: str = "", latest_version: str = "")
                 letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0.6rem">System</div>
     <table style="width:100%;border-collapse:collapse;font-size:0.83rem">
         <tr><td style="color:#6B7B6B;padding:2px 0;width:40%">Hostname</td>
-            <td style="color:#1A1A1A;font-weight:500">{device.get('hostname','—')}</td></tr>
+            <td style="color:#1A1A1A;font-weight:500">{esc(device.get('hostname','—'))}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">IP</td>
-            <td style="color:#1A1A1A">{device.get('ip_address','—')}</td></tr>
+            <td style="color:#1A1A1A">{esc(device.get('ip_address','—'))}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">OS</td>
-            <td style="color:#1A1A1A">{PLATFORM_ICON_HTML.get(platform, "")} {(device.get('os_name') or '—')} {device.get('os_version','')}</td></tr>
+            <td style="color:#1A1A1A">{PLATFORM_ICON_HTML.get(platform, "")} {esc(device.get('os_name') or '—')} {esc(device.get('os_version',''))}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Platform</td>
-            <td style="color:#1A1A1A">{device.get('platform','—')}</td></tr>
+            <td style="color:#1A1A1A">{esc(device.get('platform','—'))}</td></tr>
     </table>
 </div>""", unsafe_allow_html=True)
 
@@ -459,7 +459,7 @@ def _render_agent_row(device: dict, tab_key: str = "", latest_version: str = "")
                 letter-spacing:0.07em;color:#6B7B6B;margin-bottom:0.6rem">Hardware</div>
     <table style="width:100%;border-collapse:collapse;font-size:0.83rem">
         <tr><td style="color:#6B7B6B;padding:2px 0;width:40%">CPU</td>
-            <td style="color:#1A1A1A;font-weight:500">{(device.get('cpu_model') or '—')[:28]}</td></tr>
+            <td style="color:#1A1A1A;font-weight:500">{esc((device.get('cpu_model') or '—')[:28])}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">Cores</td>
             <td style="color:#1A1A1A">{device.get('cpu_cores','?')}</td></tr>
         <tr><td style="color:#6B7B6B;padding:2px 0">RAM</td>

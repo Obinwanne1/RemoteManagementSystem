@@ -412,7 +412,7 @@ with tab_users:
     if users_err:
         st.warning(f"Could not load users — {users_err}")
     else:
-        user_list = users_data.get("users", []) if isinstance(users_data, dict) else users_data
+        user_list = users_data.get("items", []) if isinstance(users_data, dict) else users_data
 
         active_count = sum(1 for u in user_list if u.get("is_active", True))
         inactive_count = len(user_list) - active_count
@@ -625,7 +625,7 @@ with tab_depts:
     else:
         depts = (depts_data.get("departments", []) if depts_data else [])
         all_users_data, _ = client.list_users()
-        all_users_list = (all_users_data.get("users", []) if all_users_data else [])
+        all_users_list = (all_users_data.get("items", []) if all_users_data else [])
 
         if not depts:
             st.info("No departments yet. Create one above.")

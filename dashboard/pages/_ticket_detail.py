@@ -137,7 +137,7 @@ tab_status, tab_assign, tab_comments = st.tabs(["Update Status", "Assignment", "
 # Load user list once (needed for assignment tabs)
 users_data, _ = client.list_users()
 all_users = [
-    u for u in (users_data.get("users", []) if isinstance(users_data, dict) else [])
+    u for u in (users_data.get("items", []) if isinstance(users_data, dict) else [])
     if u.get("is_active", True)
 ]
 

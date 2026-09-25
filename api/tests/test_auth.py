@@ -125,6 +125,22 @@ class TestMFA:
         assert r.status_code == 200
         return uid, email, pw, secret
 
+    def test_mfa_secret_stored_encrypted_not_plaintext(self, app, client):
+        """Regression test for audits/security_audit.md Finding S2 — mfa_secret
+        was previously stored as plaintext in the DB."""
+        uid, email, pw, secret = self._setup_mfa_user(app, client)
+        try:
+            with app.app_context():
+                from models.user import User
+                from extensions import db
+                stored = db.session.get(User, uid).mfa_secret
+                assert stored != secret
+                assert secret not in stored
+                # But get_mfa_secret() still returns the real plaintext for TOTP verification
+                assert db.session.get(User, uid).get_mfa_secret() == secret
+        finally:
+            delete_user(app, uid)
+
     def test_mfa_login_gate(self, app, client):
         uid, email, pw, secret = self._setup_mfa_user(app, client)
         try:
@@ -382,3 +398,155 @@ class TestPasswordReset:
             content_type="application/json",
         )
         assert r.status_code == 400
+
+    def test_reset_token_is_single_use(self, app, client):
+        """Regression test for audits/security_audit.md Finding A1 — a reset
+        token previously remained valid for its full 1-hour window even after
+        already being used once."""
+        from flask_jwt_extended import create_access_token
+        uid, email, pw = create_user(app)
+        try:
+            with app.app_context():
+                reset_token = create_access_token(
+                    identity=uid, additional_claims={"purpose": "password_reset"},
+                )
+            r1 = client.post(
+                "/api/auth/password-reset/confirm",
+                json={"token": reset_token, "new_password": "FirstNewPass@1!"},
+                content_type="application/json",
+            )
+            assert r1.status_code == 200
+
+            # Same token, second attempt — must now be rejected
+            r2 = client.post(
+                "/api/auth/password-reset/confirm",
+                json={"token": reset_token, "new_password": "SecondNewPass@2!"},
+                content_type="application/json",
+            )
+            assert r2.status_code == 400
+        finally:
+            delete_user(app, uid)
+
+
+# ── Rate limiting (audits/testing_audit.md Finding M1) ─────────────────────────
+# TestConfig.RATELIMIT_ENABLED = False globally, so Flask-Limiter is a no-op for
+# every other test in this suite. This is NOT a simple runtime toggle: Flask-
+# Limiter's init_app() reads RATELIMIT_ENABLED once and, if disabled, returns
+# immediately WITHOUT constructing its storage backend or limiter strategy object
+# at all (see flask_limiter/_extension.py:331-333) — so flipping app.config or
+# even the extension's own `.enabled` attribute afterward has no effect, because
+# the machinery that would enforce it was never built. Testing real enforcement
+# needs a second Flask app created with the flag on from the start.
+#
+# A second, sneakier trap found while writing this test: extensions.py's
+# Limiter(storage_uri="redis://...") sets storage_uri as a CONSTRUCTOR argument,
+# which flask_limiter's init_app() prefers over TestConfig.RATELIMIT_STORAGE_URL
+# ("memory://") — `self._storage_uri or storage_uri_from_config`, and the
+# constructor value is always truthy. So enabling the real limiter, even in
+# "testing" config, connects to whatever Redis is actually reachable at
+# 127.0.0.1:6379 — on a dev machine with Redis running (as this one was, for
+# unrelated live-service testing earlier this session), the fixed-window
+# counter for 127.0.0.1 (the Flask test client's fixed remote_addr) persists
+# in that real Redis across separate pytest invocations within the same
+# 60-second window, making the test flaky/order-dependent. Forcing
+# limiter._storage_uri to "memory://" for the duration of this test only
+# (restored after) gives a real, isolated, repeatable in-process counter
+# instead — TestConfig.RATELIMIT_STORAGE_URL was already trying to say this;
+# it just couldn't win against the constructor kwarg on its own.
+
+class TestLoginRateLimit:
+    def test_sixth_attempt_in_a_minute_is_429(self):
+        from config import TestConfig, config_map
+        from app import create_app
+        from extensions import db, limiter
+
+        # extensions.limiter is ONE shared object — init_app() stores .enabled/
+        # ._storage/._limiter/._storage_uri as plain instance attributes, not
+        # per-app state (unlike db/jwt, which Flask-SQLAlchemy/Flask-JWT-Extended
+        # correctly scope per-app). Re-running create_app() below WILL mutate
+        # this shared object, so everything touched must be explicitly restored
+        # afterward or every other test in the suite is affected.
+        original_enabled = limiter.enabled
+        original_storage_uri = limiter._storage_uri
+
+        class _RateLimitedTestConfig(TestConfig):
+            RATELIMIT_ENABLED = True
+
+        config_map["_ratelimit_test"] = _RateLimitedTestConfig
+        try:
+            limiter._storage_uri = "memory://"  # isolated, in-process — see note above
+            rl_app = create_app("_ratelimit_test")
+            with rl_app.app_context():
+                db.create_all()
+                try:
+                    rl_client = rl_app.test_client()
+                    for _ in range(5):
+                        r = rl_client.post(
+                            "/api/auth/login",
+                            json={"email": "nobody@ratelimit-test.local", "password": "wrong"},
+                            content_type="application/json",
+                        )
+                        assert r.status_code == 401  # unknown user, not yet limited
+                    r = rl_client.post(
+                        "/api/auth/login",
+                        json={"email": "nobody@ratelimit-test.local", "password": "wrong"},
+                        content_type="application/json",
+                    )
+                    assert r.status_code == 429
+                finally:
+                    db.drop_all()
+        finally:
+            del config_map["_ratelimit_test"]
+            limiter.enabled = original_enabled
+            limiter._storage_uri = original_storage_uri
+
+    def test_disabled_in_test_config_by_default(self, client):
+        """Documents the invariant every other test in this file relies on."""
+        for _ in range(10):
+            r = client.post(
+                "/api/auth/login",
+                json={"email": "nobody@ratelimit-test.local", "password": "wrong"},
+                content_type="application/json",
+            )
+            assert r.status_code == 401  # never 429 — rate limiting is off by default
+
+
+# ── JWT error response shape (audits/testing_audit.md Finding M2) ──────────────
+
+class TestJwtErrorShape:
+    def test_missing_token_returns_error_key_not_msg(self, client):
+        r = client.get("/api/admin/users")  # @jwt_required() route, no Authorization header
+        assert r.status_code == 401
+        body = r.get_json()
+        assert "error" in body
+        assert "msg" not in body
+
+    def test_malformed_token_returns_error_key_not_msg(self, client):
+        r = client.get("/api/admin/users", headers=auth_headers("not-a-real-jwt"))
+        assert r.status_code == 422
+        body = r.get_json()
+        assert "error" in body
+        assert "msg" not in body
+
+
+# ── JWT tampering (audits/testing_audit.md Finding M3) ─────────────────────────
+
+class TestJwtTampering:
+    def test_tampered_signature_is_rejected(self, app, client):
+        uid, email, pw = create_user(app)
+        try:
+            token = login(client, email, pw).get_json()["access_token"]
+            tampered = token[:-4] + ("AAAA" if not token.endswith("AAAA") else "BBBB")
+            r = client.get("/api/auth/me", headers=auth_headers(tampered))
+            assert r.status_code == 422
+        finally:
+            delete_user(app, uid)
+
+    def test_truncated_token_is_rejected(self, app, client):
+        uid, email, pw = create_user(app)
+        try:
+            token = login(client, email, pw).get_json()["access_token"]
+            r = client.get("/api/auth/me", headers=auth_headers(token[: len(token) // 2]))
+            assert r.status_code == 422
+        finally:
+            delete_user(app, uid)

@@ -8,6 +8,7 @@ from utils.cache import cache_get_raw, cache_set_raw
 from schemas.alerts import AlertRuleCreateSchema, AlertRuleUpdateSchema
 from services.alert_service import acknowledge_alert_service, resolve_alert_service
 from utils.auth_decorators import require_role as _require_role
+from utils.pagination import paginated_response
 
 alerts_bp = Blueprint("alerts", __name__)
 
@@ -20,18 +21,11 @@ def list_rules():
     err = _require_role("admin", "technician", "viewer")
     if err:
         return err
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
     customer_id = request.args.get("customer_id")
     query = AlertRule.query
     if customer_id:
         query = query.filter_by(customer_id=customer_id)
-    paginated = query.order_by(AlertRule.name).paginate(page=page, per_page=per_page)
-    return jsonify({
-        "items": [r.to_dict() for r in paginated.items],
-        "total": paginated.total,
-        "page": page,
-    }), 200
+    return paginated_response(query, lambda r: r.to_dict(), order_by=AlertRule.name)
 
 
 @alerts_bp.route("/alert_rules", methods=["POST"])
@@ -143,6 +137,7 @@ def list_alerts():
         "items": items,
         "total": paginated.total,
         "page": page,
+        "pages": paginated.pages,
     }
     raw_json = json.dumps(result, default=str)
     cache_set_raw(_ck, raw_json, 20)
