@@ -2,7 +2,7 @@
 
 > NinjaOne-style Remote Monitoring & Management system.
 > Stack: Flask API + Streamlit dashboard + Python agent + PostgreSQL + Redis/Celery.
-> All 9 phases + A/B/C optimization pass + D/E/F/G/H post-ship phases complete.
+> All 9 phases + A/B/C optimization pass + D/E/F/G/H/I post-ship phases complete.
 
 ---
 
@@ -1811,3 +1811,88 @@ AI_ASSISTANT_COST_PER_1M_OUTPUT=5.00
 ### H.12 Tests
 
 `api/tests/test_assistant.py` (14 tests) — kill switches, page auth, tool dispatch, confirm/deny staging, danger-pattern detection, persistence. `api/tests/test_usage.py` (13 tests) — RBAC (admin → 403 on every route, superadmin → 200), `record_event` cost calculation, `compute_anomalies` threshold logic, hourly rollup persistence (mock Redis via `patch("utils.cache._get_client", ...)`), retention pruning. Full suite: 146/146 passing.
+
+---
+
+## Phase I — Code Quality, Test Coverage, and Security Remediation
+
+Three sequential audit-and-fix passes over the whole codebase (`audits/code_duplication_audit.md`, `audits/testing_audit.md`, `audits/security_audit.md`, each with a "Remediation Status" section listing every fix). Recreate this phase by running each audit's methodology and applying its fixes in order — duplication first (it makes the codebase easier to test), then test coverage (it will find real bugs), then security (some of what it fixes was found by the coverage pass).
+
+### I.1 Consistent pagination — `api/utils/pagination.py`
+
+```python
+def paginated_response(query, serialize, *, order_by=None, default_per_page=50,
+                        max_per_page=200, items_key="items"):
+    """query: unfiltered/unordered SQLAlchemy Query. serialize: row -> dict.
+    Reads page/per_page from flask.request.args, clamps per_page to max_per_page.
+    Returns {items_key: [...], "total": N, "page": N, "pages": N}."""
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", default_per_page, type=int), max_per_page)
+    if order_by is not None:
+        query = query.order_by(order_by)
+    p = query.paginate(page=page, per_page=per_page, error_out=False)
+    return {items_key: [serialize(row) for row in p.items],
+            "total": p.total, "page": p.page, "pages": p.pages}
+```
+
+Wire into every list endpoint that returns a paginated collection:
+```python
+return jsonify(paginated_response(Thing.query.filter_by(customer_id=cid),
+                                   lambda t: t.to_dict(), order_by=Thing.created_at.desc()))
+```
+
+Migrating an existing hand-rolled pagination block: check the response key it currently uses (`"items"` vs. something else) before swapping — a real live bug came from exactly this: one endpoint returned `"users"` while its consumer read `data.items`.
+
+### I.2 Test coverage — one test file per module, no exceptions
+
+Target: every file in `api/routes/`, every file in `api/tasks/`, every file in `dashboard/pages/`, every file in `frontend/src/pages/` has a dedicated test file. Practical order that worked well: routes first (fastest feedback, most straightforward — JWT fixture + HTTP call + assert), then Celery tasks (need `tasks._app_singleton._app = app` primed and heavy external-I/O mocking — subprocess, IMAP, SNMP, MQTT, third-party PSA/MDM clients), then dashboard pages (`streamlit.testing.v1.AppTest`, needs `patch("streamlit.page_link")`/`patch("streamlit.switch_page")` in every file since `AppTest.from_file()` can't resolve the multipage registry on an isolated page), then frontend pages (Vitest + React Testing Library, needs installing first — see below).
+
+```bash
+# api/.coveragerc — exclude tests/migrations/seed.py from the coverage denominator,
+# otherwise every test file's own ~100% self-coverage inflates the real number
+[run]
+omit = tests/*, migrations/*, seed.py
+```
+
+```bash
+cd frontend
+npm install -D vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom
+npm install -D @playwright/test && npx playwright install --with-deps chromium
+```
+```ts
+// vite.config.ts — Vitest reads this file directly, no separate config needed
+test: { environment: "jsdom", globals: true, setupFiles: "./src/test/setup.ts", exclude: ["e2e/**"] }
+```
+
+CI: add `--cov-fail-under=70` to the pytest step (raise as real coverage grows), add `test-dashboard` (`ubuntu-latest`, pure Python) and `test-agent` (`windows-latest` — `pywin32`/`wmi` need Windows) jobs if they don't already exist.
+
+**Expect to find real bugs while writing tests, not just missing coverage** — the highest-value one in this pass was a `dashboard/utils/cached_calls.py` cross-session cache leak (see I.3). Treat every "that assertion shouldn't have failed" moment as a signal to investigate the production code, not just the test.
+
+### I.3 The `st.cache_data` underscore-parameter trap
+
+Any `@st.cache_data`-wrapped function whose parameter name starts with `_` has that parameter **silently excluded from the cache key** — Streamlit's documented behavior for "uncacheable" params, but a trap when the excluded param is the thing that scopes the cached result to one user (an access token, a user ID). Confirmed with a standalone repro:
+```python
+@st.cache_data(ttl=60)
+def cached_fn(_token):
+    return call_api(_token)
+cached_fn("token-A")   # caches under a key that ignores _token
+cached_fn("token-B")   # returns token-A's cached result — WRONG
+```
+Fix: never underscore-prefix a parameter that should be part of the cache key. If a param genuinely shouldn't be hashed (e.g. a non-hashable client object), keep the underscore but make sure nothing user-scoped rides along with it — or pass a plain hashable proxy (a token string) instead.
+
+### I.4 Security fixes — pattern reference
+
+| Issue | Pattern |
+|---|---|
+| Fail-open crypto helper | Never `except Exception: return value` around encrypt/decrypt — let it raise into the app's existing generic error handler. |
+| Sensitive column stored in plaintext | Add `set_x()`/`get_x()` methods on the model that route through the existing shared `crypto.py` helper — don't write a second encryption implementation. |
+| Encryption key with no domain separation | Hash a fixed context-prefix string plus the shared secret (`SHA256("my-purpose:" + SECRET_KEY)`), not the shared secret alone. |
+| Replayable single-use token | Compare the token's `iat` claim against a "last invalidated at" timestamp column that's already being set elsewhere as a side effect (e.g. `password_changed_at`) — no new column or denylist needed. Watch for naive-vs-aware datetime comparison bugs when the column comes back from SQLite as naive. |
+| Missing security headers | Add to the app's *existing* `after_request` hook rather than a new one; carve out a scoped exception for any page that legitimately needs a relaxed CSP (e.g. a CDN-loaded docs UI) instead of disabling it globally. |
+| Unescaped user-controllable field in `unsafe_allow_html=True` markup | Audit every such block for 100% field coverage by the existing `esc()`/escaping convention — one missed field in one block is enough for stored XSS. Add a regression test asserting a `<img onerror=...>`-style payload renders as escaped entities. |
+| Dependency vulnerability backlog | Don't assume it's a big project — run `pip-audit`/`npm audit` for real, package by package, before scoping. Most fixes are patch/minor bumps. Isolate genuinely blocked packages (a hard version-compatibility conflict, confirmed by direct test) and document them explicitly (`--ignore-vuln` + a comment explaining exactly why, in both `requirements.txt` and CI) rather than leaving CI's vulnerability scan as `continue-on-error: true` indefinitely. |
+| Unpinned dependency upper bound | Cap at the next major version above what's currently installed, matching whatever convention already exists elsewhere in the same requirements file. |
+
+### I.5 Verification discipline
+
+Every fix in this phase was re-verified after making it — full test suite re-run (sometimes 2-3 times to catch order-dependent flakiness from the shared session-scoped test DB), and the highest-risk fixes (MFA encryption, crypto key change, dependency major-version bumps) were additionally smoke-tested against the real running Postgres/Redis stack, not just the SQLite-backed test suite — e.g. a full MFA setup→enable→login round trip confirming real Fernet ciphertext in the live DB column, not just a passing unit test.

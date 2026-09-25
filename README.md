@@ -330,7 +330,7 @@ RemoteManagementSystem/
 │   ├── utils/              # Helpers (superadmin, oui, cache, webhook, jwt_cache, tier_gates, crypto, android_mgmt)
 │   ├── migrations/         # Alembic migrations
 │   ├── screenshots/        # Latest screenshot per device (gitignored, .gitkeep present)
-│   ├── tests/              # pytest suite — 102 tests (agents, auth, alerts, tickets, devices, cache)
+│   ├── tests/              # pytest suite — 490 tests, 72% coverage, one file per routes/tasks module
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── dashboard/              # Streamlit frontend
@@ -342,8 +342,9 @@ RemoteManagementSystem/
 ├── frontend/               # React/Vite/TypeScript frontend (alternative UI)
 │   ├── src/
 │   │   ├── App.tsx          # Router + auth context
-│   │   ├── pages/           # 18 pages — not yet at parity with the 22-page Streamlit dashboard
-│   │   │                    #   (missing: App Center, Invoice Detail, IoT Sensors, Client Tickets)
+│   │   ├── pages/           # 19 pages — not yet at parity with the 22-page Streamlit dashboard
+│   │   │                    #   (missing: App Center, IoT Sensors, Mobile Enrollment, Client Tickets)
+│   │   │                    #   each page has a Vitest + RTL test file (39 tests total)
 │   │   ├── components/      # Shared UI components
 │   │   ├── api/             # Axios API client
 │   │   ├── contexts/        # Auth context
@@ -363,6 +364,7 @@ RemoteManagementSystem/
 │   └── setup_agent.py      # One-command WiFi deployment
 ├── docker-compose.yml      # 6-service stack
 ├── .env.example            # Environment template
+├── audits/                 # Code duplication, testing, security, design-pattern, error-handling audit reports
 ├── HANDOVER_GUIDE.md       # Full user + ops guide
 └── TECHNICAL_GUIDE.md      # Developer reference
 ```
@@ -375,6 +377,7 @@ RemoteManagementSystem/
 |----------|----------|
 | `HANDOVER_GUIDE.md` / `.pdf` | All staff — installation, usage, MFA, troubleshooting |
 | `TECHNICAL_GUIDE.md` | Developers — architecture, API reference, security model, extension guide |
+| `audits/*.md` | Developers — point-in-time code duplication, testing, security, design-pattern, and error-handling audits, each with a "Remediation Status" section documenting what was fixed |
 
 ---
 

@@ -28,6 +28,8 @@
 18. [Test Suite](#18-test-suite)
 19. [Mobile Device Management](#19-mobile-device-management)
 20. [API & Token Usage Monitoring](#20-api--token-usage-monitoring)
+21. [Consistent List Pagination](#21-consistent-list-pagination)
+22. [Security Audit Remediation & Dependency Hygiene](#22-security-audit-remediation--dependency-hygiene)
 
 ---
 
@@ -1984,34 +1986,51 @@ Shows sensor readings as time-series charts per sensor type. Displays latest val
 
 ## 18. Test Suite
 
-102 tests across 6 files, all passing.
+As of the 2026-09-24/25 test-coverage and security remediation passes (`audits/testing_audit.md`, `audits/security_audit.md`), every route file, every Celery task file, every Streamlit page, and every React page component has a dedicated test file. Full counts, all passing and stable across repeated runs:
 
-| File | Tests | Coverage |
+| Suite | Tests | Coverage / notes |
 |------|-------|---------|
-| `api/tests/test_auth.py` | Auth flows, MFA, force-change-password, rate limits | JWT, bcrypt, TOTP |
-| `api/tests/test_agents.py` | Registration, heartbeat, task result, patch/software submit | Agent token, device upsert |
-| `api/tests/test_alerts.py` | Alert CRUD, acknowledge, resolve, auto-resolve on recovery | Rule evaluation logic |
-| `api/tests/test_tickets.py` | Ticket CRUD, comments, SLA due-date calc, GDPR export/delete | Role guards, SLA policy lookup |
-| `api/tests/test_devices.py` | Device list/get/update/delete, metrics, screenshot endpoint | Pagination, platform_counts |
-| `api/tests/test_cache.py` | `cache_get`/`cache_set`/`cache_delete`, TTL expiry, Redis unavailability no-op | Redis mock |
+| `api/tests/` | **490** (487 passed + 3 xfailed) | 72% line coverage (`--cov-fail-under=70` enforced in CI); `.coveragerc` excludes `tests/`, `migrations/`, `seed.py` from the denominator. All 26 `routes/*.py` and all 20 `tasks/*.py` files covered. |
+| `dashboard/tests/` | **84** | All 26 `pages/*.py` files (incl. `_ticket_detail.py`/`_client_ticket_detail.py`) via `streamlit.testing.v1.AppTest`. |
+| `frontend/` (Vitest + RTL) | **39** | All 19 `src/pages/*.tsx` files. |
+| `frontend/e2e/` (Playwright) | **2** | Verified against the live stack; installed but deliberately not wired into CI (needs Postgres+Redis+API+migrations+frontend running together — a distinct infra task). |
+| `agent/tests/` | **19** | Pure-logic tests (string/byte decoding, command-string building) — never call the Windows-only APIs, so this job runs on `windows-latest` in CI even though the tests themselves are OS-agnostic. |
+
+One file per module is the convention going forward — when adding a new route or task file, add its test file in the same commit rather than letting coverage regress.
+
+### Key testing infrastructure notes
+
+- **`api/tests/conftest.py`** — session-scoped SQLite in-memory DB fixture shared across the whole `api/` suite. This sharing is an intentional speed tradeoff, not an oversight — but it means tests must not assume a clean DB and must use unique values (a UUID, not a hardcoded placeholder MAC/email/etc.) for anything that could collide with another test's leftover rows. Two real order-dependent collisions of exactly this kind were found and fixed during the coverage pass (see `audits/testing_audit.md` "bugs found," #2 and #9).
+- **`api/tasks/_app_singleton.py`** — tests that exercise a Celery task against the test DB must prime `tasks._app_singleton._app = app` (not a per-task-module `_app` attribute).
+- **`api/.coveragerc`** — omits `tests/`, `migrations/`, `seed.py` from the coverage denominator. Without it, CI's Codecov upload reported an inflated 54% (every test file is trivially ~100% "covered" by being imported) versus the real 44.4% at the time — a measurement artifact, not a real gap.
+- **`api/config.py`** — `TestConfig.BCRYPT_ROUNDS = 4` (vs. 12 in production). Real bcrypt hashing in tests at production cost would make the suite unusably slow; this is a ~13x speedup and is why the whole `api/` suite runs in single-digit seconds, not tens.
+- **Streamlit `AppTest` gotchas** (apply to every file in `dashboard/tests/`): `st.page_link()`/`st.switch_page()` raise on an isolated page (`AppTest.from_file()` can't resolve the multipage registry that only exists when Streamlit boots from `app.py`) — patch both with `unittest.mock.patch("streamlit.page_link")`/`patch("streamlit.switch_page")` at the top of every test file. `st.components.v1.html()` content is completely opaque to `AppTest` (no `.html`/`.components` accessor) — assert on the mock call args instead of rendered output.
+- **`dashboard/utils/cached_calls.py`** — never take the access token as an underscore-prefixed parameter on an `@st.cache_data`-wrapped function; `st.cache_data` silently drops such parameters from the cache key, which caused the cross-session data leak documented in Chapter 22 below.
 
 ### Running tests
 
 ```powershell
-cd api
-.\venv\Scripts\Activate.ps1
-pytest tests/ -v --cov=. --cov-report=term-missing
+# API
+cd api ; .\venv\Scripts\Activate.ps1 ; pytest tests/ -v --cov=. --cov-config=.coveragerc --cov-report=term-missing
+
+# Dashboard
+cd dashboard ; .\venv\Scripts\Activate.ps1 ; pytest tests/ -v
+
+# Agent
+cd agent ; .\venv\Scripts\Activate.ps1 ; pytest tests/ -v
+
+# Frontend (Vitest)
+cd frontend ; npm test
+
+# Frontend E2E (Playwright, against a running live stack)
+cd frontend ; npx playwright test
 ```
 
-Requires a running PostgreSQL + Redis (or the CI services defined in `.github/workflows/ci.yml`). `conftest.py` force-sets `ORG_REGISTRATION_TOKEN` and creates an in-memory test app via `create_app("testing")`.
+`api/` tests need a running PostgreSQL + Redis (or the CI service containers). `dashboard/`/`agent/` tests are pure Python and need neither. `conftest.py` force-sets `ORG_REGISTRATION_TOKEN` and creates an in-memory test app via `create_app("testing")`.
 
 ### CI pipeline (`.github/workflows/ci.yml`)
 
-- PostgreSQL 15 + Redis 7 service containers
-- `flask db upgrade` with `FLASK_ENV=development`
-- `pytest` with coverage upload to Codecov
-- TypeScript type-check (`tsc --noEmit`) on `frontend/`
-- Docker build gate on `main` branch pushes
+Five jobs: `test-backend` (Postgres 16 + Redis 7 services, migrations, pytest+coverage, `pip-audit` ×3 requirements files), `test-dashboard` (`ubuntu-latest`), `test-agent` (`windows-latest` — `pywin32`/`wmi` have no Linux wheel), `build-frontend` (`npm audit`, `npm test`, `tsc --noEmit`, `npm run build`), `build-docker` (main branch only, gated on `test-backend` + `build-frontend`). Both `pip-audit` and `npm audit` steps enforce (no `continue-on-error`) as of the 2026-09-25 security remediation — see Chapter 20a.
 
 ---
 
@@ -2199,3 +2218,117 @@ curl http://localhost:5000/api/admin/usage/summary?range=today \
 ### What's deliberately NOT tracked
 
 Per-ping/per-host detail during a network scan (only one event per scan run, with host count in `feature`), and the six legacy per-function SMTP call sites in `utils/notifications.py` that predate the shared `_smtp_send` helper (only `_smtp_send` itself and `billing.py`'s invoice-email block are instrumented) — both would add event volume disproportionate to their value for finding the cause of high usage.
+
+---
+
+## 21. Consistent List Pagination
+
+### Why
+
+`audits/code_duplication_audit.md` (Finding N2) found the same ~15-line pagination block — parse `page`/`per_page` query args, clamp to a max, run `.paginate()`, build the response dict — hand-copied across 9+ list endpoints, with two real inconsistencies as a result: some endpoints returned a `"pages"` key and some didn't, and `admin.py::list_users` returned its collection under key `"users"` while every other list endpoint used `"items"` — a real, live bug, since the React Admin page read `data.items` and was silently getting an empty list.
+
+### `api/utils/pagination.py`
+
+```python
+def paginated_response(query, serialize, *, order_by=None, default_per_page=50,
+                        max_per_page=200, items_key="items"):
+    """
+    query        — an unfiltered, unordered SQLAlchemy Query
+    serialize    — callable applied to each row (usually `.to_dict`)
+    order_by     — optional column/expression to order by before paginating
+    Reads `page`/`per_page` from `flask.request.args`; per_page is clamped to
+    [1, max_per_page]. Returns a dict: {items_key: [...], "total": N, "page": N, "pages": N}.
+    """
+```
+
+### Call sites
+
+Wired into: `alerts.py::list_rules`, `automation.py::list_profiles`/`list_runs`, `customers.py::list_customers` (kept its own `default_per_page=20, max_per_page=100` — a deliberately different default for a smaller, more-often-fully-browsed collection), `customers.py::list_groups`, `patches.py::list_patches`, `scripts.py::list_runs`, `admin.py::list_users` (the fix for the `"users"`/`"items"` key bug above — the matching dashboard-side fix was in `dashboard/pages/02_Tickets.py`, `10_Admin.py`, and `_ticket_detail.py`, all of which had a stray `.get("users", [])` changed to `.get("items", [])`).
+
+**Deliberately not converted:** `devices.py`'s list endpoint (its pagination is entangled with the platform-filter/cache-key logic and didn't cleanly decompose), and `alerts.py::list_alerts`/`usage.py::events` (both needed a slightly different shape and got a smaller inline fix instead of forcing the shared helper).
+
+### Adding a new paginated endpoint
+
+```python
+from utils.pagination import paginated_response
+
+@bp.route("/", methods=["GET"])
+@jwt_required()
+def list_things():
+    query = Thing.query.filter_by(customer_id=customer_id)
+    return jsonify(paginated_response(query, lambda t: t.to_dict(), order_by=Thing.created_at.desc()))
+```
+
+Use this instead of hand-rolling `.paginate()` again unless your endpoint's shape genuinely doesn't fit one of the two documented exceptions above.
+
+---
+
+## 22. Security Audit Remediation & Dependency Hygiene
+
+`audits/security_audit.md` (2026-09-25) covered injection, cryptography, secrets handling, dependency/supply-chain posture, and configuration hardening. All 7 scored findings are fixed and verified — API suite 490/490, dashboard 84/84, frontend 39/39 Vitest + 2/2 Playwright, agent 19/19, coverage unchanged at 72% (fixes to existing code paths only, no new production surface).
+
+### 22.1 Stored XSS — `dashboard/pages/04_Devices.py` (Finding I1, 8/10 — the standout finding)
+
+Two `st.markdown(f"""...""", unsafe_allow_html=True)` blocks rendered `hostname`, `ip_address`, `os_name`, `os_version`, `platform`, `cpu_model` directly into an f-string without the `esc()` helper this codebase uses everywhere else for the same purpose. Exploitable via two different write paths that don't require an authenticated dashboard session: the page's own inline agentless-device "Edit" form (any admin/technician), and a raw `POST /api/agents/register` call authenticated with nothing but the org registration token — a value this same repo's changelog documents was once leaked into git history (see the 2026-09-21 diagnostic entry). The payload fires in the browser of whoever next views that device.
+
+**Fix:** wrap `esc()` around all 6 fields in both render blocks. Regression test: `dashboard/tests/test_devices_page.py::test_hostname_is_html_escaped` asserts a `<img onerror=...>` payload renders as escaped HTML entities, not live markup.
+
+### 22.2 `api/utils/crypto.py` hardening (Findings S1, C1)
+
+- **No longer fails open** (S1, 6/10): `encrypt_cred`/`decrypt_cred` previously had `except Exception: return value` — any failure (a corrupted ciphertext, a rotated key) silently returned the raw input, which for `decrypt_cred` meant potentially treating still-encrypted ciphertext as a usable plaintext credential. Removed; failures now propagate to `api/app.py`'s existing app-wide `@app.errorhandler(Exception)`, which already returns a generic 500 with server-side `exc_info=True` logging — the same convention used everywhere else in this codebase.
+- **Domain-separated key** (C1, 4/10): `_fernet()` now derives its key from `SHA256("rmm-cred-encryption:" + SECRET_KEY)` instead of `SHA256(SECRET_KEY)` alone, so this key is cryptographically distinct from any other future use of `SECRET_KEY`.
+- No data migration was needed for either change (verified zero pre-existing encrypted rows in the live DB before the key-derivation change). `api/tests/test_crypto.py` (5 tests) covers the round-trip and the now-required raise-on-failure behavior.
+
+### 22.3 MFA secret encryption (Finding S2, 6/10)
+
+`User.mfa_secret` (the TOTP shared secret) was stored in plaintext. `api/models/user.py` gained `set_mfa_secret(secret)`/`get_mfa_secret()`, both routing through `utils.crypto`; all 3 call sites in `routes/auth.py` (MFA setup, enable, login verification) updated to use them instead of touching the column directly. Verified live against the real Postgres DB: the column now holds a `gAAAAA...` Fernet token, and the full setup → enable → login round trip was re-tested end-to-end afterward.
+
+### 22.4 Password reset tokens are now single-use (Finding A1, 5/10)
+
+A reset token is a stateless JWT (`purpose: "password_reset"`, 1-hour expiry) — correctly scoped, but previously replayable for its whole validity window after first use, since nothing was checked against it having already been consumed.
+
+```python
+# api/routes/auth.py::password_reset_confirm — after decoding, before setting the new password
+if user.password_changed_at:
+    issued_at = datetime.fromtimestamp(decoded.get("iat", 0), tz=timezone.utc)
+    changed_at = user.password_changed_at
+    if changed_at.tzinfo is None:          # SQLite (and some Postgres driver configs)
+        changed_at = changed_at.replace(tzinfo=timezone.utc)   # return this column naive
+    if issued_at < changed_at:
+        return jsonify({"error": "Invalid or expired reset link"}), 400
+```
+
+This makes the token single-use as a side effect of `password_changed_at` already being set on every successful reset — no new column or Redis denylist needed. **Bug found while writing the fix's own regression test**: the naive first version crashed with `TypeError: can't compare offset-naive and offset-aware datetimes`, because SQLite returns a `DateTime(timezone=True)` column back as naive on read; fixed with the `.tzinfo is None` guard above, reusing the identical defensive pattern already established in `tasks/network_tasks.py::ping_agentless_devices`.
+
+### 22.5 Security response headers (Finding H1, 5/10)
+
+Added to the existing `_log_request` `after_request` hook in `api/app.py`: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and a `Content-Security-Policy`. `/api/docs` (the one HTML page this API serves itself — SwaggerUI, loaded via CDN with an inline script) gets a scoped, relaxed CSP instead of being exempted outright; every other response gets `default-src 'self'; frame-ancestors 'none'`. Verified live: plain JSON responses carry the strict policy, `/api/docs` still renders correctly with its relaxed one.
+
+### 22.6 Dependency vulnerabilities — Finding D1 (6/10), 55 advisories
+
+Originally scoped as a multi-week project on the assumption that a 7-package/55-advisory backlog would need extensive compatibility work. In practice, real `pip-audit`/`npm audit` runs (superseding the CI comment's earlier approximate counts) found 51 of 55 were simple patch/minor bumps with zero breaking changes:
+
+| Package | Before → After | Advisories fixed |
+|---|---|---|
+| `flask` (api) | 3.1.1 → 3.1.3 | PYSEC-2026-2151 |
+| `flask-cors` (api) | 5.0.1 → 6.0.5 | PYSEC-2026-1383/1384/1385 |
+| `marshmallow` (api) | 3.26.1 → 3.26.2 | PYSEC-2026-1605 (stayed on the 3.x line — 4.1.2 also fixes it but is a breaking major version, not needed) |
+| `python-dotenv` (api, agent, dashboard) | 1.1.0 → 1.2.2 | PYSEC-2026-2270 |
+| `requests` (api, agent, dashboard) | 2.32.3 → 2.33.0 | PYSEC-2026-1872, PYSEC-2026-2275 |
+| `Pillow` (api) | 12.2.0 → 12.3.0 | 17 advisories, one patch release (agent's existing `Pillow>=10.0.0,<13.0.0` range already resolved to 12.3.0 — no change needed there) |
+| `cryptography` (agent) | 44.0.3 → 50.0.1 | PYSEC-2026-2141/35/3552/3553/3554, GHSA-537c-gmf6-5ccf (api's `cryptography` was already ≥50.0.0 via the D2 upper-bound fix below, so only agent needed the bump) |
+| `browserslist`, `nanoid`, `postcss` (frontend, transitive) | patch bumps via `npm audit fix` | 3 advisories |
+| `react-router` / `react-router-dom` (frontend) | 7.18.1 → 7.18.4 | 2 advisories — a patch release within the existing `^7.18.1` range, no major-version migration |
+| `pyasn1` (api) | **not upgraded — deliberate, see below** | 4 advisories remain |
+
+**The one real blocker:** `pyasn1` 0.4.8 has 4 known advisories (PYSEC-2026-2263/3455/3456/3457), fixed in 0.6.3/0.6.4 — but `tasks/snmp_tasks.py` uses `pysnmp==4.4.12`'s classic synchronous `pysnmp.hlapi` API, which imports `pyasn1.compat.octets`, a module removed in pyasn1 0.5+. Confirmed by direct test: installing `pyasn1==0.6.4` alongside the pinned `pysnmp` version breaks `import pysnmp.hlapi` outright (`ModuleNotFoundError`). A real fix needs a rewrite of `snmp_tasks.py` onto pysnmp 5.x/7.x's async API — a subsystem rewrite, not a version bump — so it stays pinned old, with the risk (SNMP response *parsing* only, from devices already on the polled customer's own network) and the reproduction steps documented directly in `api/requirements.txt` and `.github/workflows/ci.yml`.
+
+**CI enforcement:** `pip-audit`/`npm audit` steps in `ci.yml` had `continue-on-error: true` removed; the `api` step additionally passes `--ignore-vuln` for exactly the 4 documented `pyasn1` IDs. Any new vulnerability, in any package, now fails the build.
+
+### 22.7 Unpinned dependency upper bounds (Finding D2, 3/10)
+
+`cachetools`, `waitress`, `sentry-sdk`, `cryptography`, `google-auth` (`api/requirements.txt`) and `keyring` (`agent/requirements.txt`) previously had no upper bound at all — capped at the next major version above what's currently installed, matching the existing `paho-mqtt`/`pysnmp` convention already in the same files.
+
+### 22.8 Cross-referenced, not re-scored here
+
+Two findings from earlier audit passes this same week are the most severe security-relevant issues found across the whole audit series and are called out here for a reader who only opens this chapter: the **cross-session cache leak in `dashboard/utils/cached_calls.py`** (Chapter 18, and `audits/testing_audit.md` "bugs found" #8) and the **`admin.py` pagination key bug** (Chapter 21). Neither is re-scored in `security_audit.md` since both were already fixed and reverified before that audit ran.

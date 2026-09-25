@@ -596,20 +596,20 @@ if __name__ == "__main__":
         base / "HANDOVER_GUIDE.md", base / "HANDOVER_GUIDE.pdf",
         title="Faiyke RMM System", subtitle="Handover &amp; User Guide",
         tagline="Complete reference for all staff — from first login to advanced automation",
-        version_line="Version 9.0 · September 2026",
+        version_line="Version 10.0 · September 2026",
         pdf_title="Faiyke RMM System — Handover & User Guide",
         pdf_subject="Faiyke RMM System — Staff handover and user guide",
         footer_title="Faiyke RMM System — Handover & User Guide",
-        band_text="Prepared for Faiyke-AI Agency · Confidential · v9.0",
+        band_text="Prepared for Faiyke-AI Agency · Confidential · v10.0",
     )
 
     build(
         base / "TECHNICAL_GUIDE.md", base / "TECHNICAL_GUIDE.pdf",
         title="Faiyke RMM System", subtitle="Technical Guide",
         tagline="Architecture, data models, API reference, and extension guide",
-        version_line="Version 1.5 · September 2026",
+        version_line="Version 1.6 · September 2026",
         pdf_title="Faiyke RMM System — Technical Guide",
         pdf_subject="Faiyke RMM System — Developer and architect reference",
         footer_title="Faiyke RMM System — Technical Guide",
-        band_text="Prepared for Faiyke-AI Agency · Confidential · v1.5",
+        band_text="Prepared for Faiyke-AI Agency · Confidential · v1.6",
     )

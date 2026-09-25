@@ -135,6 +135,11 @@ This document is written in plain language. Technical jargon is explained when f
 **PART XIII — GOVERNANCE AND COST CONTROL**
 - Chapter 56: API & Token Usage Monitoring — Finding and Controlling Runaway Usage
 
+**PART XIV — QUALITY, TESTING, AND SECURITY**
+- Chapter 57: Consistent List Pagination
+- Chapter 58: Automated Test Coverage — What's Verified on Every Change
+- Chapter 59: Security Hardening — What Changed and Why
+
 **Appendix A: Glossary**
 **Appendix B: Quick Reference Cards**
 
@@ -5661,6 +5666,94 @@ Click **Generate API & Token Usage Report** on the Usage Monitoring page. Like e
 
 ---
 
-*End of RMM System Complete Handbook — Version 9.0*
+# PART XIV — QUALITY, TESTING, AND SECURITY
+
+---
+
+## Chapter 57: Consistent List Pagination
+
+### Who uses this chapter
+
+Developers integrating with the API — any page, script, or third-party tool that reads a paginated list endpoint (users, alert rules, automation profiles, customer groups, patches, script runs).
+
+### What changed
+
+Nine list endpoints previously each hand-implemented their own paging logic, with small inconsistencies between them — most notably, the admin user-list endpoint returned its collection under the key `"users"` while every other list endpoint used `"items"`. That mismatch had silently broken pagination on the React Admin page, which was reading `data.items` and getting nothing back. All nine now go through one shared helper (`api/utils/pagination.py`) and return the same shape:
+
+```json
+{"items": [...], "total": 137, "page": 1, "pages": 3}
+```
+
+### Practical impact
+
+If you have any script or integration that reads `/api/admin/users` (or any other affected list endpoint) and was working around the old `"users"` key, update it to read `"items"` instead. Every other affected endpoint's shape is unchanged — this only fixes the one that was inconsistent.
+
+---
+
+## Chapter 58: Automated Test Coverage — What's Verified on Every Change
+
+### Who uses this chapter
+
+Anyone deciding whether a change is safe to deploy, and any developer picking up this codebase who wants to know what's actually checked before code reaches `main`.
+
+### What's now covered
+
+As of the latest audit-remediation pass, every part of this system has automated tests that run before any change can be merged:
+
+| Part of the system | Tests | What it means in practice |
+|---|---|---|
+| Flask API (every route + every background job) | 490 tests, 72% of all code lines executed | Every user-facing endpoint and every scheduled/background task (alerts, billing, backups, patch deployment, PSA/MDM sync, etc.) has dedicated tests |
+| Streamlit dashboard (every page) | 84 tests | Every one of the 26 dashboard pages loads and behaves correctly under test |
+| React frontend (every page) | 39 tests | Every one of the 19 React pages has its own test |
+| End-to-end browser tests | 2 tests | A real login-and-use-the-app test run against the live, fully running system |
+| Agent | 19 tests | Core agent logic (not the Windows-only system calls, which can't run in an automated test environment) |
+
+### Why this matters for you
+
+Before this pass, roughly half the system's code — including the entire background-job engine that runs alerts, billing, backups, and patch deployment — had no automated tests at all, meaning a change there could silently break something and nobody would find out until a customer did. That gap is now closed. A CI check also fails the build if test coverage on the API ever drops below 70%, so it can't silently regress again.
+
+### A real problem this work found
+
+While writing these tests, a genuine data-privacy bug was discovered and fixed in the dashboard: under specific conditions, one user's dashboard data (devices, customers, alerts) could be briefly served to a different user logged into the same server. This is explained in full in Chapter 59 below — it's flagged here too because it was found specifically *because* new tests were being written, which is the strongest practical argument for why this chapter's work matters.
+
+---
+
+## Chapter 59: Security Hardening — What Changed and Why
+
+### Who uses this chapter
+
+Everyone — this chapter explains, in plain terms, what security issues were found and fixed in the most recent audit, and what (if anything) staff need to do differently.
+
+### The most serious issue: a data mix-up between users (now fixed)
+
+**What happened:** For a period of time, the dashboard had a bug where, in rare circumstances, one logged-in user's data — their dashboard summary, device list, customer list, or alerts — could be shown to a *different* user who loaded the same page shortly afterward, for up to about two minutes. This was caused by a caching mistake, not an intentional data-sharing feature, and it has been fixed and verified.
+
+**What you need to do:** Nothing — the fix is already deployed. If you noticed dashboard numbers that seemed to belong to a different customer or account at some point, this explains why, and it will not happen going forward.
+
+### A page that could be tricked into running injected code (now fixed)
+
+The Devices page had one spot where a device's name or other details, if crafted maliciously, could run unwanted code in the browser of whoever viewed that device next. This required someone to be able to register a device or edit an agentless device's name in the first place — it was not exploitable by an outside attacker with no access at all. It is fixed: all device fields are now safely escaped before display, same as every other page in the system.
+
+### Login credentials are now better protected
+
+- **Two-factor authentication codes** are now encrypted in the database, not stored in plain text.
+- **Password-reset links** can now only be used once — previously, a reset link stayed valid for its full one-hour window even after being used, which mattered only if the link leaked a second time (e.g. from browser or email history).
+- **Stored integration credentials** (used for billing, PSA, and mobile device management integrations) use a more clearly separated encryption key than before.
+
+### The API now sends standard browser security headers
+
+Every response from the system now tells the browser to be stricter about what it will execute and display — standard practice that most modern web applications already do. This is invisible to normal use; it only matters if someone were trying to attack the system through the browser.
+
+### Known software vulnerabilities — patched
+
+Every third-party software library this system depends on was checked against the public vulnerability database. 51 out of 55 known issues were fixed by upgrading to newer, compatible versions of those libraries — no functionality changed as a result. One issue was found to require a larger rewrite of the SNMP (industrial device monitoring) component to fix properly rather than a simple version bump; it has been documented and left as a tracked, deliberate exception rather than silently ignored, and its practical risk is limited to devices already reachable on a customer's own monitored network. The automated build process now fails immediately if any *new* vulnerability appears in the future, so this can't silently go stale again.
+
+### Bottom line
+
+None of this requires any action from regular staff. If you are a developer or administrator responsible for deploying this system, see `audits/security_audit.md` and `TECHNICAL_GUIDE.md` Chapter 22 for the full technical detail behind each item above.
+
+---
+
+*End of RMM System Complete Handbook — Version 10.0*
 
 *For support with this guide, contact your system administrator or development team.*

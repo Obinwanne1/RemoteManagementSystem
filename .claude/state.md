@@ -1,7 +1,15 @@
 # RMM Build State
 
 ## Current Phase
-**ALL PHASES COMPLETE — Commercial Audit (Phase F) done. Docs updated. Production-readiness diagnostic done 2026-09-21. Mobile Device Management (Android) added 2026-09-22. AI Assistant Phase 1 refactor + API/Token Usage Monitoring added 2026-09-23.**
+**ALL PHASES COMPLETE — Commercial Audit (Phase F) done. Docs updated. Production-readiness diagnostic done 2026-09-21. Mobile Device Management (Android) added 2026-09-22. AI Assistant Phase 1 refactor + API/Token Usage Monitoring added 2026-09-23. Code duplication, testing, and security audits + full remediation done 2026-09-24/25. Documentation pass across all 6 docs (this file included) done 2026-09-25.**
+
+## 2026-09-24/25 — Code Duplication, Testing Coverage, and Security Audits + Remediation
+Three sequential full-codebase audit passes, each written to `audits/*.md` with a "Remediation Status" section, all fully remediated (not just reported):
+- **Code Duplication** (`audits/code_duplication_audit.md`): new `api/utils/pagination.py::paginated_response()` wired into 9 list endpoints, replacing 9 hand-copied pagination blocks. Found and fixed a real live bug: `admin.py::list_users` returned key `"users"` while the React Admin page read `data.items` — silently broken pagination, now fixed (dashboard-side `.get("users", [])` → `.get("items", [])` fixes in `02_Tickets.py`/`10_Admin.py`/`_ticket_detail.py` too).
+- **Testing Coverage** (`audits/testing_audit.md`): closed 0%-coverage gaps on the entire Celery task layer and the React frontend, plus 17/26 untested API routes and 25/26 untested dashboard pages, to **100% file coverage everywhere** — api 484→**490 tests** (44.4%→72% line coverage, `.coveragerc` added, `--cov-fail-under=70` enforced), dashboard 84 tests (all 26 pages), frontend 39 Vitest tests (all 19 pages, Vitest/RTL newly installed) + 2 Playwright E2E specs, agent 19 tests (unchanged). `test-dashboard`/`test-agent` CI jobs added (previously orphaned). Found and fixed 10 real bugs, most seriously a **cross-session cache leak** in `dashboard/utils/cached_calls.py` — all 13 `@st.cache_data` functions took the access token as an underscore-prefixed param (`_token`), which Streamlit silently excludes from the cache key, so one user's dashboard/device/customer/alert/usage data was served to every other user on the same process for up to 120s. Fixed by dropping the underscore prefix on all 13 functions.
+- **Security** (`audits/security_audit.md`): standout finding — stored XSS in `dashboard/pages/04_Devices.py` (hostname/IP/OS fields rendered via `unsafe_allow_html=True` without the codebase's `esc()` convention), fixed. Also fixed: `crypto.py` no longer fails open on encrypt/decrypt errors; Fernet key gained domain separation; `User.mfa_secret` is now encrypted at rest (was plaintext); password reset tokens are now single-use; standard security response headers added (`X-Content-Type-Options`, `X-Frame-Options`, scoped CSP). **55 known dependency vulnerabilities** — 51 fixed via real patch/minor version bumps (`flask`, `flask-cors`, `marshmallow`, `python-dotenv`, `requests`, `Pillow`, `cryptography` (agent), `react-router`/`react-router-dom`, plus npm transitive bumps); `pyasn1` deliberately left pinned `<0.5.0` (confirmed hard incompatibility with `pysnmp==4.4.12`'s classic sync API — needs a `snmp_tasks.py` rewrite, not a version bump). CI's `pip-audit`/`npm audit` steps now enforce (no more `continue-on-error`).
+- Full suite after all three passes: **api 490/490, dashboard 84/84, frontend 39/39 Vitest + 2/2 Playwright, agent 19/19**, coverage 72%.
+- All 6 maintained docs updated (`CLAUDE.md`, `README.md`, `TECHNICAL_GUIDE.md` new Ch. 21-22, `HANDOVER_GUIDE.md` new Part XIV / Ch. 57-59, `SKILL.md` new Phase I, this file) — see "PDF Regeneration" below, done as part of this same pass.
 
 ## 2026-09-23 — AI Assistant Phase 1 Refactor + API & Token Usage Monitoring
 - **AI Assistant refactor**: prompt/tool logic moved out of `routes/assistant.py` into `services/ai_prompt.py` + `services/ai_tools.py`; durable conversation history (`AiConversation`/`AiMessage`, migration `p7q8r9s0t1u2`); mutating tool calls staged via `AiPendingAction`, require explicit confirm/deny — never auto-executed; `utils/rate_limit.py` for per-tool rate limits on the agentic path. 14 new tests (`test_assistant.py`).
@@ -126,11 +134,9 @@
 Stored in `.env` only (not in this file — see 2026-09-21 diagnostic note below;
 the token that was previously written here was committed to git and must be rotated).
 
-## PDF Regeneration (pending)
-Need one of: pandoc, weasyprint, or reportlab available on PATH.
-Check: `pandoc --version` or `pip show weasyprint`
-Command (if pandoc available):
+## PDF Regeneration
+Superseded by `build_pdf.py` at the repo root (generalized 2026-09-23 to build both PDFs from one script; the pandoc/weasyprint note below is historical). Run after any change to `HANDOVER_GUIDE.md` or `TECHNICAL_GUIDE.md`:
 ```powershell
-pandoc HANDOVER_GUIDE.md -o HANDOVER_GUIDE.pdf --pdf-engine=wkhtmltopdf
-pandoc TECHNICAL_GUIDE.md -o TECHNICAL_GUIDE.pdf --pdf-engine=wkhtmltopdf
+python build_pdf.py
 ```
+Verify a regenerated PDF actually picked up new content by decompressing its content stream directly (`/ASCII85Decode /FlateDecode`-encoded) rather than trusting a clean exit code — see the 2026-09-23 entry above for the method.
